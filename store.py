@@ -11,6 +11,7 @@ module is unit-testable with nothing installed.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import tempfile
@@ -41,10 +42,34 @@ def load() -> Scenario:
         return Scenario()
 
 
+def previous_path() -> Path:
+    return state_dir() / "pitch.prev.json"
+
+
+def load_previous() -> Scenario | None:
+    p = previous_path()
+    if not p.exists():
+        return None
+    try:
+        return Scenario.from_dict(json.loads(p.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
+        return None
+
+
 def save(scenario: Scenario) -> None:
-    """Atomic write: the view polls this file's contents, so a half-written board
-    would render as an empty pitch mid-save."""
+    """Atomic write, keeping the outgoing board as ``pitch.prev.json``.
+
+    Atomic because the view polls this file's contents, so a half-written board would
+    render as an empty pitch mid-save. The one-deep backup exists because the write
+    path is destructive and reachable from several directions at once — the agent's
+    tools, the operator's drags, and a whole-board ``/replace``. Losing a worked-out
+    setup to one careless call and having no way back is worse than the disk cost of
+    a second file. In-session undo lives in the view; this survives a restart."""
     p = state_path()
+    if p.exists():
+        # A failed backup must never block the save itself.
+        with contextlib.suppress(OSError):
+            os.replace(p, previous_path())
     fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=".pitch-", suffix=".json")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:

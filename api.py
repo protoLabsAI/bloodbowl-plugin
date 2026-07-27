@@ -10,7 +10,7 @@ one; everything it then reads or writes goes through the authed prefix.
 from __future__ import annotations
 
 from .pitch import Player, Scenario, find_team, geometry, player_from_roster, team_names
-from .store import load, save
+from .store import load, load_previous, save
 from .view import PAGE
 
 
@@ -120,5 +120,38 @@ def build_data_router(cfg: dict | None = None):
         side = (body or {}).get("side")
         sc.clear(side if side in ("home", "away") else None)
         return _ok(sc)
+
+    @r.post("/replace")
+    async def _replace(body: dict) -> dict:
+        """Set the whole board at once. Backs undo: the view keeps a stack of prior
+        boards and posts one back wholesale rather than replaying moves, which would
+        be wrong the moment the agent edited the board in between.
+
+        Re-hydrates any player missing a statline from the shipped roster, so a board
+        restored from a hand-written or trimmed payload still gets working hover
+        cards instead of a row of blanks."""
+        sc = Scenario.from_dict(body or {})
+        for p in sc.players:
+            if not (1 <= p.x <= 15 and 1 <= p.y <= 26):
+                raise HTTPException(status_code=400, detail=f"({p.x},{p.y}) is off the pitch")
+            if p.position:
+                # The shipped roster is the source of truth for a statline, so
+                # re-hydrate unconditionally rather than only when one is missing.
+                # A board placed before a roster-data fix would otherwise keep the
+                # stale blanks forever — which is exactly what happened when the
+                # "Skills & Traits" header bug was corrected under a live board.
+                team = p.team or (sc.home_team if p.side == "home" else sc.away_team)
+                full, _err = player_from_roster(p.side, p.x, p.y, team, p.position)
+                if full is not None:
+                    p.team, p.MA, p.ST, p.AG = full.team, full.MA, full.ST, full.AG
+                    p.PA, p.AV, p.skills, p.cost, p.role = full.PA, full.AV, full.skills, full.cost, full.role
+        return _ok(sc)
+
+    @r.get("/previous")
+    async def _previous() -> dict:
+        """The board as it was before the last write — the restart-proof safety net
+        behind the view's in-session undo."""
+        prev = load_previous()
+        return {"scenario": prev.to_dict() if prev else None}
 
     return r

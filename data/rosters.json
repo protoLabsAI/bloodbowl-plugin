@@ -2260,7 +2260,11 @@
           "AG": "4+",
           "PA": "6+",
           "AV": "9+",
-          "skills": [],
+          "skills": [
+            "Eye Gouge",
+            "Regeneration",
+            "Unsteady"
+          ],
           "primary": [
             "D",
             "G"
@@ -2280,7 +2284,10 @@
           "AG": "3+",
           "PA": "3+",
           "AV": "8+",
-          "skills": [],
+          "skills": [
+            "Dodge",
+            "Regeneration"
+          ],
           "primary": [
             "A",
             "G"
@@ -2301,7 +2308,13 @@
           "AG": "3+",
           "PA": "-",
           "AV": "9+",
-          "skills": [],
+          "skills": [
+            "Block",
+            "Foul Appearance",
+            "No Ball",
+            "Regeneration",
+            "Sidestep"
+          ],
           "primary": [
             "G",
             "S"
@@ -2321,7 +2334,12 @@
           "AG": "4+",
           "PA": "6+",
           "AV": "10+",
-          "skills": [],
+          "skills": [
+            "Regeneration",
+            "Stand Firm",
+            "Thick Skull",
+            "Unsteady"
+          ],
           "primary": [
             "G",
             "S"
@@ -2341,7 +2359,11 @@
           "AG": "3+",
           "PA": "3+",
           "AV": "9+",
-          "skills": [],
+          "skills": [
+            "Claws",
+            "Frenzy",
+            "Regeneration"
+          ],
           "primary": [
             "A",
             "G"
@@ -2639,7 +2661,13 @@
           "AG": "3+",
           "PA": "4+",
           "AV": "6+",
-          "skills": [],
+          "skills": [
+            "Dodge",
+            "Right Stuff",
+            "Sidestep",
+            "Stunty",
+            "Titchy"
+          ],
           "primary": [
             "A",
             "D"
@@ -2658,7 +2686,12 @@
           "AG": "4+",
           "PA": "5+",
           "AV": "10+",
-          "skills": [],
+          "skills": [
+            "Bone Head",
+            "Mighty Blow",
+            "Thick Skull",
+            "Throw Team-mate"
+          ],
           "primary": [
             "S"
           ],
@@ -2679,7 +2712,12 @@
           "AG": "4+",
           "PA": "4+",
           "AV": "10+",
-          "skills": [],
+          "skills": [
+            "Bone Head",
+            "Kick Team-mate",
+            "Mighty Blow",
+            "Thick Skull"
+          ],
           "primary": [
             "P",
             "S"
@@ -3130,7 +3168,10 @@
           "AG": "4+",
           "PA": "6+",
           "AV": "8+",
-          "skills": [],
+          "skills": [
+            "Regeneration",
+            "Thick Skull"
+          ],
           "primary": [
             "G"
           ],
@@ -3150,7 +3191,11 @@
           "AG": "4+",
           "PA": "6+",
           "AV": "9+",
-          "skills": [],
+          "skills": [
+            "Eye Gouge",
+            "Regeneration",
+            "Unsteady"
+          ],
           "primary": [
             "D",
             "G"
@@ -3170,7 +3215,10 @@
           "AG": "3+",
           "PA": "3+",
           "AV": "8+",
-          "skills": [],
+          "skills": [
+            "Dodge",
+            "Regeneration"
+          ],
           "primary": [
             "A",
             "G"
@@ -3191,7 +3239,12 @@
           "AG": "3+",
           "PA": "5+",
           "AV": "9+",
-          "skills": [],
+          "skills": [
+            "Block",
+            "Regeneration",
+            "Tackle",
+            "Thick Skull"
+          ],
           "primary": [
             "G",
             "S"
@@ -3211,7 +3264,10 @@
           "AG": "5+",
           "PA": "6+",
           "AV": "10+",
-          "skills": [],
+          "skills": [
+            "Mighty Blow",
+            "Regeneration"
+          ],
           "primary": [
             "S"
           ],
@@ -3366,7 +3422,14 @@
           "AG": "3+",
           "PA": "4+",
           "AV": "6+",
-          "skills": [],
+          "skills": [
+            "Dodge",
+            "Insignificant",
+            "Right Stuff",
+            "Sidestep",
+            "Stunty",
+            "Titchy"
+          ],
           "primary": [
             "A",
             "D"
@@ -3385,7 +3448,13 @@
           "AG": "3+",
           "PA": "4+",
           "AV": "6+",
-          "skills": [],
+          "skills": [
+            "Dodge",
+            "Pogo",
+            "Right Stuff",
+            "Sidestep",
+            "Stunty"
+          ],
           "primary": [
             "A",
             "D"
@@ -3404,7 +3473,13 @@
           "AG": "3+",
           "PA": "4+",
           "AV": "6+",
-          "skills": [],
+          "skills": [
+            "Dodge",
+            "Right Stuff",
+            "Sidestep",
+            "Sprint",
+            "Stunty"
+          ],
           "primary": [
             "A",
             "D"
@@ -3423,7 +3498,15 @@
           "AG": "3+",
           "PA": "4+",
           "AV": "6+",
-          "skills": [],
+          "skills": [
+            "Bombardier",
+            "Dodge",
+            "Right Stuff",
+            "Secret Weapon",
+            "Sidestep",
+            "Stunty",
+            "Titchy"
+          ],
           "primary": [
             "A",
             "D",
@@ -3443,7 +3526,13 @@
           "AG": "5+",
           "PA": "6+",
           "AV": "9+",
-          "skills": [],
+          "skills": [
+            "Dirty Player",
+            "Juggernaut",
+            "Mighty Blow",
+            "Really Stupid",
+            "Stand Firm"
+          ],
           "primary": [
             "D",
             "S"
@@ -3463,7 +3552,14 @@
           "AG": "5+",
           "PA": "5+",
           "AV": "10+",
-          "skills": [],
+          "skills": [
+            "Always Hungry",
+            "Mighty Blow",
+            "Projectile Vomit",
+            "Really Stupid",
+            "Regeneration",
+            "Throw Team-mate"
+          ],
           "primary": [
             "S"
           ],
@@ -3491,7 +3587,10 @@
           "AG": "4+",
           "PA": "6+",
           "AV": "8+",
-          "skills": [],
+          "skills": [
+            "Regeneration",
+            "Thick Skull"
+          ],
           "primary": [
             "G"
           ],
@@ -3511,7 +3610,12 @@
           "AG": "4+",
           "PA": "3+",
           "AV": "9+",
-          "skills": [],
+          "skills": [
+            "Pass",
+            "Regeneration",
+            "Sure Hands",
+            "Thick Skull"
+          ],
           "primary": [
             "G",
             "P"
@@ -3532,7 +3636,11 @@
           "AG": "4+",
           "PA": "5+",
           "AV": "9+",
-          "skills": [],
+          "skills": [
+            "Block",
+            "Regeneration",
+            "Thick Skull"
+          ],
           "primary": [
             "G",
             "S"
@@ -3552,7 +3660,11 @@
           "AG": "5+",
           "PA": "6+",
           "AV": "10+",
-          "skills": [],
+          "skills": [
+            "Brawler",
+            "Decay",
+            "Regeneration"
+          ],
           "primary": [
             "S"
           ],
@@ -3579,7 +3691,11 @@
           "AG": "3+",
           "PA": "4+",
           "AV": "8+",
-          "skills": [],
+          "skills": [
+            "Dodge",
+            "Right Stuff",
+            "Stunty"
+          ],
           "primary": [
             "A",
             "D",
@@ -3601,7 +3717,14 @@
           "AG": "3+",
           "PA": "4+",
           "AV": "6+",
-          "skills": [],
+          "skills": [
+            "Dodge",
+            "Insignificant",
+            "Right Stuff",
+            "Sidestep",
+            "Stunty",
+            "Titchy"
+          ],
           "primary": [
             "A",
             "D",
@@ -3621,7 +3744,9 @@
           "AG": "3+",
           "PA": "4+",
           "AV": "8+",
-          "skills": [],
+          "skills": [
+            "Animosity (Goblin)"
+          ],
           "primary": [
             "G",
             "M",
@@ -3642,7 +3767,11 @@
           "AG": "3+",
           "PA": "2+",
           "AV": "8+",
-          "skills": [],
+          "skills": [
+            "Animosity (Goblin)",
+            "Pass",
+            "Sure Hands"
+          ],
           "primary": [
             "G",
             "M",
@@ -3664,7 +3793,11 @@
           "AG": "2+",
           "PA": "4+",
           "AV": "8+",
-          "skills": [],
+          "skills": [
+            "Animosity (Goblin)",
+            "Dodge",
+            "Stab"
+          ],
           "primary": [
             "A",
             "G",
@@ -3685,7 +3818,11 @@
           "AG": "3+",
           "PA": "4+",
           "AV": "9+",
-          "skills": [],
+          "skills": [
+            "Animosity (Goblin)",
+            "Block",
+            "Strip Ball"
+          ],
           "primary": [
             "G",
             "M",
@@ -3706,7 +3843,15 @@
           "AG": "5+",
           "PA": "5+",
           "AV": "10+",
-          "skills": [],
+          "skills": [
+            "Always Hungry",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Projectile Vomit",
+            "Really Stupid",
+            "Regeneration",
+            "Throw Team-mate"
+          ],
           "primary": [
             "M",
             "S"
@@ -3727,7 +3872,13 @@
           "AG": "4+",
           "PA": "6+",
           "AV": "9+",
-          "skills": [],
+          "skills": [
+            "Animal Savagery",
+            "Frenzy",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Prehensile Tail"
+          ],
           "primary": [
             "M",
             "S"
@@ -3774,7 +3925,11 @@
           "AG": "2+",
           "PA": "3+",
           "AV": "8+",
-          "skills": [],
+          "skills": [
+            "Bloodlust (2+)",
+            "Hypnotic Gaze",
+            "Regeneration"
+          ],
           "primary": [
             "A",
             "G"
@@ -3794,7 +3949,12 @@
           "AG": "2+",
           "PA": "2+",
           "AV": "9+",
-          "skills": [],
+          "skills": [
+            "Bloodlust (2+)",
+            "Hypnotic Gaze",
+            "Pass",
+            "Regeneration"
+          ],
           "primary": [
             "A",
             "G",
@@ -3814,7 +3974,12 @@
           "AG": "2+",
           "PA": "4+",
           "AV": "9+",
-          "skills": [],
+          "skills": [
+            "Bloodlust (3+)",
+            "Hypnotic Gaze",
+            "Juggernaut",
+            "Regeneration"
+          ],
           "primary": [
             "A",
             "G",
@@ -3832,7 +3997,13 @@
           "AG": "4+",
           "PA": "6+",
           "AV": "10+",
-          "skills": [],
+          "skills": [
+            "Bloodlust (3+)",
+            "Claws",
+            "Frenzy",
+            "Loner (4+)",
+            "Regeneration"
+          ],
           "primary": [
             "S"
           ],

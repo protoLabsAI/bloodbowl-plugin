@@ -223,3 +223,39 @@ def test_review_flags_deployment_past_the_line():
 def test_review_of_an_empty_side_is_quiet(side):
     """An empty board is the starting state, not an error."""
     assert pitch.Scenario().review(side)["legal"]
+
+
+# --- the "Skills & Traits" header bug -------------------------------------
+
+# Only vanilla linemen start with no skills. Anything else missing them means a
+# parse regression, which is how 42 of 159 positionals silently shipped blank:
+# some pages head the column "Skills", others "Skills & Traits", and an exact
+# match on "skills" dropped every one of the latter.
+SKILL_LESS_BY_DESIGN = {
+    ("High Elf", "High Elf Lineman"),
+    ("Human", "Human Lineman"),
+    ("Old World Alliance", "Human Lineman"),
+    ("Orc", "Orc Lineman"),
+    ("Skaven", "Skaven Clanrat"),
+    ("Vampire", "Thrall Lineman"),
+    ("Wood Elf", "Wood Elf Lineman"),
+}
+
+
+def test_only_vanilla_linemen_lack_skills():
+    missing = {
+        (t["name"], p["position"]) for t in pitch.rosters()["teams"] for p in t["positionals"] if not p["skills"]
+    }
+    assert missing == SKILL_LESS_BY_DESIGN, f"unexpected skill-less positionals: {missing - SKILL_LESS_BY_DESIGN}"
+
+
+def test_a_skills_and_traits_header_still_parses():
+    """Ogre heads the column 'Skills & Traits'; it must parse like any other."""
+    blocker = pitch.find_position(pitch.find_team("Ogre"), "Ogre Blocker")
+    assert blocker["skills"] == ["Bone Head", "Mighty Blow", "Thick Skull", "Throw Team-mate"]
+
+
+def test_hyphenated_skills_survive():
+    """'Throw Team-mate' must keep its hyphen and stay one skill."""
+    punter = pitch.find_position(pitch.find_team("Ogre"), "Ogre Runt Punter")
+    assert "Kick Team-mate" in punter["skills"]

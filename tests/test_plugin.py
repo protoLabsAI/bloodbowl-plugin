@@ -251,3 +251,112 @@ def test_review_tool(registry):
 def test_review_tool_falls_back_to_home_on_a_bad_side(registry, bad):
     out = json.loads(_tool(registry, "bb_pitch_review").invoke({"side": bad}))
     assert out["side"] == "home"
+
+
+# --- v2 regressions: every defect found in live use ------------------------
+
+
+def test_opening_the_view_does_not_mutate_the_board():
+    """The first version POSTed both teams on load, stomping the agent's setup."""
+    page = (ROOT / "view.py").read_text()
+    boot = page.split("async function boot()", 1)[1].split("\n}", 1)[0]
+    assert 'api("/teams"' not in boot, "boot() must reflect the board, never write to it"
+    assert "NEVER write to it" in page
+
+
+def test_badge_type_scales_with_the_board_not_the_viewport():
+    """`.85vw` resolved to ~7px in a rail panel and made every player unreadable."""
+    page = (ROOT / "view.py").read_text()
+    assert "vw)" not in page.split("PAGE = r", 1)[1], "viewport units make badges unreadable in a panel"
+    assert "--cell" in page and "ResizeObserver" in page
+
+
+def test_the_board_has_coordinate_rulers():
+    page = (ROOT / "view.py").read_text()
+    for probe in ("ruler-top", "ruler-left", '$("#coord")'):
+        assert probe in page, f"missing {probe} — you should not have to count squares to find (7,13)"
+
+
+def test_removal_is_an_explicit_target_not_the_whole_document():
+    """Dropping on the palette used to silently delete a player."""
+    page = (ROOT / "view.py").read_text()
+    assert 'trash.addEventListener("drop"' in page
+    assert 'document.addEventListener("drop"' not in page
+
+
+def test_render_is_incremental_so_a_poll_cannot_tear_out_the_drag_target():
+    page = (ROOT / "view.py").read_text()
+    assert "NODES" in page
+    assert "if (dragging" in page, "the poller must stand down mid-drag"
+
+
+def test_undo_exists_and_posts_a_whole_board():
+    page = (ROOT / "view.py").read_text()
+    assert "undoStack" in page and 'api("/replace"' in page
+
+
+def test_replace_endpoint_round_trips_a_board(client):
+    base = "/api/plugins/bloodbowl"
+    client.post(f"{base}/place", json={"side": "home", "team": "Amazon", "position": "Eagle Warrior", "x": 5, "y": 13})
+    snapshot = client.get(f"{base}/state").json()
+    client.post(f"{base}/clear", json={})
+    assert client.get(f"{base}/state").json()["players"] == []
+    restored = client.post(f"{base}/replace", json=snapshot).json()
+    assert len(restored["players"]) == 1
+    assert restored["players"][0]["position"] == "Eagle Warrior"
+
+
+def test_replace_rejects_an_off_pitch_board(client):
+    r = client.post(
+        "/api/plugins/bloodbowl/replace",
+        json={"players": [{"side": "home", "x": 99, "y": 1}]},
+    )
+    assert r.status_code == 400
+
+
+def test_palette_rebuilds_when_the_agent_changes_teams():
+    page = (ROOT / "view.py").read_text()
+    poll = page.split("setInterval", 1)[1]
+    assert "teamsChanged" in poll and "buildPalette()" in poll
+
+
+def test_a_write_keeps_the_outgoing_board_as_a_backup(client):
+    """One careless whole-board write should not be unrecoverable."""
+    base = "/api/plugins/bloodbowl"
+    client.post(f"{base}/place", json={"side": "home", "team": "Amazon", "position": "Eagle Warrior", "x": 5, "y": 13})
+    client.post(f"{base}/replace", json={"players": []})  # the wipe
+    prev = client.get(f"{base}/previous").json()["scenario"]
+    assert prev and len(prev["players"]) == 1
+    assert prev["players"][0]["position"] == "Eagle Warrior"
+
+
+def test_replace_rehydrates_stats_from_the_roster(client):
+    """A trimmed payload (position only) must come back with working hover cards."""
+    r = client.post(
+        "/api/plugins/bloodbowl/replace",
+        json={
+            "home_team": "Amazon",
+            "players": [{"side": "home", "x": 7, "y": 13, "position": "Jaguar Warrior"}],
+        },
+    )
+    p = r.json()["players"][0]
+    assert (p["MA"], p["ST"], p["AV"]) == ("6", "4", "9+")
+    assert p["skills"] == ["Defensive", "Dodge"]
+
+
+def test_replace_refreshes_a_stale_statline_from_the_roster(client):
+    """A board placed before a roster-data fix must pick the corrected data up,
+    not keep the stale blanks forever."""
+    r = client.post(
+        "/api/plugins/bloodbowl/replace",
+        json={
+            "home_team": "Ogre",
+            "players": [
+                # Deliberately stale: right position, wrong/blank stats.
+                {"side": "home", "x": 5, "y": 13, "position": "Ogre Blocker", "team": "Ogre", "MA": "9", "skills": []}
+            ],
+        },
+    )
+    p = r.json()["players"][0]
+    assert p["MA"] == "5", "roster must win over a stale stored statline"
+    assert "Mighty Blow" in p["skills"]
