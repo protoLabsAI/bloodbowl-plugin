@@ -1,0 +1,24 @@
+id: bloodbowl
+name: Blood Bowl (pitch, scenarios, rosters)
+version: 0.1.0
+description: >-
+  A real 26x15 Blood Bowl pitch in the console: drag positionals onto squares,
+  hover for stats, and set scenarios up either by hand or by asking the agent.
+  Ships parsed Third Season Edition (S3) roster data for 30 teams, so player stats
+  come from a table rather than from recall. Contributes seven tools and one view;
+  no network access, no secrets.
+enabled: false
+repository: https://github.com/protoLabsAI/bloodbowl-plugin
+min_protoagent_version: "0.27.0"
+
+config_section: bloodbowl
+config:
+  # Where the current board is persisted. Empty = the plugin's own state/ dir.
+  state_dir: ""
+
+views:
+  - { id: pitch, label: "Pitch", icon: LayoutGrid, path: /plugins/bloodbowl/view }
+
+capabilities:
+  network: []
+  filesystem: scoped
