@@ -61,9 +61,12 @@ PAGE = r"""<!doctype html>
   .cell{position:relative;
     border-right:1px solid rgba(150,150,150,.30);
     border-bottom:1px solid rgba(150,150,150,.30)}
-  .cell.awayhalf{background:rgba(255,255,255,.045)}
-  .cell.ez{background:color-mix(in oklab,var(--pl-color-accent) 16%,transparent)}
-  .cell.wide{box-shadow:inset 0 0 0 99px rgba(0,0,0,.10)}
+  .cell.awayhalf{background:rgba(255,255,255,.055)}
+  /* Each End Zone is tinted by WHOSE it is. Tinting both with the accent made
+     both ends read as home territory. */
+  .cell.ez-home{background:color-mix(in oklab,var(--pl-color-accent) 22%,transparent)}
+  .cell.ez-away{background:color-mix(in oklab,var(--pl-color-fg) 14%,transparent)}
+  .cell.wide{box-shadow:inset 0 0 0 99px rgba(0,0,0,.22)}
   .cell.xhot,.cell.yhot{background:rgba(255,255,255,.07)}
   .cell.target{outline:2px solid var(--pl-color-focus);outline-offset:-2px;z-index:4}
   .cell.armed{cursor:copy}
@@ -78,7 +81,7 @@ PAGE = r"""<!doctype html>
   .pc:active{cursor:grabbing}
   .overlay{position:absolute;inset:0;pointer-events:none}
   .ezlab{position:absolute;top:50%;font-size:10px;letter-spacing:.08em;
-    color:var(--pl-color-fg-subtle);transform:translateY(-50%) rotate(180deg);
+    color:var(--pl-color-fg-subtle);transform:translateY(-50%);
     writing-mode:vertical-rl;pointer-events:none}
 
   /* ---- palette + trash ------------------------------------------------ */
@@ -122,7 +125,7 @@ PAGE = r"""<!doctype html>
   <button id="undo" disabled>Undo</button>
   <button id="clearHome">Clear home</button>
   <button id="clearAway">Clear away</button>
-  <button id="clearAll" class="primary">Clear pitch</button>
+  <button id="clearAll">Clear pitch</button>
 </div>
 
 <div class="stage">
@@ -182,7 +185,8 @@ function buildBoard(){
     for (let y=1; y<=GEO.length; y++){
       const c=document.createElement("div");
       c.className="cell";
-      if (y<=ez || y>GEO.length-ez) c.classList.add("ez");
+      if (y<=ez) c.classList.add("ez-home");
+      else if (y>GEO.length-ez) c.classList.add("ez-away");
       else if (y>los) c.classList.add("awayhalf");
       if (x<=wz || x>GEO.width-wz) c.classList.add("wide");
       c.dataset.x=x; c.dataset.y=y;

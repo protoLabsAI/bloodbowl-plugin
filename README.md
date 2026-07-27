@@ -54,6 +54,27 @@ of Games Workshop; this is an unofficial fan tool.
 
 ```
 python3.12 -m venv .venv && ./.venv/bin/pip install -r requirements-dev.txt
-./.venv/bin/python -m pytest -q      # 54 tests, no protoAgent host needed
+./.venv/bin/python -m pytest -q      # host-free suite, no protoAgent needed
 ./.venv/bin/ruff check . && ./.venv/bin/ruff format --check .
 ```
+
+### Driving the view
+
+`pytest` proves the endpoints answer and the tools don't throw. It says nothing
+about whether the board is *legible* — which is where the first version failed.
+`harness.py` serves the plugin's own routers on a throwaway port and drives the
+page in a real browser:
+
+```
+./.venv/bin/pip install playwright uvicorn && ./.venv/bin/playwright install chromium
+./.venv/bin/python harness.py            # screenshot the board to shots/
+./.venv/bin/python harness.py --check    # assert the things that broke before
+```
+
+Playwright is deliberately **not** in `requirements-dev.txt`: CI stays fast and
+host-free, and the harness is a local tool for looking at the thing.
+
+Drop a `harness_theme.css` next to it (`:root { --pl-color-*: … }`) and the harness
+injects it, so the screenshots show the agent's real theme rather than unthemed
+white. Without the design-system kit the view falls through to its no-kit shim —
+which is worth exercising, since that is what an older host serves.
