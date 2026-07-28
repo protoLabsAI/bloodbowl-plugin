@@ -1872,3 +1872,127 @@ def test_the_activation_being_over_survives_the_fold_too():
     actions.get("block")["resolve"](m, {"player": "h00", **cmd}, _dice(script, block))
     fresh, _c, _s, _b = _acting_board("block")
     assert fold(fresh, list(m.events)).by_id("h00").done is True
+
+
+# --- the free Move, and one Action per team per turn -----------------------
+
+
+def _ball_board():
+    """A carrier, a team-mate to hand to, and an opponent within Blitz reach."""
+    m = _match(("home", 7, 10, 6), ("home", 8, 10, 6), ("away", 7, 15, 6))
+    for who in ("h00", "h01"):
+        m.by_id(who).player.PA = "3+"
+    m.apply(_ball_at(7, 10, carrier="h00"))
+    return m
+
+
+@pytest.mark.parametrize(
+    "action,cmd",
+    [("pass", {"x": 7, "y": 14}), ("handoff", {"target": "h01"})],
+)
+def test_an_action_that_grants_a_free_move_is_not_refused_for_having_moved(action, cmd):
+    """S3, for the Pass and word for word again for the Hand-off:
+
+    "A player that declares a Pass Action may ALSO MAKE A FREE MOVE ACTION before
+     making the pass, but may not continue moving after the pass has been made."
+
+    The check here used to be `p.acted`, which a single step of movement sets — so
+    the free Move the rules grant made the Action itself illegal, and move-then-
+    pass has been impossible for as long as passing has existed. The question is
+    whether the activation is OVER (`done`), not whether it has begun.
+    """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _ball_board()
+    assert _move(m, "h00", 7, 11, _dice([])).ok
+    legal = actions.get(action)["validate"](m, {"player": "h00", **cmd})
+    assert legal.ok, f"the free Move before a {action} was refused: {legal.reason}"
+
+
+def test_but_not_after_the_activation_is_over():
+    """ "…may not continue moving after the pass has been made," and no second
+    Action either."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _ball_board()
+    m.by_id("h00").player.PA = "2+"
+    actions.get("pass")["resolve"](m, {"player": "h00", "x": 7, "y": 14}, _dice([6, 6, 6, 6, 6, 6]))
+    again = actions.get("pass")["validate"](m, {"player": "h00", "x": 7, "y": 13})
+    assert not again.ok and "activation is over" in again.reason
+
+
+def test_a_blitzing_player_may_not_decide_it_was_a_pass():
+    """The one activation that is neither begun-nor-over. A Blitz's Block leaves
+    `done` false so the player can keep MOVING — not so they can take a different
+    Action instead."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _ball_board()
+    m.apply(_ball_at(7, 10, carrier="h00"))
+    _declare(m, "h00", "a02")
+    legal = actions.get("pass")["validate"](m, {"player": "h00", "x": 7, "y": 14})
+    assert not legal.ok and "already declared a Blitz Action" in legal.reason
+
+
+@pytest.mark.parametrize(
+    "action,first,second",
+    [
+        ("pass", {"x": 7, "y": 14}, {"x": 8, "y": 14}),
+        ("handoff", {"target": "h01"}, {"target": "h00"}),
+    ],
+)
+def test_only_one_of_each_capped_action_per_team_per_turn(action, first, second):
+    """ "Only a single Pass Action can be declared each Turn" — and the same
+    sentence for Hand-off, Secure the Ball, Blitz and Foul. Move and Block are the
+    two the text explicitly does NOT cap.
+    """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _ball_board()
+    m.by_id("h00").player.PA = "2+"
+    out = actions.get(action)["resolve"](m, {"player": "h00", **first}, _dice([6, 6, 6, 6, 6, 6]))
+    assert out.events, out.text
+    assert m.turn_actions.get(action) == "h00", m.turn_actions
+
+    # Whoever now holds the ball, a SECOND one this turn is refused.
+    holder = m.ball.carrier or "h01"
+    legal = actions.get(action)["validate"](m, {"player": holder, **second})
+    assert not legal.ok
+    assert f"one {action.title()} Action this turn" in legal.reason, legal.reason
+
+
+def test_block_and_move_are_not_capped():
+    """ "There is no limit to the number of players that can declare a Block Action
+    each Turn." Capping everything uniformly would have been tidier and wrong."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6), ("home", 8, 13, 6), ("away", 8, 14, 6))
+    assert _block(m, "h00", "a01", _dice([], [["push_back"]]), follow_up=False).ok
+    assert "block" not in m.turn_actions
+    assert actions.get("block")["validate"](m, {"player": "h02", "target": "a03"}).ok
+
+
+def test_the_turn_ledger_is_cleared_by_the_next_turn_and_survives_a_fold():
+    from bloodbowl.engine.game import end_turn
+    from bloodbowl.engine.state import Match, fold
+
+    m = _ball_board()
+    m.by_id("h00").player.PA = "2+"
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    actions.get("pass")["resolve"](m, {"player": "h00", "x": 7, "y": 14}, _dice([6, 6, 6, 6, 6, 6]))
+    assert m.turn_actions == {"pass": "h00"}
+
+    # The ledger is state, so it must come back from the log alone.
+    assert fold(_ball_board(), list(m.events)).turn_actions == {"pass": "h00"}
+    assert Match.from_dict(m.to_dict()).turn_actions == {"pass": "h00"}
+
+    end_turn(m)
+    end_turn(m)
+    assert m.turn_actions == {}

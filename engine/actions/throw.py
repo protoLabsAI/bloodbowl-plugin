@@ -40,7 +40,7 @@ from ..ruler import band, in_corridor
 from ..rules import markers_of_square
 from ..skills import unmodelled_skills
 from ..state import Match
-from . import Legality, Outcome, Recorder, register
+from . import Legality, Outcome, Recorder, ended, refuse_if_spent, register
 
 
 def _passing_target(p) -> int:
@@ -58,12 +58,13 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, f"no player with id {cmd.get('player')!r}")
     if p.side != match.clock.active:
         return Legality(False, f"it is {match.clock.active}'s turn, and that player is {p.side}")
+    spent = refuse_if_spent(match, p, "pass")
+    if spent:
+        return Legality(False, spent)
     if p.place != "pitch" or p.down != "standing":
         return Legality(False, "only a Standing player on the pitch can Pass")
     if match.ball.carrier != p.id:
         return Legality(False, f"{p.name()} is not holding the ball")
-    if p.acted:
-        return Legality(False, f"{p.name()} has already acted this turn")
     if not _passing_target(p):
         return Legality(False, f"{p.name()} has no Passing Ability and cannot Pass")
 
@@ -137,7 +138,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             )
         )
         rec.absorb(_drop_here(match, p, dice))
-        rec.emit(Event(kind="activation_ended", actor=p.id))
+        rec.emit(ended(p.id, "pass"))
         return Outcome(
             ok=False,
             events=rec.events,
@@ -184,7 +185,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 text=f"{q.name()} INTERCEPTS the pass! {ir.describe()}",
             )
             rec.emit(ev)
-            rec.emit(Event(kind="activation_ended", actor=p.id))
+            rec.emit(ended(p.id, "pass"))
             return Outcome(
                 ok=False,
                 events=rec.events,
@@ -206,7 +207,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         else:
             rec.absorb(catch(match, landed, dice))
 
-    rec.emit(Event(kind="activation_ended", actor=p.id))
+    rec.emit(ended(p.id, "pass"))
     holder = match.by_id(match.ball.carrier) if match.ball.carrier else None
     ours = holder is not None and holder.side == p.side
     return Outcome(

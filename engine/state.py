@@ -46,6 +46,11 @@ class PlayerState:
     # can continue their Move Action".
     acted: bool = False
     done: bool = False
+    # The Action this player declared for this activation, if any. Only ever set
+    # before `done` by a Blitz, which is the one Action that outlives its own
+    # resolution — it is what stops a blitzing player deciding halfway through
+    # that they meant to Pass.
+    action: str = ""
     # S3 status: a Standing player that has lost its Tackle Zone. Separate from
     # `down` because such a player is still standing for every other purpose.
     distracted: bool = False
@@ -97,6 +102,7 @@ class PlayerState:
             "ma_used": self.ma_used,
             "acted": self.acted,
             "done": self.done,
+            "action": self.action,
             "distracted": self.distracted,
             "movement": self.movement(),
         }
@@ -179,6 +185,11 @@ class Match:
     # it. Kept on the Match rather than the player because the limit belongs to
     # the TEAM — a second player declaring one is what has to be refused.
     blitz: dict = field(default_factory=dict)
+    # Which Actions this team has spent this turn: action name -> player id. S3
+    # caps most Actions at one per team per Turn ("Only a single Pass Action can
+    # be declared each Turn"), with Move and Block named as the exceptions.
+    # Cleared by turn_started, like everything else that is per-turn.
+    turn_actions: dict = field(default_factory=dict)
     events: list = field(default_factory=list)
 
     # --- lookup -----------------------------------------------------------
@@ -216,15 +227,21 @@ class Match:
             self.clock.active = str(d.get("side") or self.clock.active)
             self.clock.half = int(d.get("half") or self.clock.half)
             self.clock.turn = int(d.get("turn") or self.clock.turn)
-            self.blitz = {}  # one Blitz per team per turn
+            self.blitz = {}
+            self.turn_actions = {}  # one Blitz, one Pass, one Foul… per team per turn
             for p in self.players:
                 if p.side == self.clock.active:
                     p.ma_used = 0
                     p.acted = p.done = False
+                    p.action = ""
                     p.dodge_reroll_used = False
 
         elif kind == "blitz_declared":
             self.blitz = {"player": event.actor, "target": str(d.get("target") or ""), "blocked": False}
+            self.turn_actions["blitz"] = event.actor
+            p = self.by_id(event.actor)
+            if p is not None:
+                p.action = "blitz"
 
         elif kind == "move_allowance_spent":
             # Move Allowance going somewhere other than a square — the point a
@@ -265,6 +282,12 @@ class Match:
             p = self.by_id(event.actor)
             if p is not None:
                 p.acted = p.done = True
+                if d.get("action"):
+                    p.action = str(d["action"])
+            # No judgement here: the ACTION module decided whether its Action is
+            # capped at one per turn and said so in the event.
+            if d.get("once_per_turn") and d.get("action"):
+                self.turn_actions.setdefault(str(d["action"]), event.actor)
 
         elif kind in ("player_fell", "player_placed_prone"):
             p = self.by_id(event.actor)
@@ -323,6 +346,7 @@ class Match:
                 p.down = "standing"
                 p.place = "pitch"
                 p.ma_used, p.acted, p.done, p.dodge_reroll_used = 0, False, False, False
+                p.action = ""
             # A Knocked-out player misses the drive; a Casualty misses the match.
             for p in self.players:
                 if p.place == "knocked_out" and not any(r.get("id") == p.id for r in self.setup):
@@ -391,6 +415,7 @@ class Match:
             "over": self.over,
             "drive": self.drive,
             "blitz": dict(self.blitz),
+            "turn_actions": dict(self.turn_actions),
         }
         if include_log:
             d["events"] = [e.to_dict() for e in self.events]
@@ -425,6 +450,7 @@ class Match:
                     ma_used=int(raw.get("ma_used") or 0),
                     acted=bool(raw.get("acted")),
                     done=bool(raw.get("done")),
+                    action=str(raw.get("action") or ""),
                 )
             )
 

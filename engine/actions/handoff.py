@@ -14,7 +14,7 @@ from ..events import Event
 from ..rules import adjacent
 from ..skills import unmodelled_skills
 from ..state import Match
-from . import Legality, Outcome, Recorder, register
+from . import Legality, Outcome, Recorder, ended, refuse_if_spent, register
 
 
 def validate(match: Match, cmd: dict) -> Legality:
@@ -25,12 +25,13 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, f"no player with id {cmd.get('player')!r}")
     if p.side != match.clock.active:
         return Legality(False, f"it is {match.clock.active}'s turn, and that player is {p.side}")
+    spent = refuse_if_spent(match, p, "handoff")
+    if spent:
+        return Legality(False, spent)
     if p.place != "pitch" or p.down != "standing":
         return Legality(False, "only a Standing player on the pitch can hand the ball off")
     if match.ball.carrier != p.id:
         return Legality(False, f"{p.name()} is not holding the ball")
-    if p.acted:
-        return Legality(False, f"{p.name()} has already acted this turn")
 
     t = match.by_id(str(cmd.get("target") or ""))
     if t is None:
@@ -64,13 +65,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     )
     rec.absorb(catch(match, t, dice))
 
-    rec.emit(
-        Event(
-            kind="activation_ended",
-            actor=p.id,
-            text=f"{p.name()}'s Hand-off Action is over.",
-        )
-    )
+    rec.emit(ended(p.id, "handoff", f"{p.name()}'s Hand-off Action is over."))
     held = match.ball.carrier == t.id
     return Outcome(
         ok=held,

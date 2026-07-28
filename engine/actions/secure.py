@@ -25,7 +25,7 @@ from ..events import Event
 from ..rules import adjacent
 from ..skills import unmodelled_skills
 from ..state import Match
-from . import Legality, Outcome, Recorder, register
+from . import Legality, Outcome, Recorder, ended, refuse_if_spent, register
 
 SECURE_TARGET = 2
 SECURE_CLEARANCE = 2  # squares, measured from the BALL
@@ -41,8 +41,9 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, f"it is {match.clock.active}'s turn, and that player is {p.side}")
     if p.place != "pitch" or p.down != "standing":
         return Legality(False, "only a Standing player on the pitch can Secure the Ball")
-    if p.acted:
-        return Legality(False, f"{p.name()} has already acted this turn")
+    spent = refuse_if_spent(match, p, "secure")
+    if spent:
+        return Legality(False, spent)
     if not match.ball.in_play or match.ball.carrier:
         return Legality(False, "the ball is not loose on the ground")
 
@@ -91,13 +92,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             )
         )
         rec.absorb(check_touchdown(match, p))
-        rec.emit(
-            Event(
-                kind="activation_ended",
-                actor=p.id,
-                text=f"{p.name()} has the ball and their activation ends.",
-            )
-        )
+        rec.emit(ended(p.id, "secure", f"{p.name()} has the ball and their activation ends."))
         return Outcome(ok=True, events=rec.events, text=f"{p.name()} secures the ball.", unmodelled=unmodelled)
 
     rec.emit(
@@ -109,7 +104,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         )
     )
     rec.absorb(bounce(match, dice))
-    rec.emit(Event(kind="activation_ended", actor=p.id))
+    rec.emit(ended(p.id, "secure"))
     return Outcome(
         ok=False,
         events=rec.events,

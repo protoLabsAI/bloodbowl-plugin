@@ -56,6 +56,9 @@ older edition — or a language model — would say:
 | A player may **keep moving after** the Blitz's Block | the activation ends |
 | A Rush may be spent **on the Block itself**, not just a step | only on a step |
 | A Block may only target a **Standing** player | any adjacent opponent |
+| Pass, Hand-off, Secure and Foul each allow a **free Move first** | the action stands alone |
+| Most Actions are **once per TEAM per turn** | once per player |
+| Move and Block are explicitly **not** capped | capped like the rest |
 
 **One trap when reading the KB:** chunk boundaries can put a heading above the
 wrong body. A search hit labelled `BLOCK (ACTIVE)` actually contained *Multiple
@@ -146,6 +149,9 @@ cannot place the next player until the previous one has moved. `Recorder` has tw
 verbs: `extend` applies, `absorb` records what a helper already applied. Using the
 wrong one moves the ball twice and scores twice.
 
+**Three flags, three different facts.** `acted`, `done`, and `p.action` /
+`match.turn_actions` — and the first two are the ones that get conflated.
+
 **`acted` and `done` are different facts.** `acted` means an activation has
 *begun*, so no second Action may be declared — a single step of movement sets it,
 which is why it can never be the thing that stops movement. `done` means the
@@ -153,6 +159,17 @@ activation is *over*, and that is what `move` checks. With only `acted` to go on
 movement went ungated and a player could throw a Block Action and then stroll
 away. A Blitz's Block is the one Block that leaves `done` false, because "after
 the player has performed the Block Action, they can continue their Move Action".
+
+Which flag an Action asks about is a RULE, not a detail. Pass, Hand-off, Secure
+and Foul each "may also make a free Move Action before" — so they must ask `done`.
+They asked `acted`, which a single step sets, so the free Move the rules grant
+made the Action itself illegal: **move-then-pass was impossible for as long as
+passing had existed**, and nothing noticed because the tests always passed from a
+standing start. `actions.refuse_if_spent` is now the one place that decides, and
+`ONCE_PER_TURN` / `FREE_MOVE_FIRST` list which Actions are which, beside the
+quoted text. Refusals there are ordered eligibility-first: "your team has already
+passed this turn" is the one a coach cannot work around, so it outranks "you are
+not holding the ball" when both are true.
 
 **Compound actions are a DECLARATION plus the ordinary parts.** A Blitz is not a
 `blitz(player, target, path)` command. "If at any point during this Move Action
