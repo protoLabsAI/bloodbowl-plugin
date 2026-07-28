@@ -40,7 +40,7 @@ from ..rules import (
 )
 from ..skills import SkillContext, apply_value_hook, hooks_for, unmodelled_skills
 from ..state import Match
-from . import Legality, Outcome, register
+from . import Legality, Outcome, Recorder, register
 
 
 def _player_and_side(match: Match, cmd: dict):
@@ -99,7 +99,7 @@ def validate(match: Match, cmd: dict) -> Legality:
     return Legality(True, "", detail)
 
 
-def _stand_up(match: Match, p, dice, events: list[Event]) -> tuple[bool, int]:
+def _stand_up(match: Match, p, dice, rec: Recorder) -> tuple[bool, int]:
     """Returns (still able to act, movement spent). A low-MA player may fail and
     lose the activation entirely."""
     ctx = SkillContext(match=match, player=p, value=STAND_UP_COST)
@@ -107,7 +107,7 @@ def _stand_up(match: Match, p, dice, events: list[Event]) -> tuple[bool, int]:
     if p.movement() <= 2 and cost > 0:
         r = roll_target(dice, "stand up", STAND_UP_ROLL, note="MA 2 or less")
         if not r.passed:
-            events.append(
+            rec.emit(
                 Event(
                     kind="note",
                     actor=p.id,
@@ -116,7 +116,7 @@ def _stand_up(match: Match, p, dice, events: list[Event]) -> tuple[bool, int]:
                 )
             )
             return False, 0
-        events.append(
+        rec.emit(
             Event(
                 kind="player_stood_up",
                 actor=p.id,
@@ -126,7 +126,7 @@ def _stand_up(match: Match, p, dice, events: list[Event]) -> tuple[bool, int]:
             )
         )
         return True, p.movement()
-    events.append(
+    rec.emit(
         Event(
             kind="player_stood_up",
             actor=p.id,
@@ -146,17 +146,20 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
 
     p = match.by_id(str(cmd["player"]))
     x, y = int(cmd["x"]), int(cmd["y"])
-    events: list[Event] = []
+    rec = Recorder(match)
     unmodelled = unmodelled_skills(p)
 
     # 1. Stand up, if Prone. Must happen before anything else.
-    spent = 0
     if p.down == "prone":
-        able, spent = _stand_up(match, p, dice, events)
+        able, _spent = _stand_up(match, p, dice, rec)
         if not able:
-            return Outcome(ok=False, events=events, text=events[-1].text, unmodelled=unmodelled)
+            return Outcome(ok=False, events=rec.events, text=rec.events[-1].text, unmodelled=unmodelled)
 
-    used = p.ma_used + spent
+    # Read the budget back off the player rather than adding the stand-up cost to
+    # it. The event that stood them up has ALREADY been applied, so p.ma_used
+    # includes it — adding `spent` again double-charged the 3 squares and
+    # conjured a Rush roll out of a player who had movement to spare.
+    used = p.ma_used
     needs_rush = (used + 1) > p.movement()
     needs_dodge = is_marked(match, p)
 
@@ -164,7 +167,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     if needs_rush:
         r = roll_target(dice, "Rush", 2)
         if not r.passed:
-            events.append(
+            rec.emit(
                 Event(
                     kind="player_moved",
                     actor=p.id,
@@ -172,7 +175,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                     text=f"{p.player.position} Rushes into ({x},{y})…",
                 )
             )
-            events.append(
+            rec.emit(
                 Event(
                     kind="player_fell",
                     actor=p.id,
@@ -183,12 +186,12 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             )
             return Outcome(
                 ok=False,
-                events=events,
+                events=rec.events,
                 turnover=True,
                 text=f"{p.player.position} failed the Rush and Falls Over in ({x},{y}) — turnover.",
                 unmodelled=unmodelled,
             )
-        events.append(Event(kind="note", actor=p.id, rolls=[r], text=f"Rush succeeds. {r.describe()}"))
+        rec.emit(Event(kind="note", actor=p.id, rolls=[r], text=f"Rush succeeds. {r.describe()}"))
 
     # 3. Dodge, if leaving a Marked square.
     if needs_dodge:
@@ -221,7 +224,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         if not r.passed:
             # A failed Dodge still moves the player — they land in the square and
             # fall there, which matters for where the ball ends up.
-            events.append(
+            rec.emit(
                 Event(
                     kind="player_moved",
                     actor=p.id,
@@ -229,7 +232,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                     text=f"{p.player.position} Dodges toward ({x},{y})…",
                 )
             )
-            events.append(
+            rec.emit(
                 Event(
                     kind="player_fell",
                     actor=p.id,
@@ -240,14 +243,14 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             )
             return Outcome(
                 ok=False,
-                events=events,
+                events=rec.events,
                 turnover=True,
                 text=f"{p.player.position} failed the Dodge into ({x},{y}) and Falls Over — turnover.",
                 unmodelled=unmodelled,
             )
-        events.append(Event(kind="note", actor=p.id, rolls=dodge_rolls, text=f"Dodge succeeds. {r.describe()}"))
+        rec.emit(Event(kind="note", actor=p.id, rolls=dodge_rolls, text=f"Dodge succeeds. {r.describe()}"))
 
-    events.append(
+    rec.emit(
         Event(
             kind="player_moved",
             actor=p.id,
@@ -257,7 +260,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     )
     return Outcome(
         ok=True,
-        events=events,
+        events=rec.events,
         text=f"{p.player.position} moves to ({x},{y}).",
         unmodelled=unmodelled,
     )

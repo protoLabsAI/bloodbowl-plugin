@@ -119,3 +119,48 @@ def _prehensile_tail(ctx: SkillContext) -> None:
     """
     ctx.value -= 1
     ctx.notes.append("Prehensile Tail: -1 to the Dodge")
+
+
+@skill_hook("Block", "both_down_optout")
+def _block(ctx: SkillContext) -> None:
+    """S3: "A player with this Skill may choose not to be Knocked Down when a Both
+    Down result is applied during a Block Action that they are part of."
+
+    Either party may have it — that is what makes Both Down a good result for a
+    blocker who has Block against a target who does not.
+    """
+    ctx.flags["stays_up"] = True
+    ctx.notes.append("Block: stays on their feet")
+
+
+@skill_hook("Mighty Blow", "knockdown_bonus")
+def _mighty_blow(ctx: SkillContext) -> None:
+    """S3: "Whenever this player Knocks Down an opposition player during a Block
+    Action, even if this player is also Knocked Down, they may apply a +1 modifier
+    to either the Armour Roll or Injury Roll. This modifier may be applied after
+    the roll has been made."
+    """
+    ctx.value += 1
+
+
+@skill_hook("Thick Skull", "injury_outcome")
+def _thick_skull(ctx: SkillContext) -> None:
+    """S3: "When an Injury Roll is made for this player, they will only be
+    Knocked-out on the roll of a 9; a roll of an 8 will be treated as a Stunned
+    result."
+
+    (The Stunty interaction — KO only on 8, a 7 becoming Stunned — is not modelled;
+    no roster player here has both, and guessing at it is the failure this engine
+    exists to avoid.)
+    """
+    if ctx.value == 8 and ctx.flags.get("outcome") == "knocked_out":
+        ctx.flags["outcome"] = "stunned"
+        ctx.notes.append("Thick Skull turns the 8 into a Stunned")
+
+
+@skill_hook("Guard", "may_assist_while_marked")
+def _guard(ctx: SkillContext) -> None:
+    """S3: "This player can provide Offensive and Defensive Assists when a player
+    performs a Block Action regardless of how many opposition players are Marking
+    this player." """
+    ctx.flags["assists_anyway"] = True

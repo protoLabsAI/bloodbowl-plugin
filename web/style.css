@@ -218,3 +218,13 @@ button.primary { background: var(--pl-color-accent); color: var(--pl-color-fg-on
 @media (max-width: 720px) {
   .cols, .playpanes { grid-template-columns: 1fr; }
 }
+
+/* A blockable opponent, and whether the block is a good idea. The die count is
+   only half the story — who CHOOSES decides whether two dice help you or help
+   them, so a block the opponent picks from is coloured as the warning it is. */
+.cell.blockable { cursor: pointer; box-shadow: inset 0 0 0 2px var(--pl-color-status-error); }
+.blockrow {
+  font-size: 11px; padding: 2px 0;
+  border-bottom: 1px solid var(--pl-color-border);
+}
+.blockrow.bad { color: var(--pl-color-status-error); }

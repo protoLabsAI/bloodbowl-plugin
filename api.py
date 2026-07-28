@@ -235,13 +235,18 @@ def build_game_router(cfg: dict | None = None):
     @r.post("/game/act")
     async def _act(body: dict) -> dict:
         m = _need_match()
-        report = act(
-            m,
-            str(body.get("action") or "move"),
-            {"player": str(body.get("player") or ""), "x": int(body.get("x") or 0), "y": int(body.get("y") or 0)},
-        )
+        body = body or {}
+        # Forward the WHOLE command rather than naming the fields. Listing them
+        # meant a Block's `target` was silently dropped the moment Blocking was
+        # added — the request answered 200 with ok:false and the board simply did
+        # nothing, which reads as a dead button rather than a bug.
+        cmd = {k: v for k, v in body.items() if k != "action"}
+        cmd["player"] = str(cmd.get("player") or "")
+        before = len(m.events)
+        report = act(m, str(body.get("action") or "move"), cmd)
         save_match(m)
         report["match"] = m.to_dict(include_log=False)
+        report["log"] = [e.text for e in m.events[before:] if e.text]
         return report
 
     @r.post("/game/end-turn")

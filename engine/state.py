@@ -215,6 +215,29 @@ class Match:
                 p.down = str(d.get("down") or "prone")
                 p.acted = True
 
+        elif kind in ("player_pushed", "player_followed_up"):
+            # A shove and a follow-up relocate a player identically; only the
+            # reason differs, and the log already records that.
+            p = self.by_id(event.actor)
+            if p is not None:
+                p.move_to(int(d["x"]), int(d["y"]))
+                if self.ball.carrier == p.id:
+                    self.ball.x, self.ball.y = p.x, p.y
+
+        elif kind == "player_condition":
+            p = self.by_id(event.actor)
+            if p is not None:
+                outcome = str(d.get("outcome") or "")
+                if outcome == "stunned":
+                    p.down = "stunned"
+                elif outcome in ("knocked_out", "casualty"):
+                    # Leaving the pitch drops the ball where they stood; the box
+                    # they go to is not a square, so they must stop occupying one.
+                    p.place = "knocked_out" if outcome == "knocked_out" else "casualty"
+                    p.down = "prone"
+                    if self.ball.carrier == p.id:
+                        self.ball.carrier = ""
+
         elif kind == "ball_moved":
             self.ball.x, self.ball.y = int(d["x"]), int(d["y"])
             self.ball.carrier = str(d.get("carrier") or "")

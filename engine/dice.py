@@ -33,16 +33,31 @@ import random
 from dataclasses import dataclass, field
 from typing import Protocol
 
-# The six faces of a Block die, in the order the rulebook lists them. Two faces
-# are Push, which is why a plain 1-in-6 model of blocking is wrong.
+# The six faces of a Block die, using S3's OWN names. The earlier spelling here
+# was the previous edition's ("attacker down", "defender stumbles", "defender
+# down"); S3 calls them Player Down, Stumble and POW, and the names end up in the
+# log a coach reads, so they should be the ones printed on the die.
+#
+# VERIFIED from source: the five result types and what each does.
+# ASSUMED (standard across every edition, not re-read from S3): the distribution,
+# two of the six faces being Push Back. If that ever proves wrong, this tuple is
+# the single place it is wrong.
 BLOCK_FACES = (
-    "attacker_down",
+    "player_down",
     "both_down",
-    "push",
-    "push",
-    "defender_stumbles",
-    "defender_down",
+    "push_back",
+    "push_back",
+    "stumble",
+    "pow",
 )
+
+BLOCK_LABELS = {
+    "player_down": "Player Down",
+    "both_down": "Both Down",
+    "push_back": "Push Back",
+    "stumble": "Stumble",
+    "pow": "POW!",
+}
 
 
 @dataclass
@@ -212,6 +227,29 @@ class ReplayDice:
 
 class ReplayDivergence(AssertionError):
     """Raised when a recorded match no longer matches what the engine wants."""
+
+
+def roll_2d6(dice: Dice, kind: str, target: int, modifier: int = 0, note: str = "") -> Roll:
+    """Two dice against a target — Armour and Injury.
+
+    Deliberately NOT ``roll_target``. The natural-1-fails / natural-6-succeeds rule
+    belongs to single-die Agility Tests; an Armour Roll is a straight 2D6 compared
+    to the Armour Value, and applying the D6 rule to it would make armour break on
+    a double six that should not have, and hold on a snake-eyes that should have.
+    """
+    a, b = dice.d6(), dice.d6()
+    total = a + b + modifier
+    r = Roll(
+        kind=kind,
+        dice=[a, b],
+        total=total,
+        target=target,
+        modifier=modifier,
+        passed=total >= target,
+        note=note,
+    )
+    dice.rolls.append(r)
+    return r
 
 
 def roll_target(dice: Dice, kind: str, target: int, modifier: int = 0, note: str = "") -> Roll:

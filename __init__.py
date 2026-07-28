@@ -186,8 +186,23 @@ def _tools(cfg: dict):
         return json.dumps(legal_moves(m, player))
 
     @tool
-    def bb_game_act(action: str, player: str, x: int = 0, y: int = 0) -> str:
-        """Take an action. ``action`` is "move" for now; ``x``/``y`` is the square.
+    def bb_game_act(
+        action: str,
+        player: str,
+        x: int = 0,
+        y: int = 0,
+        target: str = "",
+        choice: int = 0,
+        follow_up: bool = True,
+    ) -> str:
+        """Take an action.
+
+        ``action`` is "move" (with ``x``/``y``) or "block" (with ``target``).
+
+        For a Block, ``choice`` picks which of the rolled dice to apply — but only
+        when YOU are the one entitled to choose, which is when your player is the
+        stronger. Ask bb_game_odds first: it tells you how many dice you get and
+        who picks them. ``follow_up`` moves into the vacated square after a push.
 
         The engine adjudicates: an illegal action is refused with a reason rather
         than performed. The reply carries every roll that was made — quote those
@@ -199,10 +214,35 @@ def _tools(cfg: dict):
         m = load_match()
         if m is None:
             return json.dumps({"ok": False, "error": "no match in progress"})
-        report = act(m, action, {"player": player, "x": int(x), "y": int(y)})
+        cmd = {"player": player, "x": int(x), "y": int(y)}
+        if action == "block":
+            cmd.update({"target": target, "choice": int(choice), "follow_up": bool(follow_up)})
+        before = len(m.events)
+        report = act(m, action, cmd)
         save_match(m)
-        report["rolls"] = [r.describe() for e in m.events[-6:] for r in e.rolls]
+        report["rolls"] = [r.describe() for e in m.events[before:] for r in e.rolls]
+        report["log"] = [e.text for e in m.events[before:] if e.text]
         return json.dumps(report)
+
+    @tool
+    def bb_game_odds(player: str, target: str) -> str:
+        """What a Block would be before you throw it: how many dice, WHO chooses
+        them, and the assists on each side.
+
+        Ask this first. Blocking a player stronger than yours hands the choice of
+        dice to them, which turns a Block into a way of knocking your own player
+        over — and the arithmetic that decides it (assists, who is Marked by whom)
+        is exactly the sort a description of the board gets subtly wrong.
+        """
+        from .engine import actions
+        from .store import load_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress"})
+        actions.load_all()
+        legal = actions.get("block")["validate"](m, {"player": player, "target": target})
+        return json.dumps({"ok": legal.ok, "reason": legal.reason, **legal.detail})
 
     @tool
     def bb_game_end_turn() -> str:
@@ -381,6 +421,7 @@ def _tools(cfg: dict):
         bb_game_state,
         bb_game_legal,
         bb_game_act,
+        bb_game_odds,
         bb_game_end_turn,
         bb_game_log,
         bb_game_abandon,

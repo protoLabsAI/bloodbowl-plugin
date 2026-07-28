@@ -39,7 +39,7 @@ export function teardown() {
   if (ball) ball.remove();
   state.selected = null;
   state.legal = null;
-  clearMarks("legal", "needsroll");
+  clearMarks("legal", "needsroll", "blockable");
 }
 
 export function render() {
@@ -77,6 +77,8 @@ export function render() {
     node.addEventListener("mouseleave", hideCard);
     node.addEventListener("click", (ev) => {
       ev.stopPropagation();
+      const block = (state.legal && state.legal.blocks || []).find((b) => b.target === p.id);
+      if (block) return throwBlock(block);
       select(p);
     });
     at(p.x, p.y).appendChild(node);
@@ -112,7 +114,7 @@ async function select(p) {
     // Not an error — you are allowed to look at the opposition. Just no move list.
     state.selected = p.id;
     state.legal = null;
-    clearMarks("legal", "needsroll");
+    clearMarks("legal", "needsroll", "blockable");
     describeSelection(p, null);
     render();
     return;
@@ -131,8 +133,20 @@ async function select(p) {
 }
 
 function paintLegal() {
-  clearMarks("legal", "needsroll");
+  clearMarks("legal", "needsroll", "blockable");
   if (!state.legal || !state.legal.ok) return;
+
+  // Blockable opponents, labelled with the dice and — the part that decides
+  // whether it is a good idea — who gets to choose them.
+  for (const b of state.legal.blocks || []) {
+    const cell = at(b.x, b.y);
+    cell.classList.add("blockable");
+    const o = document.createElement("span");
+    o.className = "odds";
+    o.textContent = `${b.dice}D${b.chooser === "attacker" ? "" : "!"}`;
+    cell.appendChild(o);
+  }
+
   for (const s of state.legal.squares) {
     if (!s.legal) continue;
     const cell = at(s.x, s.y);
@@ -183,8 +197,45 @@ function describeSelection(p, legal) {
     }
     html += `<div class="moves">${grid.join("")}</div>`;
   }
+  if (legal && legal.ok && (legal.blocks || []).length) {
+    html +=
+      `<div class="muted" style="margin-top:6px">Blocks</div>` +
+      (legal.blocks || [])
+        .map(
+          (b) =>
+            `<div class="blockrow${b.chooser === "attacker" ? "" : " bad"}">` +
+            `${esc(b.position)} — <b>${b.dice} dice</b>, ${esc(b.chooser)} chooses` +
+            ` <span class="muted">(ST ${b.attacker_strength} v ${b.defender_strength})</span></div>`,
+        )
+        .join("");
+  }
   if (p.skills && p.skills.length) html += `<div class="sk muted">${p.skills.map(esc).join(" · ")}</div>`;
   host.innerHTML = html;
+}
+
+async function throwBlock(block) {
+  const chooses = block.chooser === "attacker";
+  try {
+    const report = await api(
+      "/game/act",
+      json({ action: "block", player: state.selected, target: block.target, choice: 0 }),
+    );
+    state.match = report.match;
+    ok();
+    if (report.turnover || !chooses) {
+      state.selected = null;
+      state.legal = null;
+      clearMarks("legal", "needsroll", "blockable");
+      describeSelection(null, null);
+    } else {
+      state.legal = await api(`/game/legal?player=${encodeURIComponent(state.selected)}`);
+      paintLegal();
+    }
+  } catch (e) {
+    fail(e);
+  }
+  render();
+  await renderLog();
 }
 
 export async function onCellClick(x, y) {
@@ -206,7 +257,7 @@ export async function onCellClick(x, y) {
     if (report.turnover || !still || still.down !== "standing") {
       state.selected = null;
       state.legal = null;
-      clearMarks("legal", "needsroll");
+      clearMarks("legal", "needsroll", "blockable");
       describeSelection(null, null);
     } else {
       state.legal = await api(`/game/legal?player=${encodeURIComponent(state.selected)}`);
@@ -260,7 +311,7 @@ export function wire(onChanged) {
       state.match = r.match;
       state.selected = null;
       state.legal = null;
-      clearMarks("legal", "needsroll");
+      clearMarks("legal", "needsroll", "blockable");
       describeSelection(null, null);
       ok();
     } catch (e) {
