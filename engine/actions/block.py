@@ -291,7 +291,14 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     turnover = False
     pushed: list = []
     follow_up = bool(cmd.get("follow_up", True))
-    dodged = face == "stumble" and t.has_skill("Dodge")
+    # "when this player performs a Block Action against an opposition player, the
+    # opposition player does not count as having the Dodge Skill if a Stumble
+    # result is selected" — the blocker's Tackle, not the target's anything.
+    tackled = SkillContext(match=match, player=t)
+    for skill, fn in hooks_for("deny_dodge_skill"):
+        if p.has_skill(skill):
+            fn(tackled)
+    dodged = face == "stumble" and t.has_skill("Dodge") and not tackled.flags.get("denied")
 
     def _push_and_follow(knock_after: bool) -> None:
         vacated = (t.x, t.y)

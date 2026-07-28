@@ -56,8 +56,14 @@ def dodge_modifier(match: Match, player: PlayerState, to_x: int, to_y: int) -> i
     The square being LEFT does not modify the roll — only whether a Dodge is
     needed at all. Getting this backwards is the single most common way to
     mis-model Blood Bowl movement, and it produces plausible numbers either way.
+
+    Titchy is the exception, and it belongs HERE rather than on the dodging
+    player: "when an opposition player attempts to Dodge into a square within this
+    player's Tackle Zone, this player will not apply a -1 modifier … for Marking
+    the opposition player." The penalty is never applied, so it cannot be
+    cancelled afterwards by a Skill on the dodger.
     """
-    return -len(markers_of_square(match, player.side, to_x, to_y))
+    return -sum(1 for m in markers_of_square(match, player.side, to_x, to_y) if not m.has_skill("Titchy"))
 
 
 def agility_target(player: PlayerState) -> int:

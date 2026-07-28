@@ -66,7 +66,8 @@ template — the derived number is isolated in one file that says so, cross-chec
 against an independent source, made configurable, and reported to the user as
 measured rather than quoted.
 
-A skill the engine does not model can still be **quoted**: `bb_get_skill` returns
+Seventeen skills are modelled — every one that attaches to a roll the engine
+already makes. A skill the engine does not model can still be **quoted**: `bb_get_skill` returns
 the rulebook's own words plus whether this engine applies it. That split matters —
 modelling a skill changes the game, quoting it changes what can honestly be said
 about it, and the second is what stops a confident wrong explanation.
