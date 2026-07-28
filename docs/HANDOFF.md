@@ -334,6 +334,15 @@ Scrape traps, each of which produced wrong-not-missing data:
 - Team URLs are capitalised; quantities use U+2011 non-breaking hyphens; skills are
   bullet-separated.
 
+`data/skills.json` — all 108 Skills and Traits, by `tools_scrape_skills.py`. Three
+facts on that page are **markup, not words**, and the flattened text loses all
+three: a **Trait** is a trailing `*` on the heading (`STUNTY* (PASSIVE)`), an
+**Elite** skill is an `<img>` inside it ("an Elite Skill will be denoted by the
+symbol" — Block, Dodge, Guard and Mighty Blow, i.e. the four most common on the
+rosters), and the **category** is the enclosing `<h3>`. A first pass that matched
+only `NAME (ACTIVE|PASSIVE)` dropped every Trait and looked like a page that
+documents only Skills. `--check` fails if any roster skill has no entry.
+
 `tools_kb_docs.py` generates one knowledge-base document per team from that JSON,
 with every stat **labelled**. Do not ingest the team pages directly: flattened,
 Orc's Goblin Lineman reads `6 2 3+ 3+ 4+ 8+` — six values for five stats, the extra
@@ -354,12 +363,13 @@ Thick Skull. Everything else is reported as unmodelled.
 ### Next, roughly in order
 
 1. **The remaining ~100 skills** as hook registrations. The registry is built for
-   this: a new skill is one decorated function, not an edit to an action. **The
-   source is ready**: `core_rules/skills_and_traits` is in the KB, one heading per
-   skill, tagged `(ACTIVE)` or `(PASSIVE)`, e.g. `BREAK TACKLE (ACTIVE)` followed
-   by its text. Quote it beside the hook the way the seven modelled ones do. This
-   is also the fix for the confabulation in §1 — a modelled skill cannot be
-   glossed.
+   this: a new skill is one decorated function, not an edit to an action.
+   `data/skills.json` already holds every one with its real text — copy it into the
+   docstring beside the hook, the way the seven modelled ones do, and the
+   catalogue's `modelled` flag flips on its own because it is derived from the
+   registry. Start with the hooks that already exist, then the re-roll skills
+   (Sure Hands, Catch, Pass) and the dodge modifiers (Break Tackle, Stunty,
+   Tackle), which need one new hook each.
 2. **Kick-off events that need a choice** (High Kick, Solid Defence, Quick Snap,
    Blitz!) — these need a way for the engine to *ask* the coach mid-resolution,
    which does not exist yet and is a genuine design question.

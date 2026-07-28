@@ -20,8 +20,13 @@ one from memory is exactly the confabulation the engine is meant to rule out.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
+
+CATALOGUE = Path(__file__).resolve().parent.parent / "data" / "skills.json"
 
 # --- the registry ---------------------------------------------------------
 
@@ -120,7 +125,17 @@ def unmodelled_on_pitch(match) -> list[dict]:
     for p in match.on_pitch():
         for s in unmodelled_skills(p):
             holders.setdefault(s, []).append(p.id)
-    return [{"skill": skill, "players": sorted(ids), "count": len(ids)} for skill, ids in sorted(holders.items())]
+    out = []
+    for skill, ids in sorted(holders.items()):
+        row = {"skill": skill, "players": sorted(ids), "count": len(ids)}
+        # What the rulebook calls it, so the summary itself cannot be glossed.
+        # The full text is a `bb_get_skill` away rather than inline: 12 skills at
+        # 400 characters each would bury the board this rides with.
+        entry = catalogue().get(skill.casefold())
+        if entry:
+            row.update({"kind": entry["kind"], "category": entry["category"], "when": entry["when"]})
+        out.append(row)
+    return out
 
 
 def already_noted(match) -> set[str]:
@@ -131,6 +146,65 @@ def already_noted(match) -> set[str]:
 def first_mentions(match, skills) -> list[str]:
     """Of ``skills``, the ones this match has not mentioned yet."""
     return sorted(set(skills) - already_noted(match))
+
+
+# --- the catalogue --------------------------------------------------------
+#
+# All 108 Skills and Traits with their real text, so a coach can QUOTE one.
+#
+# This is the cheap half of the fix for the failure in docs/HANDOFF.md §1. Asked
+# to play a Foul, the agent drove the engine perfectly and quoted every roll — and
+# then explained an unmodelled Skill unprompted, saying Break Tackle was "an
+# ST-based alternative" to the dodge. It is a +1/+2/+3 MODIFIER to the Agility
+# Test. The correct text existed and went unread.
+#
+# Modelling a Skill changes the game and has to be done one careful hook at a
+# time. Shipping its TEXT changes what can honestly be said about it, costs one
+# JSON file, and works for all 108 at once — including every one the engine will
+# never model.
+
+
+@lru_cache(maxsize=1)
+def catalogue() -> dict:
+    """Name (casefolded) -> entry. Empty if the catalogue is missing, because a
+    plugin that cannot describe a Skill should still be able to play one."""
+    try:
+        raw = json.loads(CATALOGUE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {k.casefold(): v for k, v in (raw.get("skills") or {}).items()}
+
+
+def describe_skill(name: str) -> dict | None:
+    """One Skill, as the rulebook has it, plus whether this engine applies it.
+
+    The second half is the point. "Break Tackle: <text> — NOT applied by this
+    engine" is a true sentence a coach can say; either half alone is a way to
+    mislead them.
+    """
+    base = str(name or "").split("(")[0].strip()
+    entry = catalogue().get(base.casefold())
+    if entry is None:
+        return None
+    return {**entry, "modelled": base.casefold() in modelled()}
+
+
+def find_skills(query: str = "", *, category: str = "", kind: str = "", only_unmodelled: bool = False) -> list[dict]:
+    """Browse the catalogue. Every filter is optional; no filters lists all 108."""
+    q, cat, knd = query.casefold(), category.casefold(), kind.casefold()
+    out = []
+    for key, entry in catalogue().items():
+        if q and q not in key and q not in entry.get("text", "").casefold():
+            continue
+        if cat and entry.get("category", "").casefold() != cat:
+            continue
+        if knd and entry.get("kind", "").casefold() != knd:
+            continue
+        is_modelled = key in modelled()
+        if only_unmodelled and is_modelled:
+            continue
+        out.append({**entry, "modelled": is_modelled})
+    return sorted(out, key=lambda e: e["name"])
 
 
 # --- the Skills that are actually modelled --------------------------------

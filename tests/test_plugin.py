@@ -831,3 +831,51 @@ def test_a_mounted_route_resolves_the_engine_per_request(client, monkeypatch):
     monkeypatch.setattr(game, "legal_moves", lambda *a, **k: {"ok": True, "reloaded": True})
     out = client.get(f"{base}/game/legal", params={"player": "h00"}).json()
     assert out.get("reloaded"), "the route is calling a function captured when the router was built"
+
+
+def test_every_tool_defined_is_actually_registered():
+    """`_tools()` returns an EXPLICIT list, so a tool can be written, decorated and
+    documented and still never reach the agent — dead code that looks alive.
+
+    The README check next door cannot see it: that one asks whether every
+    REGISTERED tool is documented, which an unregistered tool passes trivially.
+    Two skill tools were added and forgotten exactly this way, and the whole suite
+    stayed green.
+    """
+    import ast
+
+    import bloodbowl
+
+    registry = _Reg()
+    bloodbowl.register(registry)
+    live = {t.name for t in registry.tools}
+
+    tree = ast.parse((ROOT / "__init__.py").read_text())
+    defined = {
+        node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name.startswith("bb_")
+    }
+    assert defined, "no bb_* tools found — the parse is wrong, not the plugin"
+    assert not (defined - live), f"defined but never registered: {sorted(defined - live)}"
+
+
+class _Reg:
+    config: dict = {}
+
+    def __init__(self):
+        self.tools: list = []
+        self.routers: list = []
+
+    def register_tool(self, t):
+        self.tools.append(t)
+
+    def register_tools(self, ts):
+        self.tools.extend(ts)
+
+    def register_router(self, router, prefix):
+        self.routers.append((router, prefix))
+
+    def register_surface(self, *a, **k):
+        pass
+
+    def register_skill_dir(self, path):
+        pass

@@ -66,6 +66,11 @@ template — the derived number is isolated in one file that says so, cross-chec
 against an independent source, made configurable, and reported to the user as
 measured rather than quoted.
 
+A skill the engine does not model can still be **quoted**: `bb_get_skill` returns
+the rulebook's own words plus whether this engine applies it. That split matters —
+modelling a skill changes the game, quoting it changes what can honestly be said
+about it, and the second is what stops a confident wrong explanation.
+
 Anything not modelled is **reported, not ignored** — but reported once. The first
 time an unmodelled Skill is relevant, the log says so and then stops; `bb_game_state`
 carries the standing list of every unmodelled Skill on the pitch and who has it.
@@ -75,6 +80,8 @@ Ten of the eleven kick-off events say plainly that they were rolled but not appl
 
 **Rosters** — `bb_list_teams` · `bb_get_roster` · `bb_team_costs` ·
 `bb_list_stars` · `bb_get_star`
+
+**Skills** — `bb_get_skill` · `bb_list_skills`
 
 **The board** — `bb_pitch_show` · `bb_pitch_setup` · `bb_pitch_place` ·
 `bb_pitch_clear` · `bb_pitch_review`
@@ -91,6 +98,12 @@ often as you like. They exist so the coach never has to work out a dodge modifie
 or a block's dice count itself.
 
 ## The data
+
+`data/skills.json` — all 108 Skills and Traits with their real text, category,
+Active/Passive, and the four Elite markers. Scraped by `tools_scrape_skills.py`
+from the `<h4>`/`<p>` structure, because three things on that page are *markup*
+rather than words: a Trait is a trailing `*`, an Elite Skill is an `<img>`, and
+the category is the enclosing `<h3>`. The flattened text has none of them.
 
 `data/rosters.json` — 30 teams, 159 positionals, 63 star players, with the site's
 errata applied. Scraped from the published tables with `tools_scrape_rosters.py`;

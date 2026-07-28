@@ -380,6 +380,64 @@ def _tools(cfg: dict):
         return json.dumps({"ok": True, **describe()})
 
     @tool
+    def bb_get_skill(name: str) -> str:
+        """What a Skill or Trait actually does — the rulebook's own words.
+
+        USE THIS BEFORE SAYING WHAT ANY SKILL DOES. Not because the rules are
+        hard, but because they are the sort of thing that feels obvious and
+        isn't: Break Tackle sounds like a Strength-based alternative to dodging
+        and is in fact a +1/+2/+3 modifier to the same Agility Test. Quote the
+        ``text`` rather than paraphrasing it.
+
+        The reply also says whether this ENGINE applies the skill. Both halves
+        matter — "Break Tackle: <text> — but this engine does not apply it" is
+        the true and useful sentence; either half alone misleads.
+        """
+        from .engine.skills import describe_skill
+
+        found = describe_skill(name)
+        if found is None:
+            from .engine.skills import find_skills
+
+            near = [s["name"] for s in find_skills(str(name or "")[:12])][:5]
+            return json.dumps({"ok": False, "error": f"no Skill or Trait named {name!r}", "did_you_mean": near})
+        return json.dumps({"ok": True, "skill": found})
+
+    @tool
+    def bb_list_skills(query: str = "", category: str = "", kind: str = "", only_unmodelled: bool = False) -> str:
+        """Browse the 108 Skills and Traits.
+
+        ``category`` is one of Agility, Devious, General, Mutation, Passing,
+        Strength (or Trait); ``kind`` is Skill or Trait — a Trait is marked with
+        an asterisk in the rulebook and is not normally learnable. ``query``
+        matches the name or the text, so "re-roll" finds every skill that grants
+        one. ``only_unmodelled`` narrows to what this engine does not apply.
+
+        Returns names and summaries; call bb_get_skill for the full text.
+        """
+        from .engine.skills import find_skills
+
+        rows = find_skills(query, category=category, kind=kind, only_unmodelled=only_unmodelled)
+        return json.dumps(
+            {
+                "ok": True,
+                "count": len(rows),
+                "skills": [
+                    {
+                        "name": r["name"],
+                        "kind": r["kind"],
+                        "category": r["category"],
+                        "when": r["when"],
+                        "elite": r["elite"],
+                        "modelled": r["modelled"],
+                        "text": r["text"][:160] + ("…" if len(r["text"]) > 160 else ""),
+                    }
+                    for r in rows
+                ],
+            }
+        )
+
+    @tool
     def bb_game_kickoff(receiving: str = "") -> str:
         """Start the next drive: everyone back to their setup, a kick, the
         Kick-off Event, and the ball landing.
@@ -580,6 +638,8 @@ def _tools(cfg: dict):
         bb_game_end_turn,
         bb_game_kickoff,
         bb_pass_ranges,
+        bb_get_skill,
+        bb_list_skills,
         bb_game_log,
         bb_game_abandon,
     ]
