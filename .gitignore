@@ -5,3 +5,5 @@ state/
 .pytest_cache/
 shots/
 harness_theme.css
+# Scrape cache: ~90 pages of someone else's HTML. Local speed aid, not ours to ship.
+team_html/

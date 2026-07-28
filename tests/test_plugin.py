@@ -360,3 +360,128 @@ def test_replace_refreshes_a_stale_statline_from_the_roster(client):
     p = r.json()["players"][0]
     assert p["MA"] == "5", "roster must win over a stale stored statline"
     assert "Mighty Blow" in p["skills"]
+
+
+# --- staff, re-roll and Star Players --------------------------------------
+#
+# Every assertion here pins a defect that shipped, not a hypothetical. Staff read
+# 0/30 for a whole release because the parser looked for a two-column table while
+# the site wrote a <ul> of links, and nothing failed — it just came back empty.
+
+
+def test_every_team_has_staff_and_a_reroll_price():
+    """The empty-staff bug was invisible: no error, just {} on all 30 teams."""
+    from bloodbowl.pitch import rosters
+
+    teams = rosters()["teams"]
+    missing_staff = [t["name"] for t in teams if not t.get("staff")]
+    missing_reroll = [t["name"] for t in teams if not t.get("reroll_cost")]
+    assert not missing_staff, f"teams with no staff data: {missing_staff}"
+    assert not missing_reroll, f"teams with no re-roll price: {missing_reroll}"
+
+
+def test_reroll_price_actually_varies_by_team():
+    """A constant would mean we scraped one page and copied it everywhere."""
+    from bloodbowl.pitch import rosters
+
+    prices = {t["reroll_cost"] for t in rosters()["teams"]}
+    assert len(prices) > 1, f"every team priced re-rolls the same ({prices}) — suspect a parse fallback"
+
+
+def test_staff_costs_are_prices_not_link_text():
+    from bloodbowl.pitch import find_team
+
+    orc = find_team("Orc")
+    assert orc["staff"]["Re-roll"] == "60K"
+    assert orc["staff"]["Apothecary"] == "50K"
+    assert orc["reroll_cost"] == "60K"
+
+
+def test_team_costs_tool(registry):
+    out = json.loads(_tool(registry, "bb_team_costs").invoke({"team": "Orc"}))
+    assert out["ok"] and out["reroll_cost"] == "60K"
+    assert "Brawlin' Brutes" in out["special_rules"]
+
+
+def test_a_solo_star_parses_cost_from_the_table_header():
+    """A solo star's table is headed by its PRICE, not by "MA"."""
+    from bloodbowl.pitch import find_star
+
+    griff = find_star("Griff Oberwald")
+    assert griff["cost"] == "300K"
+    (m,) = griff["members"]
+    assert m["stats"] == {"MA": "7", "ST": "4", "AG": "2+", "PA": "3+", "AV": "9+"}
+
+
+def test_a_paired_star_does_not_slide_its_stats_one_column_left():
+    """THE silent-corruption case. A pair prices itself in a <p><strong>, and each
+    member's table is headed plainly "MA | ST | ...". Assuming a leading cost cell
+    reads "MA" as the price and shifts every stat left."""
+    from bloodbowl.pitch import find_star
+
+    pair = find_star("Grak and Crumbleberry")
+    assert pair["cost"] == "250K"
+    assert [m["name"] for m in pair["members"]] == ["Grak", "Crumbleberry"]
+    grak, crumb = pair["members"]
+    assert grak["stats"] == {"MA": "5", "ST": "5", "AG": "4+", "PA": "4+", "AV": "10+"}
+    assert crumb["stats"] == {"MA": "5", "ST": "2", "AG": "3+", "PA": "5+", "AV": "7+"}
+
+
+def test_no_star_stat_is_a_stat_name():
+    """The shifted-column failure leaves a header word sitting in a value slot."""
+    from bloodbowl.pitch import stars
+
+    for s in stars():
+        for m in s["members"]:
+            assert len(m["stats"]) == 5, f"{s['name']}/{m['name']} has {len(m['stats'])} stats"
+            for key, val in m["stats"].items():
+                assert val.upper() not in ("MA", "ST", "AG", "PA", "AV"), f"{s['name']}: {key}={val}"
+                assert not val.upper().endswith("K"), f"{s['name']}: {key}={val} looks like a price"
+
+
+def test_every_star_has_a_price():
+    from bloodbowl.pitch import stars
+
+    assert len(stars()) >= 60
+    broke = [s["name"] for s in stars() if not s["cost"]]
+    assert not broke, f"stars with no cost: {broke}"
+
+
+def test_a_skill_qualifier_outside_the_anchor_survives():
+    """The site writes "<a>Loner</a> (4+)" — reading anchor text alone drops the
+    number that makes Loner mean anything."""
+    from bloodbowl.pitch import find_star
+
+    (m,) = find_star("Griff Oberwald")["members"]
+    assert "Loner (3+)" in m["skills"]
+
+
+def test_a_star_special_rule_keeps_its_text():
+    from bloodbowl.pitch import find_star
+
+    griff = find_star("Griff Oberwald")
+    (m,) = griff["members"]
+    assert m["special_rules"] == ["Consummate Professional"]
+    assert "once per game" in griff["rule_text"]["Consummate Professional"].lower()
+
+
+def test_stars_are_findable_through_the_punctuation_a_coach_will_not_type():
+    from bloodbowl.pitch import find_star
+
+    assert find_star("morg n thorg")["name"].startswith("Morg")
+    assert find_star("GRIFF OBERWALD")["name"] == "Griff Oberwald"
+    assert find_star("Crumbleberry")["name"] == "Grak and Crumbleberry"
+    assert find_star("nobody at all") is None
+
+
+def test_stars_for_a_team_are_priced_and_sorted(registry):
+    out = json.loads(_tool(registry, "bb_list_stars").invoke({"team": "Orc"}))
+    assert out["ok"] and out["count"] > 0
+    costs = [int(s["cost"].rstrip("K")) for s in out["stars"]]
+    assert costs == sorted(costs), "cheapest first, so a budget answer reads off the top"
+    assert all(s["known"] for s in out["stars"]), "a team lists a star we have no page for"
+
+
+def test_get_star_tool_reports_a_miss_rather_than_guessing(registry):
+    out = json.loads(_tool(registry, "bb_get_star").invoke({"name": "Sir Not Appearing"}))
+    assert out["ok"] is False and any("Griff" in n for n in out["known"])
