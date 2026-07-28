@@ -297,6 +297,24 @@ def build_game_router(cfg: dict | None = None):
         out["match"] = m.to_dict(include_log=False)
         return out
 
+    @r.post("/game/kickoff")
+    async def _kickoff(body: dict | None = None) -> dict:
+        from .engine.game import start_drive
+
+        m = _need_match()
+        want = str((body or {}).get("receiving") or "")
+        side = want if want in ("home", "away") else m.opponent(m.clock.active)
+        before = len(m.events)
+        start_drive(m, receiving=side)
+        save_match(m)
+        return {
+            "ok": True,
+            "drive": m.drive,
+            "receiving": side,
+            "log": [e.text for e in m.events[before:] if e.text],
+            "match": m.to_dict(include_log=False),
+        }
+
     @r.post("/game/abandon")
     async def _abandon() -> dict:
         return {"ok": True, "discarded": clear_match()}

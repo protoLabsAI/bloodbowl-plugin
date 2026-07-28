@@ -111,7 +111,7 @@ def catch(match, player, dice, depth: int = 0, modifier: int = 0) -> list[Event]
             Event(
                 kind="note",
                 actor=player.id,
-                text=f"{player.player.position} is {player.down} and cannot Catch — the ball bounces.",
+                text=f"{player.name()} is {player.down} and cannot Catch — the ball bounces.",
             )
         )
         match.apply(events[-1])
@@ -126,7 +126,7 @@ def catch(match, player, dice, depth: int = 0, modifier: int = 0) -> list[Event]
                 kind="ball_picked_up",
                 actor=player.id,
                 rolls=[r],
-                text=f"{player.player.position} catches the ball. {r.describe()}",
+                text=f"{player.name()} catches the ball. {r.describe()}",
             )
         )
         match.apply(events[-1])
@@ -138,7 +138,7 @@ def catch(match, player, dice, depth: int = 0, modifier: int = 0) -> list[Event]
             kind="note",
             actor=player.id,
             rolls=[r],
-            text=f"{player.player.position} fails to catch it. {r.describe()}",
+            text=f"{player.name()} fails to catch it. {r.describe()}",
         )
     )
     match.apply(events[-1])
@@ -159,7 +159,7 @@ def pick_up(match, player, dice) -> tuple[list[Event], bool]:
             kind="ball_picked_up",
             actor=player.id,
             rolls=[r],
-            text=f"{player.player.position} picks the ball up. {r.describe()}",
+            text=f"{player.name()} picks the ball up. {r.describe()}",
         )
         match.apply(ev)
         return [ev, *check_touchdown(match, player)], False
@@ -168,7 +168,7 @@ def pick_up(match, player, dice) -> tuple[list[Event], bool]:
         kind="note",
         actor=player.id,
         rolls=[r],
-        text=f"{player.player.position} fumbles the pick-up — turnover. {r.describe()}",
+        text=f"{player.name()} fumbles the pick-up — turnover. {r.describe()}",
     )
     match.apply(ev)
     return [ev, *bounce(match, dice)], True
@@ -182,7 +182,7 @@ def drop(match, player, dice, reason: str = "goes down") -> list[Event]:
         kind="ball_dropped",
         actor=player.id,
         detail={"x": player.x, "y": player.y},
-        text=f"{player.player.position} {reason} and drops the ball.",
+        text=f"{player.name()} {reason} and drops the ball.",
     )
     match.apply(ev)
     return [ev, *bounce(match, dice)]
@@ -205,7 +205,7 @@ def check_touchdown(match, player) -> list[Event]:
         kind="touchdown",
         actor=player.id,
         detail={"side": player.side},
-        text=f"TOUCHDOWN! {player.player.position} scores for {player.side}.",
+        text=f"TOUCHDOWN! {player.name()} scores for {player.side}.",
     )
     match.apply(ev)
     return [ev]

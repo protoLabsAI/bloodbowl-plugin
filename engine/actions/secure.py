@@ -42,7 +42,7 @@ def validate(match: Match, cmd: dict) -> Legality:
     if p.place != "pitch" or p.down != "standing":
         return Legality(False, "only a Standing player on the pitch can Secure the Ball")
     if p.acted:
-        return Legality(False, f"{p.player.position} has already acted this turn")
+        return Legality(False, f"{p.name()} has already acted this turn")
     if not match.ball.in_play or match.ball.carrier:
         return Legality(False, "the ball is not loose on the ground")
 
@@ -76,7 +76,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 kind="player_moved",
                 actor=p.id,
                 detail={"x": bx, "y": by, "ma_used": p.ma_used + 1},
-                text=f"{p.player.position} steps carefully onto the ball at ({bx},{by}).",
+                text=f"{p.name()} steps carefully onto the ball at ({bx},{by}).",
             )
         )
 
@@ -87,7 +87,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 kind="ball_picked_up",
                 actor=p.id,
                 rolls=[r],
-                text=f"{p.player.position} secures the ball. {r.describe()}",
+                text=f"{p.name()} secures the ball. {r.describe()}",
             )
         )
         rec.absorb(check_touchdown(match, p))
@@ -97,17 +97,17 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 kind="note",
                 actor=p.id,
                 detail={"acted": True},
-                text=f"{p.player.position} has the ball and their activation ends.",
+                text=f"{p.name()} has the ball and their activation ends.",
             )
         )
-        return Outcome(ok=True, events=rec.events, text=f"{p.player.position} secures the ball.", unmodelled=unmodelled)
+        return Outcome(ok=True, events=rec.events, text=f"{p.name()} secures the ball.", unmodelled=unmodelled)
 
     rec.emit(
         Event(
             kind="note",
             actor=p.id,
             rolls=[r],
-            text=f"{p.player.position} fumbles it even unopposed — turnover. {r.describe()}",
+            text=f"{p.name()} fumbles it even unopposed — turnover. {r.describe()}",
         )
     )
     rec.absorb(bounce(match, dice))
@@ -116,7 +116,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         ok=False,
         events=rec.events,
         turnover=True,
-        text=f"{p.player.position} failed to secure the ball — turnover.",
+        text=f"{p.name()} failed to secure the ball — turnover.",
         unmodelled=unmodelled,
     )
 

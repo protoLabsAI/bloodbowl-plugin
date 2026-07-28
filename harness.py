@@ -332,7 +332,14 @@ def _play(browser, url: str, w: int, h: int) -> None:
     page.locator("#newMatch").click()
     page.wait_for_timeout(800)
     check("a match starts", page.locator(".pc").count() > 0, f"{page.locator('.pc').count()} players")
-    check("the clock renders", "H1" in page.locator("#clock").inner_text(), page.locator("#clock").inner_text())
+    clock = page.locator("#clock").inner_text()
+    check("the clock renders the half, turn and drive", "H1" in clock and "drive" in clock, clock)
+    log0 = page.locator("#log").inner_text()
+    check(
+        "the match opens with a kick-off, not a ball that appeared",
+        "Kick-off Event" in log0 and "deviates" in log0,
+        log0[:110].replace("\n", " / "),
+    )
 
     # Pick a home player who is actually Marked. Clicking whichever happens to be
     # first proves nothing about the highlighting: an unmarked player in open

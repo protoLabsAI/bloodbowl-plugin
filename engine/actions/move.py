@@ -58,7 +58,7 @@ def validate(match: Match, cmd: dict) -> Legality:
     if p is None:
         return Legality(False, f"no player with id {cmd.get('player')!r}")
     if p.place != "pitch":
-        return Legality(False, f"{p.player.position} is in the {p.place.replace('_', ' ')}, not on the pitch")
+        return Legality(False, f"{p.name()} is in the {p.place.replace('_', ' ')}, not on the pitch")
     if p.side != match.clock.active:
         return Legality(False, f"it is {match.clock.active}'s turn, and that player is {p.side}")
     if p.down == "stunned":
@@ -86,7 +86,7 @@ def validate(match: Match, cmd: dict) -> Legality:
     if rushes_needed > MAX_RUSHES:
         return Legality(
             False,
-            f"out of movement: {p.player.position} has MA {budget}, has used {p.ma_used}"
+            f"out of movement: {p.name()} has MA {budget}, has used {p.ma_used}"
             + (f" and needs {stand_cost} to stand up" if stand_cost else "")
             + f", and may Rush at most {MAX_RUSHES} times",
         )
@@ -114,7 +114,7 @@ def _stand_up(match: Match, p, dice, rec: Recorder) -> tuple[bool, int]:
                     kind="note",
                     actor=p.id,
                     rolls=[r],
-                    text=f"{p.player.position} fails to stand up and their activation ends.",
+                    text=f"{p.name()} fails to stand up and their activation ends.",
                 )
             )
             return False, 0
@@ -124,7 +124,7 @@ def _stand_up(match: Match, p, dice, rec: Recorder) -> tuple[bool, int]:
                 actor=p.id,
                 detail={"ma_used": p.movement()},
                 rolls=[r],
-                text=f"{p.player.position} stands up, using their whole Move Allowance.",
+                text=f"{p.name()} stands up, using their whole Move Allowance.",
             )
         )
         return True, p.movement()
@@ -133,7 +133,7 @@ def _stand_up(match: Match, p, dice, rec: Recorder) -> tuple[bool, int]:
             kind="player_stood_up",
             actor=p.id,
             detail={"ma_used": p.ma_used + cost},
-            text=f"{p.player.position} stands up"
+            text=f"{p.name()} stands up"
             + (" for free (Jump Up)." if cost == 0 else f", spending {cost} squares.")
             + "".join(f" {n}." for n in ctx.notes if "Jump Up" not in n),
         )
@@ -174,7 +174,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                     kind="player_moved",
                     actor=p.id,
                     detail={"x": x, "y": y, "ma_used": used + 1},
-                    text=f"{p.player.position} Rushes into ({x},{y})…",
+                    text=f"{p.name()} Rushes into ({x},{y})…",
                 )
             )
             # Falling Over is a knockdown like any other: S3 says a player who
@@ -186,7 +186,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 ok=False,
                 events=rec.events,
                 turnover=True,
-                text=f"{p.player.position} failed the Rush and Falls Over in ({x},{y}) — turnover.",
+                text=f"{p.name()} failed the Rush and Falls Over in ({x},{y}) — turnover.",
                 unmodelled=unmodelled,
             )
         rec.emit(Event(kind="note", actor=p.id, rolls=[r], text=f"Rush succeeds. {r.describe()}"))
@@ -227,7 +227,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                     kind="player_moved",
                     actor=p.id,
                     detail={"x": x, "y": y, "ma_used": used + 1},
-                    text=f"{p.player.position} Dodges toward ({x},{y})…",
+                    text=f"{p.name()} Dodges toward ({x},{y})…",
                 )
             )
             rec.emit(Event(kind="note", actor=p.id, rolls=dodge_rolls, text=f"…and slips. {r.describe()}"))
@@ -236,7 +236,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 ok=False,
                 events=rec.events,
                 turnover=True,
-                text=f"{p.player.position} failed the Dodge into ({x},{y}) and Falls Over — turnover.",
+                text=f"{p.name()} failed the Dodge into ({x},{y}) and Falls Over — turnover.",
                 unmodelled=unmodelled,
             )
         rec.emit(Event(kind="note", actor=p.id, rolls=dodge_rolls, text=f"Dodge succeeds. {r.describe()}"))
@@ -246,7 +246,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             kind="player_moved",
             actor=p.id,
             detail={"x": x, "y": y, "ma_used": used + 1},
-            text=f"{p.player.position} moves to ({x},{y}).",
+            text=f"{p.name()} moves to ({x},{y}).",
         )
     )
 
@@ -261,7 +261,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 ok=False,
                 events=rec.events,
                 turnover=True,
-                text=f"{p.player.position} failed to pick the ball up — turnover.",
+                text=f"{p.name()} failed to pick the ball up — turnover.",
                 unmodelled=unmodelled,
             )
 
@@ -272,7 +272,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     return Outcome(
         ok=True,
         events=rec.events,
-        text=f"{p.player.position} moves to ({x},{y}).",
+        text=f"{p.name()} moves to ({x},{y}).",
         unmodelled=unmodelled,
     )
 
