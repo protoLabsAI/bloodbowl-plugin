@@ -75,6 +75,17 @@ the eleven Kick-off Events say *"rolled, but NOT applied by this engine"*. Silen
 would be the same failure the plugin exists to prevent — a coach told **BLITZ!**
 who watches nothing move would reasonably conclude the engine is broken.
 
+But honest is not the same as loud, and at scale the two pull apart: the same two
+Skills on the same Troll, on every step of every activation, is one fact several
+hundred times, and a warning that always fires is one nobody reads. So the gap is
+reported in two registers — `skills.first_mentions` names each Skill in the log
+the first time it is actually relevant and then never again, while
+`skills.unmodelled_on_pitch` is the standing summary, recomputed from the board
+whenever anyone asks and therefore never stale. **The ledger behind the first is
+the LOG**, because a match is reloaded from disk between tool calls: a ledger held
+on the object re-announces everything on every call *and looks like it works*.
+There is a test that fails for exactly that implementation.
+
 ---
 
 ## 3. Architecture
@@ -247,18 +258,16 @@ Thick Skull. Everything else is reported as unmodelled.
 
 ### Next, roughly in order
 
-1. **`unmodelled_skills` fires per action** and will get noisy with 22 players on
-   the pitch. Move it to a once-per-match summary. Small, and worth doing first.
-2. **Blitz** (a Move plus a Block in one activation) — the most-used action in real
+1. **Blitz** (a Move plus a Block in one activation) — the most-used action in real
    Blood Bowl, fully specified in the text, and it composes two things that exist.
-3. **Foul**, and the Argue the Call / sending-off rules that go with it.
-4. **The remaining ~100 skills** as hook registrations. The registry is built for
+2. **Foul**, and the Argue the Call / sending-off rules that go with it.
+3. **The remaining ~100 skills** as hook registrations. The registry is built for
    this: a new skill is one decorated function, not an edit to an action.
-5. **Kick-off events that need a choice** (High Kick, Solid Defence, Quick Snap,
+4. **Kick-off events that need a choice** (High Kick, Solid Defence, Quick Snap,
    Blitz!) — these need a way for the engine to *ask* the coach mid-resolution,
    which does not exist yet and is a genuine design question.
-6. **Team Re-rolls**, which several kick-off events and much of real play depend on.
-7. **A setup phase**, so each drive can be set up afresh rather than reusing the
+5. **Team Re-rolls**, which several kick-off events and much of real play depend on.
+6. **A setup phase**, so each drive can be set up afresh rather than reusing the
    opening positions.
 
 ### Known simplifications, all deliberate and all stated in the code

@@ -10,6 +10,7 @@ from __future__ import annotations
 from . import actions
 from .dice import SeededDice
 from .events import Event
+from .skills import NOTED, first_mentions, unmodelled_on_pitch
 from .state import Match, starting_positions
 
 TURNOVER_TEXT = {
@@ -115,6 +116,10 @@ def act(match: Match, action: str, cmd: dict, dice=None) -> dict:
     dice = dice or dice_for(match)
     # resolve applies its own events (see actions.Outcome) — do not re-apply.
     outcome = entry["resolve"](match, cmd, dice)
+    # Announce any Skill this engine does not apply, BEFORE the turnover and
+    # drive bookkeeping below, so the notice sits beside the action it belongs to
+    # rather than after the next kick-off.
+    noted = _note_unmodelled(match, outcome.unmodelled)
 
     # A Touchdown ends the DRIVE, not just the turn: "As soon as a Touchdown is
     # scored, play stops as a Turnover occurs — however, this is very much a
@@ -126,20 +131,45 @@ def act(match: Match, action: str, cmd: dict, dice=None) -> dict:
         end_turn(match, forced=True, start_next=False)
         if not match.over:
             start_drive(match, receiving=match.opponent(scorer), dice=dice)
-        report = outcome.to_dict()
-        report["clock"] = match.clock.to_dict()
-        report["over"] = match.over
-        report["touchdown"] = scorer
-        return report
+        return _report(match, outcome, noted, touchdown=scorer)
 
     if outcome.turnover:
         match.apply(Event(kind="turnover", detail={"side": match.clock.active}, text=TURNOVER_TEXT[True]))
         end_turn(match, forced=True)
 
+    return _report(match, outcome, noted)
+
+
+def _report(match: Match, outcome, noted: list[str], touchdown: str | None = None) -> dict:
+    """One shape for every reply, so a field cannot exist on the ordinary path and
+    quietly go missing on the one that scored."""
     report = outcome.to_dict()
+    report["unmodelled_skills"] = noted
     report["clock"] = match.clock.to_dict()
     report["over"] = match.over
+    if touchdown is not None:
+        report["touchdown"] = touchdown
     return report
+
+
+def _note_unmodelled(match: Match, skills) -> list[str]:
+    """Record, once per match, each Skill the engine did not apply.
+
+    The Outcome carries every unmodelled Skill the participants hold; this narrows
+    that to the ones this match has not already mentioned and writes them into the
+    log. Read ``skills.unmodelled_on_pitch`` for the standing summary — that is
+    the one that is always complete.
+    """
+    fresh = first_mentions(match, skills)
+    if fresh:
+        match.apply(
+            Event(
+                kind=NOTED,
+                detail={"skills": fresh},
+                text="Not modelled by this engine, so not applied: " + ", ".join(fresh) + ".",
+            )
+        )
+    return fresh
 
 
 def _unresolved_touchdown(match: Match):
@@ -198,6 +228,20 @@ def end_turn(match: Match, forced: bool = False, start_next: bool = True) -> dic
             )
         )
     return {"ok": True, "clock": match.clock.to_dict(), "over": match.over}
+
+
+def state_report(match: Match) -> dict:
+    """The match as a caller should see it: the board, plus what the engine is
+    knowingly not applying to it.
+
+    The summary rides with the state rather than being a separate tool because
+    the honest version of "here is the position" includes the ways the position is
+    a simplification. A coach reading only the board would have to know to ask.
+    """
+    return {
+        "match": match.to_dict(include_log=False),
+        "unmodelled_skills": unmodelled_on_pitch(match),
+    }
 
 
 def legal_moves(match: Match, player_id: str) -> dict:

@@ -85,6 +85,54 @@ def unmodelled_skills(player) -> list[str]:
     return sorted(set(out))
 
 
+# --- reporting the gap, once ----------------------------------------------
+#
+# "Unmodelled is reported, never ignored" is a rule about HONESTY, not about
+# volume, and the two pull apart at scale. Naming an Orc Blitzer's Break Tackle on
+# every step of every activation, for twenty-two players over sixteen turns, is
+# not more honest than saying it once — it is the same fact several hundred times,
+# and a warning that always fires is one a coach stops reading.
+#
+# So the gap is reported TWICE, in two different registers:
+#
+#   * ``unmodelled_on_pitch`` is the standing summary, recomputed from the board
+#     whenever anyone asks. It cannot go stale and needs no bookkeeping, so a
+#     coach can always find out what this engine is not applying.
+#   * ``first_mentions`` is the running one: the first time a Skill is actually
+#     relevant to something that happened, the log says so, and then never again.
+#
+# The ledger for the second is the LOG — the same invariant as everything else
+# here. Remembering "already said that" on the object would not survive the match
+# being reloaded from disk between tool calls, and would re-announce every Skill
+# on every call while looking like it worked.
+
+NOTED = "unmodelled_noted"
+
+
+def unmodelled_on_pitch(match) -> list[dict]:
+    """Every unmodelled Skill currently on the pitch, and who is carrying it.
+
+    The standing answer to "what is this engine not applying?" — derived from the
+    board on demand rather than recorded, so it is right after a Casualty leaves
+    and right again after a new drive brings the Knocked-out back.
+    """
+    holders: dict[str, list[str]] = {}
+    for p in match.on_pitch():
+        for s in unmodelled_skills(p):
+            holders.setdefault(s, []).append(p.id)
+    return [{"skill": skill, "players": sorted(ids), "count": len(ids)} for skill, ids in sorted(holders.items())]
+
+
+def already_noted(match) -> set[str]:
+    """Skills this match has already announced as unmodelled."""
+    return {s for e in match.events if e.kind == NOTED for s in (e.detail.get("skills") or [])}
+
+
+def first_mentions(match, skills) -> list[str]:
+    """Of ``skills``, the ones this match has not mentioned yet."""
+    return sorted(set(skills) - already_noted(match))
+
+
 # --- the Skills that are actually modelled --------------------------------
 #
 # Each one quotes the S3 text it implements. If a Skill is not here, the engine
