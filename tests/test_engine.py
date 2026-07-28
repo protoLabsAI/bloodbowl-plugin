@@ -2280,3 +2280,94 @@ def test_a_second_player_never_gets_the_teams_blitz():
     other = actions.get("blitz")["validate"](m, {"player": "h01", "target": "a02"})
     assert not other.ok
     assert "one Blitz Action this turn" in other.reason and "Home 0" in other.reason
+
+
+# --- the skill catalogue ---------------------------------------------------
+
+
+def test_every_skill_on_every_roster_can_be_quoted():
+    """The catalogue exists so an unmodelled Skill can be QUOTED rather than
+    guessed at. A Skill a roster uses but the catalogue lacks is precisely the
+    case where a coach falls back on recall — which is the failure in §1."""
+    import json
+    from pathlib import Path
+
+    from bloodbowl.engine.skills import catalogue
+
+    have = catalogue()
+    assert len(have) >= 100, f"only {len(have)} entries"
+    rosters = json.loads((Path(__file__).resolve().parent.parent / "data" / "rosters.json").read_text())
+    used = {
+        s.split("(")[0].strip()
+        for team in rosters["teams"]
+        for grp in ("positionals", "star_players")
+        for p in (team.get(grp) or [])
+        for s in (p.get("skills") or [])
+        if s.split("(")[0].strip() not in ("", "-")
+    }
+    missing = sorted(n for n in used if n.casefold() not in have)
+    assert not missing, f"{len(missing)} roster skills cannot be quoted: {missing}"
+
+
+def test_break_tackle_reads_as_the_rulebook_has_it():
+    """The exact entry the agent got wrong, pinned verbatim.
+
+    It called Break Tackle "an ST-based alternative" to the dodge roll. It is a
+    MODIFIER to the same Agility Test, and the difference decides whether a coach
+    thinks a ST 5 player dodges on a 3+ or on something else entirely.
+    """
+    from bloodbowl.engine.skills import describe_skill
+
+    bt = describe_skill("Break Tackle")
+    assert bt is not None
+    assert "modifier to the Agility Test" in bt["text"]
+    assert "+1" in bt["text"] and "+2" in bt["text"] and "+3" in bt["text"]
+    assert bt["modelled"] is False, "if this is now modelled, the hook should be quoted here too"
+
+
+def test_a_trait_is_distinguished_from_a_skill():
+    """A Trait is marked ONLY by a trailing asterisk on the heading — nothing else
+    on the page says so. Dropping it loses all 25, including the three most common
+    things on the pitch."""
+    from bloodbowl.engine.skills import catalogue, describe_skill
+
+    assert describe_skill("Stunty")["kind"] == "Trait"
+    assert describe_skill("Loner")["kind"] == "Trait"
+    assert describe_skill("Block")["kind"] == "Skill"
+    assert sum(1 for v in catalogue().values() if v["kind"] == "Trait") >= 20
+
+
+def test_the_elite_marker_and_the_categories_survived_the_scrape():
+    """Both are SYMBOLS in the prose — "an Elite Skill will be denoted by the
+    symbol" — so the flattened page text has neither, and only the HTML does. The
+    four Elite skills are also the four most common on the rosters."""
+    from bloodbowl.engine.skills import catalogue
+
+    elite = sorted(v["name"] for v in catalogue().values() if v["elite"])
+    assert elite == ["BLOCK", "DODGE", "GUARD", "MIGHTY BLOW"], elite
+    cats = {v["category"] for v in catalogue().values()}
+    assert {"Agility", "Devious", "General", "Mutation", "Passing", "Strength", "Trait"} == cats
+
+
+def test_the_catalogue_reports_what_the_engine_actually_models():
+    """Derived from the hook registry, never written down twice — so a skill that
+    gets modelled starts reporting itself as modelled with no second edit."""
+    from bloodbowl.engine.skills import describe_skill, find_skills, modelled
+
+    for name in ("Block", "Dodge", "Guard", "Mighty Blow", "Thick Skull", "Jump Up", "Prehensile Tail"):
+        assert describe_skill(name)["modelled"] is True, name
+    assert {s["name"].casefold() for s in find_skills(only_unmodelled=True)}.isdisjoint(modelled())
+
+
+def test_an_unknown_skill_suggests_something_rather_than_nothing():
+    from bloodbowl.engine.skills import describe_skill
+
+    assert describe_skill("Definitely Not A Skill") is None
+
+
+def test_a_skill_can_be_found_by_what_it_does():
+    """ "which skills grant a re-roll" is the question a coach actually has."""
+    from bloodbowl.engine.skills import find_skills
+
+    names = {s["name"] for s in find_skills("re-roll")}
+    assert {"DODGE", "SURE HANDS", "CATCH", "PASS"} <= names, sorted(names)
