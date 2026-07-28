@@ -37,7 +37,15 @@ class PlayerState:
     down: str = "standing"  # standing | prone | stunned
     place: str = "pitch"
     ma_used: int = 0
-    acted: bool = False  # has taken an action this turn
+    # Two different facts, and conflating them is why a player could Block and
+    # then stroll away. ``acted`` means an activation has BEGUN, so no second
+    # Action may be declared — a step of movement sets it. ``done`` means the
+    # activation is OVER, which is what stops further movement. Most Actions end
+    # the activation the moment they resolve; a Blitz's Block is the one that
+    # does not, because "after the player has performed the Block Action, they
+    # can continue their Move Action".
+    acted: bool = False
+    done: bool = False
     # S3 status: a Standing player that has lost its Tackle Zone. Separate from
     # `down` because such a player is still standing for every other purpose.
     distracted: bool = False
@@ -88,6 +96,7 @@ class PlayerState:
             "place": self.place,
             "ma_used": self.ma_used,
             "acted": self.acted,
+            "done": self.done,
             "distracted": self.distracted,
             "movement": self.movement(),
         }
@@ -165,6 +174,11 @@ class Match:
     # Where everyone stood when this drive kicked off. A new drive puts the teams
     # back rather than asking the operator to rebuild the board after every score.
     setup: list = field(default_factory=list)
+    # The Blitz declared this turn, if any: {"player", "target", "blocked"}.
+    # A team gets ONE per turn, so this is per-turn state and turn_started clears
+    # it. Kept on the Match rather than the player because the limit belongs to
+    # the TEAM — a second player declaring one is what has to be refused.
+    blitz: dict = field(default_factory=dict)
     events: list = field(default_factory=list)
 
     # --- lookup -----------------------------------------------------------
@@ -202,11 +216,24 @@ class Match:
             self.clock.active = str(d.get("side") or self.clock.active)
             self.clock.half = int(d.get("half") or self.clock.half)
             self.clock.turn = int(d.get("turn") or self.clock.turn)
+            self.blitz = {}  # one Blitz per team per turn
             for p in self.players:
                 if p.side == self.clock.active:
                     p.ma_used = 0
-                    p.acted = False
+                    p.acted = p.done = False
                     p.dodge_reroll_used = False
+
+        elif kind == "blitz_declared":
+            self.blitz = {"player": event.actor, "target": str(d.get("target") or ""), "blocked": False}
+
+        elif kind == "move_allowance_spent":
+            # Move Allowance going somewhere other than a square — the point a
+            # Blitz's Block costs. Its own event rather than a silent adjustment
+            # so the fold charges it too and the log can show where it went.
+            p = self.by_id(event.actor)
+            if p is not None:
+                p.ma_used = int(d.get("ma_used", p.ma_used))
+                p.acted = True
 
         elif kind == "player_moved":
             p = self.by_id(event.actor)
@@ -223,6 +250,13 @@ class Match:
                 p.down = "standing"
                 p.ma_used = int(d.get("ma_used", p.ma_used))
 
+        elif kind == "block_rolled":
+            # A Blitz's Block is spent once thrown. Recorded off the Block's own
+            # event rather than a separate one, because the two can never be
+            # allowed to disagree about whether the Block happened.
+            if d.get("blitz") and self.blitz.get("player") == event.actor:
+                self.blitz["blocked"] = True
+
         elif kind == "activation_ended":
             # An Action that is over. Recorded rather than set on the player,
             # because `acted` is state and ALL state here comes from the log —
@@ -230,13 +264,15 @@ class Match:
             # which meant a folded match had everyone free to act again.
             p = self.by_id(event.actor)
             if p is not None:
-                p.acted = True
+                p.acted = p.done = True
 
         elif kind in ("player_fell", "player_placed_prone"):
             p = self.by_id(event.actor)
             if p is not None:
                 p.down = str(d.get("down") or "prone")
-                p.acted = True
+                # Falling Over ends the activation: "their activation immediately
+                # ends", whichever roll put them on the floor.
+                p.acted = p.done = True
 
         elif kind in ("player_pushed", "player_followed_up"):
             # A shove and a follow-up relocate a player identically; only the
@@ -286,7 +322,7 @@ class Match:
                 p.move_to(int(row["x"]), int(row["y"]))
                 p.down = "standing"
                 p.place = "pitch"
-                p.ma_used, p.acted, p.dodge_reroll_used = 0, False, False
+                p.ma_used, p.acted, p.done, p.dodge_reroll_used = 0, False, False, False
             # A Knocked-out player misses the drive; a Casualty misses the match.
             for p in self.players:
                 if p.place == "knocked_out" and not any(r.get("id") == p.id for r in self.setup):
@@ -318,7 +354,7 @@ class Match:
         elif kind == "turnover":
             for p in self.players:
                 if p.side == self.clock.active:
-                    p.acted = True
+                    p.acted = p.done = True
 
         elif kind == "turn_ended":
             self._advance_clock()
@@ -354,6 +390,7 @@ class Match:
             "score": dict(self.score),
             "over": self.over,
             "drive": self.drive,
+            "blitz": dict(self.blitz),
         }
         if include_log:
             d["events"] = [e.to_dict() for e in self.events]
@@ -387,6 +424,7 @@ class Match:
                     place=str(raw.get("place") or "pitch"),
                     ma_used=int(raw.get("ma_used") or 0),
                     acted=bool(raw.get("acted")),
+                    done=bool(raw.get("done")),
                 )
             )
 

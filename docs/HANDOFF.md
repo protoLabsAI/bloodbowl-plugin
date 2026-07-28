@@ -52,6 +52,10 @@ older edition — or a language model — would say:
 | S3 has a **Secure the Ball** action | doesn't exist |
 | Kick-off 11 is **Dodgy Snack** | Officious Ref |
 | S3 has a fourth status, **Distracted** | three statuses |
+| A Blitz's Block **costs a point of Move Allowance** | the Block is free |
+| A player may **keep moving after** the Blitz's Block | the activation ends |
+| A Rush may be spent **on the Block itself**, not just a step | only on a step |
+| A Block may only target a **Standing** player | any adjacent opponent |
 
 **One trap when reading the KB:** chunk boundaries can put a heading above the
 wrong body. A search hit labelled `BLOCK (ACTIVE)` actually contained *Multiple
@@ -142,6 +146,23 @@ cannot place the next player until the previous one has moved. `Recorder` has tw
 verbs: `extend` applies, `absorb` records what a helper already applied. Using the
 wrong one moves the ball twice and scores twice.
 
+**`acted` and `done` are different facts.** `acted` means an activation has
+*begun*, so no second Action may be declared — a single step of movement sets it,
+which is why it can never be the thing that stops movement. `done` means the
+activation is *over*, and that is what `move` checks. With only `acted` to go on,
+movement went ungated and a player could throw a Block Action and then stroll
+away. A Blitz's Block is the one Block that leaves `done` false, because "after
+the player has performed the Block Action, they can continue their Move Action".
+
+**Compound actions are a DECLARATION plus the ordinary parts.** A Blitz is not a
+`blitz(player, target, path)` command. "If at any point during this Move Action
+they are adjacent to … their intended target" is a decision the coach makes step
+by step — walk two, see whether the Dodge held, then choose. So `blitz` records
+the declaration and rolls nothing, movement stays `move` one square at a time,
+and the Block stays `block`. Foul and Throw Team-mate should follow the same
+shape; reimplementing a Block inside another action gives you a second Block that
+agrees with the first until it doesn't.
+
 **Strict in play, permissive in setup.** The practice board reports and never
 blocks — an illegal position is a legitimate thing to want while working a shape
 out. A Match refuses, with a reason.
@@ -182,6 +203,10 @@ about whether the board is *legible*. Every one of these was found by looking:
   — which defeats the whole point of asking the engine.
 - Both End Zones tinted with the accent, so both ends read as home territory.
 - Badge type scaled off `vw` resolved to ~7px in a rail panel.
+- The odds tag was `--pl-color-fg` text on `.pc.away`, whose background is
+  *also* `--pl-color-fg` — so every block's "2D" was white on white, present in
+  the DOM and invisible on the board. Counting elements cannot see that; the
+  computed background can, and now does.
 
 Two rules for the harness itself, both learned the hard way:
 
@@ -257,25 +282,23 @@ being the struck errata — which is the worst possible input for this agent.
 ## 6. What's done, and what's next
 
 **Playable now:** set up (by hand, by agent, or from a preset) → kick-off → move,
-block, hand-off, Secure the Ball, pass → injuries → touchdowns → drives →
+block, blitz, hand-off, Secure the Ball, pass → injuries → touchdowns → drives →
 half-time → full time.
 
-Actions: `move`, `block`, `handoff`, `secure`, `pass`.
+Actions: `move`, `block`, `blitz`, `handoff`, `secure`, `pass`.
 Skills modelled: Block, Dodge, Guard, Jump Up, Mighty Blow, Prehensile Tail,
 Thick Skull. Everything else is reported as unmodelled.
 
 ### Next, roughly in order
 
-1. **Blitz** (a Move plus a Block in one activation) — the most-used action in real
-   Blood Bowl, fully specified in the text, and it composes two things that exist.
-2. **Foul**, and the Argue the Call / sending-off rules that go with it.
-3. **The remaining ~100 skills** as hook registrations. The registry is built for
+1. **Foul**, and the Argue the Call / sending-off rules that go with it.
+2. **The remaining ~100 skills** as hook registrations. The registry is built for
    this: a new skill is one decorated function, not an edit to an action.
-4. **Kick-off events that need a choice** (High Kick, Solid Defence, Quick Snap,
+3. **Kick-off events that need a choice** (High Kick, Solid Defence, Quick Snap,
    Blitz!) — these need a way for the engine to *ask* the coach mid-resolution,
    which does not exist yet and is a genuine design question.
-5. **Team Re-rolls**, which several kick-off events and much of real play depend on.
-6. **A setup phase**, so each drive can be set up afresh rather than reusing the
+4. **Team Re-rolls**, which several kick-off events and much of real play depend on.
+5. **A setup phase**, so each drive can be set up afresh rather than reusing the
    opening positions.
 
 ### Known simplifications, all deliberate and all stated in the code

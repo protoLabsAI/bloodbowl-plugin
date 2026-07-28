@@ -121,11 +121,18 @@ button.primary { background: var(--pl-color-accent); color: var(--pl-color-fg-on
 .cell.legal.needsroll.xhot, .cell.legal.needsroll.yhot {
   background: color-mix(in oklab, var(--pl-color-status-warning) 50%, transparent);
 }
+/* The little tag on a marked square: a block's dice count, a dodge modifier, a
+   blitz distance. It has to read on top of a PLAYER BADGE, and `.pc.away` is
+   filled with --pl-color-fg — so drawing the text in --pl-color-fg with a soft
+   shadow was white on white, and every block's "2D" was invisible on exactly the
+   squares it was describing. A solid chip reads on any background there is. */
 .cell .odds {
-  position: absolute; right: 1px; bottom: 0; z-index: 3; pointer-events: none;
-  font-size: max(6px, calc(var(--cell, 26px) * .30)); line-height: 1;
+  position: absolute; right: 0; bottom: 0; z-index: 3; pointer-events: none;
+  font-size: max(6px, calc(var(--cell, 26px) * .30)); line-height: 1.2;
   font-family: var(--pl-font-mono, ui-monospace, monospace);
-  color: var(--pl-color-fg); text-shadow: 0 0 3px var(--pl-color-bg);
+  color: var(--pl-color-fg); background: var(--pl-color-bg);
+  padding: 0 2px; border-radius: 3px;
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--pl-color-fg) 35%, transparent);
 }
 
 .pc {
@@ -228,6 +235,17 @@ button.primary { background: var(--pl-color-accent); color: var(--pl-color-fg-on
   border-bottom: 1px solid var(--pl-color-border);
 }
 .blockrow.bad { color: var(--pl-color-status-error); }
+
+/* A Blitz target: an opponent this player could run at and hit. Dashed rather
+   than solid, because unlike a Block it is not something that happens on the
+   click — it declares an intention and then you still have to walk there. The
+   warning colour is deliberately NOT reused: a Blitz is not a bad idea, and a
+   team's one per turn is worth spotting. */
+.cell.blitzable {
+  cursor: pointer;
+  box-shadow: inset 0 0 0 2px var(--pl-color-status-warning);
+}
+.blitzrow { border-left: 2px solid var(--pl-color-status-warning); padding-left: 4px; }
 
 /* Ball actions. Secure the Ball is new in S3 and nobody will think to try it
    unless the board offers it, so it gets its own mark rather than hiding in a

@@ -283,12 +283,22 @@ def _tools(cfg: dict):
           "move"    — with ``x``/``y``; picks the ball up automatically if it is
                       lying on the square you step onto
           "block"   — with ``target``
+          "blitz"   — with ``target``: DECLARES a Blitz against them. Rolls
+                      nothing. Then "move" as normal, and "block" that same
+                      target once adjacent — see below
           "handoff" — with ``target``, an ADJACENT team-mate who must Catch it
           "pass"    — with ``x``/``y``, the target SQUARE. Check bb_game_legal
                       first: it gives the range band and the modifier
           "secure"  — S3's Secure the Ball: a flat 2+ pick-up that ends the
                       activation, legal only when no Standing opponent is within
                       2 squares OF THE BALL
+
+        A BLITZ IS THREE CALLS, not one: declare it, walk, hit them — and you may
+        keep walking afterwards, which is the whole point of a Blitz. Your team
+        gets ONE per turn and declaring spends it even if you never throw the
+        Block, so check bb_game_legal for the distance first. The Block itself
+        costs a square of Move Allowance on top of the walk; if none is left the
+        engine will Rush for it, and a failed Rush floors your player.
 
         For a Block, ``choice`` picks which of the rolled dice to apply — but only
         when YOU are the one entitled to choose, which is when your player is the
@@ -308,7 +318,7 @@ def _tools(cfg: dict):
         cmd = {"player": player, "x": int(x), "y": int(y)}
         if action == "block":
             cmd.update({"target": target, "choice": int(choice), "follow_up": bool(follow_up)})
-        elif action == "handoff":
+        elif action in ("handoff", "blitz"):
             cmd["target"] = target
         before = len(m.events)
         report = act(m, action, cmd)

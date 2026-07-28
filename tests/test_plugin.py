@@ -712,6 +712,40 @@ def test_the_act_route_forwards_the_whole_command(client):
     assert "no target" not in str(r.get("text", "")), r
 
 
+def test_a_blitz_can_be_played_end_to_end_over_http(client):
+    """Declare, walk, hit, walk on — through the routes the view actually calls.
+
+    The engine tests pin the rules; this pins the WIRING, which is where a whole
+    API has been dead before. A Blitz is the first action that needs three round
+    trips to mean anything, so a field dropped anywhere along the way shows up
+    here as a refusal rather than as a board that quietly does nothing.
+    """
+    base = "/api/plugins/bloodbowl"
+    client.post(f"{base}/place", json={"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 10})
+    client.post(f"{base}/place", json={"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 7, "y": 14})
+    assert client.post(f"{base}/game/new", json={"seed": 4}).status_code == 200
+
+    legal = client.get(f"{base}/game/legal", params={"player": "h00"}).json()
+    assert legal["blitz"]["available"] is True, legal["blitz"]
+    target = legal["blitz"]["targets"][0]
+    assert target["target"] == "a00" and target["steps"] == 3
+
+    declared = client.post(f"{base}/game/act", json={"action": "blitz", "player": "h00", "target": "a00"}).json()
+    assert declared["ok"] is True, declared
+    assert "declares a Blitz" in " ".join(declared["log"])
+    assert declared["match"]["blitz"] == {"player": "h00", "target": "a00", "blocked": False}
+
+    for y in (11, 12, 13):
+        step = client.post(f"{base}/game/act", json={"action": "move", "player": "h00", "x": 7, "y": y}).json()
+        assert step["ok"], step
+
+    hit = client.post(f"{base}/game/act", json={"action": "block", "player": "h00", "target": "a00"}).json()
+    assert hit["log"], hit
+    assert "already acted" not in str(hit.get("text", "")), "the Blitz's Block was refused"
+    me = next(p for p in hit["match"]["players"] if p["id"] == "h00")
+    assert me["ma_used"] == 4, "three squares walked plus one for the Block"
+
+
 def test_a_refused_action_is_reported_rather_than_silently_dropped(client):
     base = "/api/plugins/bloodbowl"
     client.post(f"{base}/place", json={"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
