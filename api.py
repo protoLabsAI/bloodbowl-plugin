@@ -236,7 +236,7 @@ def build_game_router(cfg: dict | None = None):
     """
     from fastapi import APIRouter, HTTPException
 
-    from .engine.game import act, end_turn, legal_moves, new_match
+    from .engine.game import act, end_turn, legal_moves, new_match, state_report
     from .store import clear_match, load_match, save_match
 
     r = APIRouter()
@@ -252,7 +252,7 @@ def build_game_router(cfg: dict | None = None):
         m = load_match()
         if m is None:
             return {"ok": False, "match": None}
-        return {"ok": True, "match": m.to_dict(include_log=False)}
+        return {"ok": True, **state_report(m)}
 
     @r.post("/game/new")
     async def _new(body: dict | None = None) -> dict:

@@ -236,13 +236,19 @@ def _tools(cfg: dict):
 
         Read this rather than recalling where anyone was — the board changes every
         action.
+
+        ``unmodelled_skills`` lists the Skills currently on the pitch that this
+        engine does NOT apply, and who is carrying them. Worth a glance before
+        promising a coach what a player will do: the engine will play a Black Orc
+        with Grab as though it had no Grab, and say so, rather than guessing.
         """
+        from .engine.game import state_report
         from .store import load_match
 
         m = load_match()
         if m is None:
             return json.dumps({"ok": False, "error": "no match in progress; start one with bb_game_new"})
-        return json.dumps({"ok": True, "match": m.to_dict(include_log=False)})
+        return json.dumps({"ok": True, **state_report(m)})
 
     @tool
     def bb_game_legal(player: str) -> str:

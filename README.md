@@ -62,9 +62,10 @@ template — the derived number is isolated in one file that says so, cross-chec
 against an independent source, made configurable, and reported to the user as
 measured rather than quoted.
 
-Anything not modelled is **reported, not ignored**: unmodelled skills are named in
-the action's result, and ten of the eleven kick-off events say plainly that they
-were rolled but not applied.
+Anything not modelled is **reported, not ignored** — but reported once. The first
+time an unmodelled Skill is relevant, the log says so and then stops; `bb_game_state`
+carries the standing list of every unmodelled Skill on the pitch and who has it.
+Ten of the eleven kick-off events say plainly that they were rolled but not applied.
 
 ## Tools
 

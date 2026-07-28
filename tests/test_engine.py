@@ -295,6 +295,91 @@ def test_unmodelled_skills_are_reported_rather_than_ignored():
     assert "Mighty Blow" not in out.unmodelled
 
 
+def test_an_unmodelled_skill_is_announced_once_per_match_not_once_per_step():
+    """Honest is not the same as loud.
+
+    The Outcome still carries every unmodelled Skill the participants hold — that
+    is the raw truth and the tests above pin it. What ``act`` reports is the
+    FIRST mention of each, because the same Troll taking six steps has the same
+    two missing Skills six times, and a notice that always fires is one nobody
+    reads.
+    """
+    from bloodbowl.engine.game import act
+
+    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry", "Really Stupid"]))
+    first = act(m, "move", {"player": "h00", "x": 7, "y": 14})
+    assert first["unmodelled_skills"] == ["Always Hungry", "Really Stupid"]
+
+    again = act(m, "move", {"player": "h00", "x": 7, "y": 15})
+    assert again["unmodelled_skills"] == []
+    # …but the raw list is untouched, so nothing has become invisible.
+    from bloodbowl.engine.skills import unmodelled_skills
+
+    assert unmodelled_skills(m.by_id("h00")) == ["Always Hungry", "Really Stupid"]
+
+
+def test_the_first_mention_lands_in_the_log_not_only_in_the_reply():
+    """The log is what the coach narrates from. A notice that lives only in a tool
+    result is invisible to anyone reading the match back."""
+    from bloodbowl.engine.game import act
+
+    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry"]))
+    act(m, "move", {"player": "h00", "x": 7, "y": 14})
+    noted = [e for e in m.events if e.kind == "unmodelled_noted"]
+    assert len(noted) == 1
+    assert "Always Hungry" in noted[0].text
+    assert noted[0].detail["skills"] == ["Always Hungry"]
+
+
+def test_the_already_said_that_ledger_survives_a_reload():
+    """The ledger is the LOG, and this is why.
+
+    A match is reloaded from disk between tool calls, so anything remembered on
+    the object is gone by the next action — and a per-match notice that
+    re-announces itself every call looks exactly like one that works.
+    """
+    from bloodbowl.engine.game import act
+    from bloodbowl.engine.state import Match
+
+    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry"]))
+    assert act(m, "move", {"player": "h00", "x": 7, "y": 14})["unmodelled_skills"] == ["Always Hungry"]
+
+    reloaded = Match.from_dict(m.to_dict())
+    assert act(reloaded, "move", {"player": "h00", "x": 7, "y": 15})["unmodelled_skills"] == []
+
+
+def test_the_standing_summary_names_every_unmodelled_skill_and_its_holders():
+    """The other half: quiet in the log, but always answerable on demand."""
+    from bloodbowl.engine.game import state_report
+    from bloodbowl.engine.skills import unmodelled_on_pitch
+
+    m = _match(
+        ("home", 7, 13, 6, "3+", ["Always Hungry", "Block"]),
+        ("home", 8, 13, 6, "3+", ["Always Hungry"]),
+        ("away", 7, 14, 6, "3+", ["Really Stupid"]),
+    )
+    summary = unmodelled_on_pitch(m)
+    assert {row["skill"] for row in summary} == {"Always Hungry", "Really Stupid"}
+    hungry = next(row for row in summary if row["skill"] == "Always Hungry")
+    assert hungry["players"] == ["h00", "h01"] and hungry["count"] == 2
+    # Block IS modelled, so it must not appear.
+    assert "Block" not in {row["skill"] for row in summary}
+    assert state_report(m)["unmodelled_skills"] == summary
+
+
+def test_the_standing_summary_is_derived_so_it_drops_a_player_who_leaves():
+    """Recomputed from the board rather than recorded, so a Casualty stops being
+    listed the moment they leave — a remembered summary would keep warning about a
+    Skill that is no longer on the pitch."""
+    from bloodbowl.engine.events import Event
+    from bloodbowl.engine.skills import unmodelled_on_pitch
+
+    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry"]), ("away", 7, 14, 6, "3+", ["Really Stupid"]))
+    assert len(unmodelled_on_pitch(m)) == 2
+    m.apply(Event(kind="player_condition", actor=m.players[1].id, detail={"outcome": "casualty"}))
+    assert [row["skill"] for row in unmodelled_on_pitch(m)] == ["Always Hungry"]
+
+
 # --- strict in play --------------------------------------------------------
 
 
