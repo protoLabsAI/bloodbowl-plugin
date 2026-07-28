@@ -10,7 +10,7 @@ from __future__ import annotations
 from . import actions
 from .dice import SeededDice
 from .events import Event
-from .skills import NOTED, first_mentions, unmodelled_on_pitch
+from .skills import NOTED, first_mentions, partly_modelled_on_pitch, unmodelled_on_pitch
 from .state import Match, starting_positions
 
 TURNOVER_TEXT = {
@@ -242,6 +242,10 @@ def state_report(match: Match) -> dict:
     return {
         "match": match.to_dict(include_log=False),
         "unmodelled_skills": unmodelled_on_pitch(match),
+        # Both lists, always. A Skill applied in part reads as fully applied
+        # unless something says otherwise, and that is the more dangerous of the
+        # two gaps because it sounds settled.
+        "partly_modelled_skills": partly_modelled_on_pitch(match),
     }
 
 

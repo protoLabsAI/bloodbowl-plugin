@@ -2590,3 +2590,157 @@ def test_accurate_and_nerves_of_steel_on_a_pass():
     marked = (("away", 7, 3, 6),)
     assert throw([], 7, 4, marked).modifier == -1, "one Marker on the passer"
     assert throw(["Nerves of Steel"], 7, 4, marked).modifier == 0
+
+
+# --- skills batch two: the push and the follow-up --------------------------
+
+
+def test_stand_firm_refuses_a_push_into_the_crowd():
+    """ "they can choose to not be Pushed Back and instead remain in their current
+    square" — a choice, taken by the engine only where the alternative is the
+    Crowd, which is an Injury Roll with no armour behind it."""
+    # Target on the sideline with nowhere to go but off.
+    m = _match(("home", 2, 13, 6), ("away", 1, 13, 6, "3+", ["Stand Firm"]))
+    out = _block(m, "h00", "a01", _dice([], [["push_back"]]), follow_up=False)
+    assert out.ok
+    t = m.by_id("a01")
+    assert t.place == "pitch" and (t.x, t.y) == (1, 13), "Stand Firm should have refused the Crowd"
+    assert any("Stand Firm" in (e.text or "") for e in out.events)
+
+    without = _match(("home", 2, 13, 6), ("away", 1, 13, 6))
+    _block(without, "h00", "a01", _dice([2, 2], [["push_back"]]), follow_up=False)
+    assert without.by_id("a01").place != "pitch", "without it they go into the Crowd"
+
+
+def test_sidestep_escapes_the_ordinary_push_arc():
+    """ "instead of the opposing Coach choosing where this player is Pushed Back
+    to, this player's Coach may choose ANY adjacent unoccupied square."
+
+    Asserted by BLOCKING the ordinary three-square arc, because every square
+    adjacent to the target is the same distance from the blocker — so "the
+    furthest square" cannot tell the two apart, and a test written that way passes
+    against an engine that has never heard of Sidestep. Mine did.
+    """
+    from bloodbowl.engine.rules import push_squares
+
+    arc = push_squares(7, 13, 7, 14)
+    assert set(arc) == {(7, 15), (6, 15), (8, 15)}, arc  # order is direction-then-flanks
+    walled = [("home", x, y, 6) for x, y in arc]
+
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6, "3+", ["Sidestep"]), *walled)
+    _block(m, "h00", "a01", _dice([], [["push_back"]]), follow_up=False)
+    t = m.by_id("a01")
+    assert (t.x, t.y) not in arc, "Sidestep should have left the arc entirely"
+    assert max(abs(t.x - 7), abs(t.y - 14)) == 1, f"({t.x},{t.y}) is not adjacent to where they stood"
+
+    # Without it, a fully-blocked arc is a Chain Push into one of those squares.
+    plain = _match(("home", 7, 13, 6), ("away", 7, 14, 6), *walled)
+    _block(plain, "h00", "a01", _dice([2, 2], [["push_back"]]), follow_up=False)
+    assert (plain.by_id("a01").x, plain.by_id("a01").y) in arc
+
+
+def test_grab_widens_the_push_arc_and_suppresses_sidestep():
+    """ "this player's Coach may choose ANY unoccupied square adjacent to the
+    target … opposition players cannot use the Sidestep Skill." """
+    from bloodbowl.engine.actions.block import _push_to
+
+    # (6,14) is adjacent to the target but NOT in the ordinary three-square arc.
+    m = _match(("home", 7, 13, 6, "3+", ["Grab"]), ("away", 7, 14, 6))
+    square, kind = _push_to(m, m.by_id("h00"), m.by_id("a01"), prefer=(6, 13))
+    assert kind == "empty" and square == (6, 13), "Grab should reach a square outside the arc"
+
+    both = _match(("home", 7, 13, 6, "3+", ["Grab"]), ("away", 7, 14, 6, "3+", ["Sidestep"]))
+    _block(both, "h00", "a01", _dice([], [["push_back"]]), follow_up=False)
+    t = both.by_id("a01")
+    assert max(abs(t.x - 7), abs(t.y - 13)) == 1, "Grab should have suppressed Sidestep"
+
+
+def test_fend_stops_the_follow_up():
+    """ "then the opposition player may not Follow-up" — not optional, and not
+    something the acting coach's follow_up flag can override."""
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6, "3+", ["Fend"]))
+    out = _block(m, "h00", "a01", _dice([], [["push_back"]]), follow_up=True)
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 13), "the blocker followed up anyway"
+    assert any("Fend" in (e.text or "") for e in out.events)
+
+    without = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    _block(without, "h00", "a01", _dice([], [["push_back"]]), follow_up=True)
+    assert (without.by_id("h00").x, without.by_id("h00").y) == (7, 14)
+
+
+def test_juggernaut_suppresses_fend_and_stand_firm_but_only_on_a_blitz():
+    """ "when this player performs a Block Action AS PART OF A BLITZ ACTION,
+    opposition players cannot use the Fend, Stand Firm or Wrestle Skills." """
+    # Ordinary Block: Fend still works.
+    plain = _match(("home", 7, 13, 6, "3+", ["Juggernaut"]), ("away", 7, 14, 6, "3+", ["Fend"]))
+    _block(plain, "h00", "a01", _dice([], [["push_back"]]), follow_up=True)
+    assert (plain.by_id("h00").x, plain.by_id("h00").y) == (7, 13), "Juggernaut suppressed Fend off a Blitz"
+
+    # Declared Blitz: it does not.
+    blitzed = _match(("home", 7, 13, 6, "3+", ["Juggernaut"]), ("away", 7, 14, 6, "3+", ["Fend"]))
+    _declare(blitzed, "h00", "a01")
+    _block(blitzed, "h00", "a01", _dice([], [["push_back"]]), follow_up=True)
+    assert (blitzed.by_id("h00").x, blitzed.by_id("h00").y) == (7, 14), "Fend should have been suppressed"
+
+
+def test_a_partly_modelled_skill_says_which_half_is_missing():
+    """ "Modelled" and "not modelled" is a binary that flatters. A Skill with two
+    clauses of which one is applied would report as modelled and quietly do half
+    its job — which sounds settled, and is worse than saying nothing."""
+    from bloodbowl.engine.game import state_report
+    from bloodbowl.engine.skills import describe_skill, partly_modelled_on_pitch
+
+    jug = describe_skill("Juggernaut")
+    assert jug["modelled"] is True
+    assert "Both Down" in jug["partial"], jug.get("partial")
+    assert describe_skill("Grab").get("partial") is None, "a fully modelled skill needs no caveat"
+
+    m = _match(("home", 7, 13, 6, "3+", ["Juggernaut"]), ("away", 7, 14, 6, "3+", ["Stand Firm"]))
+    rows = {r["skill"]: r for r in partly_modelled_on_pitch(m)}
+    assert set(rows) == {"Juggernaut", "Stand Firm"}
+    assert rows["Stand Firm"]["players"] == ["a01"]
+    assert "Crowd" in rows["Stand Firm"]["not_applied"]
+    assert state_report(m)["partly_modelled_skills"] == partly_modelled_on_pitch(m)
+
+
+def test_a_player_pushed_into_the_crowd_actually_leaves_the_pitch():
+    """S3 INJURY BY THE CROWD: "Make an Injury Roll for a player Pushed into the
+    Crowd. If the player would be Stunned, place them in their team's Reserve Box.
+    Otherwise, follow the result on the relevant Injury Table."
+
+    Two things were wrong, and the second is why nobody noticed the first:
+
+    * An ARMOUR ROLL was made. There is none — the crowd does not care what you
+      are wearing, which is the whole reason the sideline is dangerous.
+    * `player_left_pitch` was emitted and never applied, so the victim stayed
+      standing in the square they had just been thrown out of. The log said they
+      went into the Crowd and the board disagreed.
+    """
+    m = _match(("home", 2, 13, 6), ("away", 1, 13, 6))
+    out = _block(m, "h00", "a01", _dice([2, 2], [["push_back"]]), follow_up=False)
+
+    kinds = [r.kind for e in out.events for r in e.rolls]
+    assert "Armour" not in kinds, f"the Crowd made an Armour Roll: {kinds}"
+    assert "Injury" in kinds, kinds
+    t = m.by_id("a01")
+    assert t.place != "pitch", "the victim is still standing on the pitch"
+    assert t.place == "reserves", f"a Stunned crowd result is the Reserves Box, got {t.place}"
+    assert t.down == "standing", "they are in the stands, not lying stunned on a square"
+
+
+def test_the_crowd_can_still_knock_a_player_out():
+    """ "Otherwise, follow the result on the relevant Injury Table" — 8-9 is a
+    Knocked-out, and that box is not the Reserves box."""
+    m = _match(("home", 2, 13, 6), ("away", 1, 13, 6))
+    _block(m, "h00", "a01", _dice([4, 4], [["push_back"]]), follow_up=False)
+    assert m.by_id("a01").place == "knocked_out"
+
+
+def test_a_carrier_thrown_into_the_crowd_leaves_the_ball_behind():
+    """The ball does not go into the stands with them."""
+    m = _match(("home", 2, 13, 6), ("away", 1, 13, 6))
+    m.apply(_ball_at(1, 13, carrier="a01"))
+    _block(m, "h00", "a01", _dice([2, 2, 3], [["push_back"]]), follow_up=False)
+    assert m.by_id("a01").place == "reserves"
+    assert m.ball.carrier == "", "the ball went into the Crowd too"
+    assert m.ball.in_play

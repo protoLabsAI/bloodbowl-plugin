@@ -114,12 +114,23 @@ def risk_injury(match, player, dice, by=None, armour_modifier: int = 0) -> list[
         return events
 
     bonus = mighty - spent_on_armour
+    events.extend(injury_roll(match, player, dice, bonus=bonus))
+    return events
+
+
+def injury_roll(match, player, dice, bonus: int = 0) -> list[Event]:
+    """The Injury Roll itself, and the condition it leaves the player in.
+
+    Split out because the Crowd goes straight here: "INJURY BY THE CROWD: Make an
+    Injury Roll for a player Pushed into the Crowd" — no Armour Roll at all, which
+    is the whole reason being shoved off the pitch is worse than being hit.
+    """
+    events: list[Event] = []
     injury = roll_2d6(dice, "Injury", KO_MAX + 1, modifier=bonus, note="Mighty Blow +1" if bonus else "")
     total = injury.total
 
-    # Thick Skull: "they will only be Knocked-out on the roll of a 9; a roll of an
-    # 8 will be treated as a Stunned result." Applied to the TOTAL, and asked as a
-    # hook so the Stunty interaction can join it later without editing this.
+    # Thick Skull and Stunty both answer here — Stunty REPLACES the table and Thick
+    # Skull then adjusts the result, in that order (see skills.py).
     tctx = SkillContext(match=match, player=player, value=total, flags={"outcome": _outcome(total)})
     for skill, fn in hooks_for("injury_outcome"):
         if player.has_skill(skill):
@@ -150,6 +161,34 @@ def risk_injury(match, player, dice, by=None, armour_modifier: int = 0) -> list[
             text=f"{player.name()} is {_INJURY_TEXT[outcome]}.",
         ),
     )
+    return events
+
+
+def injure_by_crowd(match, player, dice) -> list[Event]:
+    """S3 INJURY BY THE CROWD: "Make an Injury Roll for a player Pushed into the
+    Crowd. If the player would be Stunned, place them in their team's Reserve Box.
+    Otherwise, follow the result on the relevant Injury Table."
+
+    Two things the ordinary knock-down path gets wrong here, and both were wrong:
+
+    * NO ARMOUR ROLL. The crowd does not care what you are wearing.
+    * A Stunned result means the RESERVES BOX, not lying Stunned on the pitch —
+      they are not on the pitch any more, they are in the stands.
+    """
+    events = [
+        Event(
+            kind="player_left_pitch",
+            actor=player.id,
+            detail={"reason": "crowd"},
+            text=f"{player.name()} disappears into the Crowd.",
+        )
+    ]
+    match.apply(events[0])
+    # The ball does not go with them.
+    from .ball import drop
+
+    events.extend(drop(match, player, dice, reason="is thrown into the Crowd"))
+    events.extend(injury_roll(match, player, dice))
     return events
 
 

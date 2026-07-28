@@ -34,17 +34,33 @@ CATALOGUE = Path(__file__).resolve().parent.parent / "data" / "skills.json"
 # the same hook and both are applied in registration order.
 _HOOKS: dict[str, list[tuple[str, Callable]]] = {}
 _MODELLED: set[str] = set()
+# Skills the engine applies only PARTLY, and what it leaves out. "Modelled" and
+# "not modelled" is a binary that flatters: a Skill with two clauses of which one
+# is applied would otherwise report as modelled and quietly do half its job, which
+# is the same failure as saying nothing — worse, because it sounds settled.
+_PARTIAL: dict[str, str] = {}
 
 
-def skill_hook(skill: str, hook: str):
-    """Register ``fn`` as ``skill``'s behaviour at ``hook``."""
+def skill_hook(skill: str, hook: str, partial: str = ""):
+    """Register ``fn`` as ``skill``'s behaviour at ``hook``.
+
+    ``partial`` names what the engine does NOT apply, for a Skill that is modelled
+    in part. It is reported beside the Skill wherever the Skill is.
+    """
 
     def deco(fn: Callable) -> Callable:
         _HOOKS.setdefault(hook, []).append((skill, fn))
         _MODELLED.add(skill.casefold())
+        if partial:
+            _PARTIAL[skill.casefold()] = partial
         return fn
 
     return deco
+
+
+def partial_skills() -> dict[str, str]:
+    """Skill (casefolded) -> what the engine leaves out."""
+    return dict(_PARTIAL)
 
 
 def modelled() -> set[str]:
@@ -180,6 +196,22 @@ def unmodelled_on_pitch(match) -> list[dict]:
     return out
 
 
+def partly_modelled_on_pitch(match) -> list[dict]:
+    """Skills on the pitch that the engine applies only in part, and what it
+    leaves out. The companion to ``unmodelled_on_pitch`` — a coach needs both, or
+    a half-applied Skill reads as a fully applied one."""
+    holders: dict[str, list[str]] = {}
+    for p in match.on_pitch():
+        for raw in p.player.skills or []:
+            base = raw.split("(")[0].strip()
+            if base.casefold() in _PARTIAL:
+                holders.setdefault(base, []).append(p.id)
+    return [
+        {"skill": skill, "players": sorted(ids), "not_applied": _PARTIAL[skill.casefold()]}
+        for skill, ids in sorted(holders.items())
+    ]
+
+
 def already_noted(match) -> set[str]:
     """Skills this match has already announced as unmodelled."""
     return {s for e in match.events if e.kind == NOTED for s in (e.detail.get("skills") or [])}
@@ -228,7 +260,11 @@ def describe_skill(name: str) -> dict | None:
     entry = catalogue().get(base.casefold())
     if entry is None:
         return None
-    return {**entry, "modelled": base.casefold() in modelled()}
+    key = base.casefold()
+    out = {**entry, "modelled": key in modelled()}
+    if key in _PARTIAL:
+        out["partial"] = _PARTIAL[key]
+    return out
 
 
 def find_skills(query: str = "", *, category: str = "", kind: str = "", only_unmodelled: bool = False) -> list[dict]:
@@ -245,7 +281,10 @@ def find_skills(query: str = "", *, category: str = "", kind: str = "", only_unm
         is_modelled = key in modelled()
         if only_unmodelled and is_modelled:
             continue
-        out.append({**entry, "modelled": is_modelled})
+        row = {**entry, "modelled": is_modelled}
+        if key in _PARTIAL:
+            row["partial"] = _PARTIAL[key]
+        out.append(row)
     return sorted(out, key=lambda e: e["name"])
 
 
@@ -473,6 +512,87 @@ def _pass(ctx: SkillContext) -> None:
     a Pass Action." """
     if ctx.flags.get("test") == "pass":
         ctx.flags["may_reroll"] = True
+
+
+# --- Skills that change where a push goes, or whether it happens ----------
+#
+# These four are applied in engine/actions/block.py rather than through a value
+# hook, because a push is a POSITION rather than a number and the arc they widen
+# is board geometry. They register here so the catalogue reports them as modelled
+# and so this file stays the one place that lists what the engine applies.
+
+
+@skill_hook(
+    "Stand Firm",
+    "push",
+    partial="the engine only refuses a push that would go into the Crowd; refusing any "
+    "other push is a coach's judgement it does not make",
+)
+def _stand_firm(ctx: SkillContext) -> None:
+    """S3: "When this player would be Pushed Back during a Block Action, including
+    during a Chain Push, they can choose to not be Pushed Back and instead remain
+    in their current square."
+
+    A CHOICE, and there is only one coach at the table — so the engine takes it in
+    the one case where the alternative is unambiguously worse (the Crowd, which is
+    an Injury Roll with no armour behind it) and says so in the log otherwise
+    rather than guessing on the defence's behalf. See block._do_push.
+    """
+
+
+@skill_hook(
+    "Sidestep",
+    "push",
+    partial="the engine picks the square furthest from the blocker; the rules let the "
+    "coach pick any adjacent unoccupied one",
+)
+def _sidestep(ctx: SkillContext) -> None:
+    """S3: "Whenever this player is Pushed Back for any reason, then instead of the
+    opposing Coach choosing where this player is Pushed Back to, this player's
+    Coach may choose any adjacent unoccupied square … If there are no adjacent
+    unoccupied squares, then this Skill cannot be used."
+
+    Played for the pushed player as "the square furthest from the blocker", which
+    is the one thing a coach being shoved always wants. Suppressed by Grab.
+    """
+
+
+@skill_hook("Grab", "push")
+def _grab(ctx: SkillContext) -> None:
+    """S3: "When this player declares a Block Action, if the opposition player is
+    Pushed Back, then this player's Coach may choose any unoccupied square adjacent
+    to the target … Additionally, when this player performs a Block Action,
+    opposition players cannot use the Sidestep Skill."
+
+    Belongs to the acting coach, so it simply widens what ``push_to`` may name.
+    """
+
+
+@skill_hook("Fend", "push")
+def _fend(ctx: SkillContext) -> None:
+    """S3: "When a player with this Skill is Pushed Back as a result of a Block
+    Action performed against them, then the opposition player may not Follow-up."
+
+    Not optional and not overridable by the acting coach's ``follow_up`` — the
+    only thing that beats it is a Juggernaut mid-Blitz.
+    """
+
+
+@skill_hook(
+    "Juggernaut",
+    "push",
+    partial="only the Fend/Stand Firm/Wrestle suppression; treating Both Down as Pushed "
+    "Back is a choice the engine does not offer",
+)
+def _juggernaut(ctx: SkillContext) -> None:
+    """S3: "when this player performs a Block Action as part of a Blitz Action,
+    opposition players cannot use the Fend, Stand Firm or Wrestle Skills."
+
+    Only the suppression half is modelled. Its other clause — "they may treat any
+    result of Both Down as Pushed Back during any Block Actions they perform
+    during the Blitz Action" — is a choice on a result the engine does not offer a
+    choice on yet, and Wrestle is not modelled at all, so both are still reported.
+    """
 
 
 @skill_hook("Tackle", "deny_dodge_skill")
