@@ -190,6 +190,15 @@ Copy, never symlink. Then `POST /api/plugins/bloodbowl/enabled {"enabled":true}`
 > `{"detail":"Not Found"}` (capitalised); your own guard's 404 says whatever you
 > wrote.
 
+**ONE ROUTER PER PREFIX.** The host mounts plugin routers keyed on
+`(plugin_id, prefix)` and skips any already mounted, so a second router for the
+same prefix has *every* route discarded. This plugin shipped two on
+`/api/plugins/bloodbowl` for weeks; the entire match API 404'd on a real host
+while the board's routes worked, and nothing was logged. Both the harness and the
+test-client fixture had mounted every router blindly, which made them more
+forgiving than production — the one thing a test harness must never be. They now
+mimic the host's dedup, and a test asserts the plugin never hands over two.
+
 Static assets need `public_paths` in the manifest. The host auto-exempts a declared
 *view* path from the auth gate but not its siblings — so the page returns 200 while
 the stylesheet and modules 401, giving an unstyled dead board. The harness cannot
