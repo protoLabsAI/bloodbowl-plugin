@@ -357,11 +357,21 @@ block, blitz, foul, hand-off, Secure the Ball, pass → injuries → touchdowns 
 drives → half-time → full time.
 
 Actions: `move`, `block`, `blitz`, `foul`, `handoff`, `secure`, `pass`.
-Skills modelled — **17 of 108**: Accurate, Big Hand, Block, Break Tackle, Catch,
-Dodge, Guard, Jump Up, Mighty Blow, Nerves of Steel, Pass, Prehensile Tail,
-Stunty, Sure Hands, Tackle, Thick Skull, Titchy. The other 91 are reported as
-unmodelled *and can still be quoted* — `bb_get_skill` returns the rulebook's text
-for all 108 whether or not the engine applies them.
+Skills modelled — **22 of 108**: Accurate, Big Hand, Block, Break Tackle, Catch,
+Dodge, Fend, Grab, Guard, Juggernaut, Jump Up, Mighty Blow, Nerves of Steel, Pass,
+Prehensile Tail, Sidestep, Stand Firm, Stunty, Sure Hands, Tackle, Thick Skull,
+Titchy. The other 86 are reported as unmodelled *and can still be quoted* —
+`bb_get_skill` returns the rulebook's text for all 108 whether or not the engine
+applies them.
+
+**"Modelled" is not binary, and pretending it is flatters.** A Skill with two
+clauses of which one is applied would report as modelled and quietly do half its
+job — which *sounds settled*, and is worse than saying nothing. So
+`skill_hook(..., partial="what is left out")` records the gap, `describe_skill`
+returns it, and `skills.partly_modelled_on_pitch` is the standing companion to
+`unmodelled_on_pitch`. Both ride with `bb_game_state`. Three entries today:
+Juggernaut (only the suppression clause), Stand Firm and Sidestep (the engine
+takes a stated policy where the rules give a coach a choice).
 
 **Two hooks carry every roll-modifying Skill**, and adding a third would be a
 smell. `roll_modifier` changes the number, `reroll` grants a second go, and the

@@ -253,6 +253,19 @@ class Match:
                     p.action = ""
                     p.dodge_reroll_used = p.break_tackle_used = False
 
+        elif kind == "player_left_pitch":
+            # Pushed into the Crowd. They land in the Reserves Box unless the
+            # Injury Roll that follows moves them somewhere worse — "If the player
+            # would be Stunned, place them in their team's Reserve Box." This
+            # event used to be emitted and never applied, so a player shoved into
+            # the stands stayed standing in the square they were shoved out of.
+            p = self.by_id(event.actor)
+            if p is not None:
+                p.place = "reserves"
+                p.down = "standing"
+                if self.ball.carrier == p.id:
+                    self.ball.carrier = ""
+
         elif kind == "player_sent_off":
             p = self.by_id(event.actor)
             if p is not None:
@@ -358,7 +371,11 @@ class Match:
             if p is not None:
                 outcome = str(d.get("outcome") or "")
                 if outcome == "stunned":
-                    p.down = "stunned"
+                    # …unless they are already off the pitch: a player Pushed into
+                    # the Crowd who "would be Stunned" goes to the Reserves Box
+                    # rather than lying Stunned on a square they no longer occupy.
+                    if p.place == "pitch":
+                        p.down = "stunned"
                 elif outcome in ("knocked_out", "casualty"):
                     # Leaving the pitch drops the ball where they stood; the box
                     # they go to is not a square, so they must stop occupying one.

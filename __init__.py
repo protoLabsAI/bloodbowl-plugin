@@ -239,8 +239,12 @@ def _tools(cfg: dict):
 
         ``unmodelled_skills`` lists the Skills currently on the pitch that this
         engine does NOT apply, and who is carrying them. Worth a glance before
-        promising a coach what a player will do: the engine will play a Black Orc
-        with Grab as though it had no Grab, and say so, rather than guessing.
+        promising a coach what a player will do.
+
+        ``partly_modelled_skills`` is the one that catches people out: a Skill the
+        engine applies in PART, with the clause it leaves out spelled in
+        ``not_applied``. Read it before saying a skill "works" — half of a skill
+        working looks exactly like all of it working.
         """
         from .engine.game import state_report
         from .store import load_match

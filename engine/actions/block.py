@@ -24,7 +24,7 @@ from ...pitch import in_bounds
 from ..ball import check_touchdown
 from ..dice import BLOCK_LABELS, roll_target
 from ..events import Event
-from ..injury import knock_down, risk_injury
+from ..injury import injure_by_crowd, knock_down
 from ..rules import (
     MAX_RUSHES,
     adjacent,
@@ -122,15 +122,71 @@ def is_blitzing(match: Match, p, t) -> bool:
     return bool(b) and b.get("player") == p.id and b.get("target") == t.id and not b.get("blocked")
 
 
+def _juggernaut_suppresses(match: Match, blocker) -> bool:
+    """JUGGERNAUT: "when this player performs a Block Action as part of a Blitz
+    Action, opposition players cannot use the Fend, Stand Firm or Wrestle Skills."
+
+    Only as part of a BLITZ — a Juggernaut throwing an ordinary Block suppresses
+    nothing, which is the half that is easy to lose.
+    """
+    b = match.blitz
+    return blocker.has_skill("Juggernaut") and bool(b) and b.get("player") == blocker.id
+
+
+def _free_around(match: Match, target) -> list[tuple[int, int]]:
+    """Every unoccupied square on the pitch adjacent to ``target``.
+
+    Grab and Sidestep both widen the choice from the three-square arc to this,
+    and both say the same thing when it is empty: "If there are no adjacent
+    unoccupied squares, then this Skill cannot be used."
+    """
+    return [
+        (target.x + dx, target.y + dy)
+        for dx in (-1, 0, 1)
+        for dy in (-1, 0, 1)
+        if (dx, dy) != (0, 0)
+        and in_bounds(target.x + dx, target.y + dy)
+        and match.at(target.x + dx, target.y + dy) is None
+    ]
+
+
 def _push_to(match: Match, blocker, target, prefer: tuple | None = None):
     """Where a pushed player ends up, and whether that is off the pitch.
 
     Returns (square, kind) with kind in {"empty", "crowd", "occupied"}. A square
     off the pitch is the Crowd; an occupied one starts a Chain Push.
+
+    Two Skills widen the arc, and they contest each other:
+
+      GRAB    "this player's Coach may choose ANY unoccupied square adjacent to
+              the target … Additionally, when this player performs a Block Action,
+              opposition players cannot use the Sidestep Skill."
+      SIDESTEP "instead of the OPPOSING Coach choosing where this player is Pushed
+              Back to, this player's Coach may choose any adjacent unoccupied
+              square."
+
+    Sidestep belongs to the player being shoved, so the engine plays it for them:
+    the square FURTHEST from the blocker, which is the one thing a coach being
+    pushed always wants and the one thing an arbitrary pick never guarantees.
+    Grab belongs to the acting coach, so it honours ``push_to`` — the same command
+    field an ordinary push already takes, just with more squares to reach.
     """
     options = push_squares(blocker.x, blocker.y, target.x, target.y)
     on_pitch = [(x, y) for x, y in options if in_bounds(x, y)]
     empty = [sq for sq in on_pitch if match.at(*sq) is None]
+
+    if blocker.has_skill("Grab"):
+        wider = _free_around(match, target)
+        if wider:
+            if prefer and tuple(prefer) in wider:
+                return tuple(prefer), "empty"
+            empty = wider or empty
+    elif target.has_skill("Sidestep"):
+        wider = _free_around(match, target)
+        if wider:
+            away = max(wider, key=lambda sq: max(abs(sq[0] - blocker.x), abs(sq[1] - blocker.y)))
+            return away, "empty"
+
     if prefer and tuple(prefer) in empty:
         return tuple(prefer), "empty"
     if empty:
@@ -158,16 +214,38 @@ def _do_push(match: Match, blocker, target, dice, rec: Recorder, pushed: list, p
 
     square, kind = _push_to(match, blocker, target, prefer)
 
-    if kind == "crowd":
+    # STAND FIRM: "When this player would be Pushed Back during a Block Action,
+    # including during a Chain Push, they can choose to not be Pushed Back and
+    # instead remain in their current square."
+    #
+    # It is a CHOICE, and the engine only has one coach at the table. So it is
+    # taken in the one case where the alternative is unambiguously worse: the
+    # Crowd, which is an Injury Roll with no armour behind it. Anywhere else,
+    # staying put versus being shoved is positional, and the engine declines to
+    # guess on the defence's behalf — it says so in the log instead.
+    if target.has_skill("Stand Firm") and not _juggernaut_suppresses(match, blocker):
+        if kind == "crowd":
+            rec.emit(
+                Event(
+                    kind="note",
+                    actor=target.id,
+                    detail={"skill": "Stand Firm"},
+                    text=f"{target.name()} uses Stand Firm and refuses to be pushed into the Crowd.",
+                )
+            )
+            return
         rec.emit(
             Event(
-                kind="player_left_pitch",
+                kind="note",
                 actor=target.id,
-                detail={"reason": "crowd"},
-                text=f"{target.name()} is Pushed into the Crowd.",
+                detail={"skill": "Stand Firm", "used": False},
+                text=f"{target.name()} has Stand Firm and could refuse this push; the engine only "
+                "uses it to avoid the Crowd.",
             )
         )
-        rec.absorb(risk_injury(match, target, dice, by=blocker))
+
+    if kind == "crowd":
+        rec.absorb(injure_by_crowd(match, target, dice))
         return
 
     if kind == "occupied":
@@ -307,7 +385,22 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             # "Apply the Push Back result. The target is then Knocked Down in the
             # square they are now in" — so the Armour Roll happens where they land.
             rec.absorb(knock_down(match, t, dice, by=p))
-        if follow_up and match.at(*vacated) is None:
+        # FEND: "When a player with this Skill is Pushed Back as a result of a
+        # Block Action performed against them, then the opposition player MAY NOT
+        # Follow-up." Not optional, and not a preference the acting coach can
+        # override — which is why it is checked after `follow_up`, not folded into
+        # it. The exception is a Juggernaut mid-Blitz.
+        fended = t.has_skill("Fend") and not _juggernaut_suppresses(match, p)
+        if fended and follow_up:
+            rec.emit(
+                Event(
+                    kind="note",
+                    actor=t.id,
+                    detail={"skill": "Fend"},
+                    text=f"{t.name()} uses Fend — {p.name()} may not Follow-up.",
+                )
+            )
+        if follow_up and not fended and match.at(*vacated) is None:
             rec.emit(
                 Event(
                     kind="player_followed_up",
