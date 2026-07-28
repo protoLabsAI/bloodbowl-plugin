@@ -224,6 +224,31 @@ def drive(base: str, *, do_checks: bool, live: bool) -> int:
             page.wait_for_timeout(600)
             print("  -- interaction --")
 
+            # Presets, which only exist to be recalled by name — so the check is
+            # that picking one actually repopulates the board.
+            picked = page.locator("#presetPick option").count()
+            check("the preset picker is populated", picked >= 4, f"{picked} options")
+            page.select_option("#presetPick", "Standard defence")
+            page.locator("#presetLoad").click()
+            page.wait_for_timeout(700)
+            loaded = page.locator(".pc").count()
+            check("loading a preset fills the board", loaded >= 8, f"{loaded} players")
+            legal = page.evaluate("""async () => {
+              const s = await (await fetch("/api/plugins/bloodbowl/state")).json();
+              return s.players.filter(p => p.side === "home" && p.on_los).length;
+            }""")
+            check("the loaded setup puts three on the Line of Scrimmage", legal >= 3, f"{legal} on the LoS")
+            check(
+                "loading a shipped preset keeps the chosen teams",
+                page.locator("#homeTeam").input_value() == "Orc",
+                page.locator("#homeTeam").input_value(),
+            )
+            # Put the seeded board back — everything after this expects it.
+            seed(base)
+            page.reload(wait_until="networkidle")
+            page.wait_for_selector(".cell", timeout=10000)
+            page.wait_for_timeout(500)
+
             before = page.locator(".pc").count()
             page.locator(".pi").first.click()  # arm a position
             check("click-to-arm marks the palette item", page.locator(".pi.armed").count() == 1)

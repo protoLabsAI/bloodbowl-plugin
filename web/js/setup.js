@@ -23,6 +23,7 @@ export const state = {
   selected: null,
   dragging: false,
   undo: [],
+  presets: [],
 };
 
 export function setScenario(sc) {
@@ -176,11 +177,56 @@ export function buildPalette() {
   paintArmed();
 }
 
+export async function loadPresets() {
+  let list = [];
+  try {
+    list = (await api("/presets")).presets || [];
+  } catch (e) {
+    fail(e);
+  }
+  state.presets = list;
+  // Grouped, because a kick-off setup and a mid-game formation are different
+  // things and a flat list invites loading a cage as a starting line-up.
+  const group = (kind, label) => {
+    const rows = list.filter((p) => (p.kind || "setup") === kind);
+    if (!rows.length) return "";
+    return (
+      `<optgroup label="${label}">` +
+      rows.map((p) => `<option value="${esc(p.name)}">${esc(p.name)}${p.builtin ? "" : " *"}</option>`).join("") +
+      `</optgroup>`
+    );
+  };
+  $("#presetPick").innerHTML = group("setup", "Setups") + group("formation", "Formations");
+}
+
 export async function ensureRoster(name) {
   if (name && !state.roster[name]) state.roster[name] = await api(`/roster?team=${encodeURIComponent(name)}`);
 }
 
 export function wire() {
+  const chosen = () => $("#presetPick").value;
+  const noteOf = (name) => (state.presets.find((p) => p.name === name) || {}).note || "";
+  for (const [id, mirror] of [["#presetLoad", false], ["#presetMirror", true]]) {
+    $(id).addEventListener("click", async () => {
+      const name = chosen();
+      if (!name) return;
+      await commit(() => api("/presets/load", json({ name, mirror })));
+      const note = noteOf(name);
+      if (note) $("#counts").title = note;
+    });
+  }
+  $("#presetSave").addEventListener("click", async () => {
+    const name = prompt("Save this board as:");
+    if (!name) return;
+    try {
+      await api("/presets/save", json({ name, note: "" }));
+      await loadPresets();
+      $("#presetPick").value = name;
+      ok();
+    } catch (e) {
+      fail(e);
+    }
+  });
   for (const which of ["home", "away"]) {
     $(which === "home" ? "#homeTeam" : "#awayTeam").addEventListener("change", async (ev) => {
       const name = ev.target.value;

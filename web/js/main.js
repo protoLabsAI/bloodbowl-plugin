@@ -63,6 +63,7 @@ async function boot() {
     await setup.ensureRoster(meta.scenario.home_team);
     await setup.ensureRoster(meta.scenario.away_team);
     setup.buildPalette();
+    await setup.loadPresets();
     setup.wire();
     game.wire(() => applyMode());
 
