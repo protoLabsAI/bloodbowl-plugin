@@ -260,12 +260,10 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     for who in pushed:
         rec.absorb(check_touchdown(match, who))
 
-    p.acted = True
     rec.emit(
         Event(
-            kind="note",
+            kind="activation_ended",
             actor=p.id,
-            detail={"acted": True},
             text=f"{p.name()}'s Block Action is over.",
         )
     )

@@ -91,12 +91,10 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             )
         )
         rec.absorb(check_touchdown(match, p))
-        p.acted = True
         rec.emit(
             Event(
-                kind="note",
+                kind="activation_ended",
                 actor=p.id,
-                detail={"acted": True},
                 text=f"{p.name()} has the ball and their activation ends.",
             )
         )
@@ -111,7 +109,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         )
     )
     rec.absorb(bounce(match, dice))
-    p.acted = True
+    rec.emit(Event(kind="activation_ended", actor=p.id))
     return Outcome(
         ok=False,
         events=rec.events,

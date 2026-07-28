@@ -137,7 +137,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             )
         )
         rec.absorb(_drop_here(match, p, dice))
-        p.acted = True
+        rec.emit(Event(kind="activation_ended", actor=p.id))
         return Outcome(
             ok=False,
             events=rec.events,
@@ -184,7 +184,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 text=f"{q.name()} INTERCEPTS the pass! {ir.describe()}",
             )
             rec.emit(ev)
-            p.acted = True
+            rec.emit(Event(kind="activation_ended", actor=p.id))
             return Outcome(
                 ok=False,
                 events=rec.events,
@@ -206,7 +206,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         else:
             rec.absorb(catch(match, landed, dice))
 
-    p.acted = True
+    rec.emit(Event(kind="activation_ended", actor=p.id))
     holder = match.by_id(match.ball.carrier) if match.ball.carrier else None
     ours = holder is not None and holder.side == p.side
     return Outcome(
