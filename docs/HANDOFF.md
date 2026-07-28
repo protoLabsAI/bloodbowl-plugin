@@ -343,6 +343,12 @@ Thick Skull. Everything else is reported as unmodelled.
 ### Known simplifications, all deliberate and all stated in the code
 
 - The drive setup is captured once, at the first kick-off, and reused.
+- A Blitz may be re-pointed at a different target until the player moves or
+  blocks — declaring rolls nothing, so a mis-named target costs a coach nothing to
+  correct, and the team's one Blitz is spent by the same player either way. The
+  bound is what makes it safe: re-declaring after the Blitz's Block would reset
+  `blocked` and buy a second one, and `acted` refuses it. Tested in both
+  directions.
 - The Casualty Roll (D16 table) is not made; a Casualty just leaves the pitch.
 - Argue the Call is rolled for you rather than offered as a choice. The rules say
   a Coach "MAY attempt" it, but declining is never better: 2-5 changes nothing and
