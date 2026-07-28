@@ -248,6 +248,20 @@ def _do_push(match: Match, blocker, target, dice, rec: Recorder, pushed: list, p
 
     square, kind = _push_to(match, blocker, target, prefer)
 
+    # Take Root: "cannot be Pushed Back, and may not leave their current square
+    # for any reason". Unlike Stand Firm this is not a choice, so it comes first
+    # and no note about declining is owed.
+    if target.rooted:
+        rec.emit(
+            Event(
+                kind="note",
+                actor=target.id,
+                detail={"skill": "Take Root"},
+                text=f"{target.name()} is Rooted and cannot be Pushed Back.",
+            )
+        )
+        return
+
     # STAND FIRM: "When this player would be Pushed Back during a Block Action,
     # including during a Chain Push, they can choose to not be Pushed Back and
     # instead remain in their current square."
@@ -519,7 +533,17 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                     text=f"{t.name()} uses Fend — {p.name()} may not Follow-up.",
                 )
             )
-        if follow_up and not fended and match.at(*vacated) is None:
+        # "…may not Follow-up after performing a Block Action" while Rooted.
+        if p.rooted and follow_up:
+            rec.emit(
+                Event(
+                    kind="note",
+                    actor=p.id,
+                    detail={"skill": "Take Root"},
+                    text=f"{p.name()} is Rooted and may not Follow-up.",
+                )
+            )
+        if follow_up and not fended and not p.rooted and match.at(*vacated) is None:
             rec.emit(
                 Event(
                     kind="player_followed_up",

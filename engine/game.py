@@ -10,7 +10,7 @@ from __future__ import annotations
 from . import actions
 from .dice import SeededDice
 from .events import Event
-from .skills import NOTED, first_mentions, partly_modelled_on_pitch, unmodelled_on_pitch
+from .skills import NOTED, activation_gates, first_mentions, partly_modelled_on_pitch, unmodelled_on_pitch
 from .state import Match, starting_positions
 
 TURNOVER_TEXT = {
@@ -115,6 +115,16 @@ def act(match: Match, action: str, cmd: dict, dice=None) -> dict:
         return {"ok": False, "error": "the match is over"}
 
     dice = dice or dice_for(match)
+
+    # "Whenever this player is activated, AFTER DECLARING THEIR ACTION they must
+    # roll a D6." Five Traits gate an activation this way, and they fire here
+    # rather than inside an action because they are about the ACTIVATION, not
+    # about what was declared — and because a gate that lived in `move` would not
+    # fire on a Block.
+    gated = _run_activation_gates(match, action, cmd, dice)
+    if gated is not None:
+        return gated
+
     # resolve applies its own events (see actions.Outcome) — do not re-apply.
     outcome = entry["resolve"](match, cmd, dice)
     # Announce any Skill this engine does not apply, BEFORE the turnover and
@@ -139,6 +149,122 @@ def act(match: Match, action: str, cmd: dict, dice=None) -> dict:
         end_turn(match, forced=True)
 
     return _report(match, outcome, noted)
+
+
+def _run_activation_gates(match: Match, action: str, cmd: dict, dice) -> dict | None:
+    """Roll any activation gate the acting player carries. Returns a report if the
+    activation is over before it began, or None to carry on.
+
+    An activation BEGINS with the player's first action of the turn, so the gate is
+    rolled when `acted` is still false. Clearing Distracted here is the rule, not
+    tidiness: "they will remain Distracted UNTIL THEY ARE NEXT ACTIVATED" — a new
+    turn does not clear it, and this is where being next activated happens.
+    """
+    from .events import Event
+    from .injury import knock_down
+    from .rules import adjacent, has_tackle_zone
+
+    p = match.by_id(str(cmd.get("player") or ""))
+    if p is None or p.acted or p.side != match.clock.active:
+        return None
+    gates = activation_gates(match, p, action)
+    if p.distracted:
+        match.apply(
+            Event(
+                kind="player_status",
+                actor=p.id,
+                detail={"distracted": False},
+                text=f"{p.name()} shakes it off and is no longer Distracted.",
+            )
+        )
+    if not gates:
+        return None
+
+    from .dice import roll_target
+
+    events: list = []
+    for gate in gates:
+        if gate.get("skill_skipped") or gate.get("skip"):
+            continue
+        r = roll_target(dice, gate["skill"], gate["target"], gate.get("modifier", 0), note=" ".join(gate["notes"]))
+        ev = Event(kind="note", actor=p.id, rolls=[r], text=f"{gate['skill']}: {r.describe()}")
+        match.apply(ev)
+        events.append(ev)
+        if r.passed:
+            continue
+
+        fail = gate["on_fail"]
+        if fail in ("distracted", "lash_out"):
+            mate = None
+            if fail == "lash_out":
+                mate = next(
+                    (
+                        q
+                        for q in match.on_pitch(p.side)
+                        if q.id != p.id and has_tackle_zone(q) and adjacent(q.x, q.y, p.x, p.y)
+                    ),
+                    None,
+                )
+            if mate is not None:
+                # "Choose one Standing team-mate adjacent to this player; the
+                # chosen player is immediately Knocked Down. This will NOT cause a
+                # Turnover unless the player was holding the ball."
+                held = match.ball.carrier == mate.id
+                ev = Event(
+                    kind="note",
+                    actor=p.id,
+                    text=f"{p.name()} lashes out at {mate.name()}.",
+                )
+                match.apply(ev)
+                events.append(ev)
+                events.extend(knock_down(match, mate, dice, by=p, cause="lashed out at"))
+                return _gate_report(match, p, events, turnover=held, text=f"{p.name()} lashed out at {mate.name()}.")
+            ev = Event(
+                kind="player_status",
+                actor=p.id,
+                detail={"distracted": True},
+                text=f"{p.name()} is Distracted — no Tackle Zone, no Active Skills, and their activation ends.",
+            )
+        elif fail == "rooted":
+            ev = Event(
+                kind="player_status",
+                actor=p.id,
+                detail={"rooted": True},
+                text=f"{p.name()} takes root — they cannot Move, Follow-up or be Pushed Back until the "
+                "Drive ends or they hit the ground.",
+            )
+        else:  # end_activation
+            ev = Event(
+                kind="note",
+                actor=p.id,
+                text=f"{p.name()} rages incoherently and nothing really happens. Their activation ends.",
+            )
+        match.apply(ev)
+        events.append(ev)
+        return _gate_report(match, p, events, turnover=False, text=ev.text)
+    return None
+
+
+def _gate_report(match: Match, p, events: list, turnover: bool, text: str) -> dict:
+    """A failed gate ends the activation before the declared Action happens."""
+    from .actions import ended
+    from .events import Event
+
+    end = ended(p.id, "gate")
+    match.apply(end)
+    events.append(end)
+    if turnover:
+        match.apply(Event(kind="turnover", detail={"side": match.clock.active}, text=TURNOVER_TEXT[True]))
+        end_turn(match, forced=True)
+    return {
+        "ok": False,
+        "turnover": turnover,
+        "text": text,
+        "events": [e.to_dict() for e in events],
+        "unmodelled_skills": [],
+        "clock": match.clock.to_dict(),
+        "over": match.over,
+    }
 
 
 def _report(match: Match, outcome, noted: list[str], touchdown: str | None = None) -> dict:

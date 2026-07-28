@@ -83,6 +83,26 @@ class SkillContext:
     notes: list[str] = field(default_factory=list)
 
 
+def can_use(player, skill: str) -> bool:
+    """May this player use this Skill right now?
+
+    S3, on Distracted: "Whilst a player is Distracted, they cannot use ACTIVE
+    Skills or Traits, cannot attempt to Intercept a Pass Action, and cannot
+    attempt to Catch the ball."
+
+    Active versus Passive is in the shipped catalogue, so this is the one rule the
+    engine can enforce for all 108 at once — including the 81 it does not model.
+    Unknown Skills are allowed rather than blocked: a catalogue that failed to load
+    must not silently switch every Skill off.
+    """
+    if not player.has_skill(skill):
+        return False
+    if not getattr(player, "distracted", False):
+        return True
+    entry = catalogue().get(skill.casefold())
+    return not (entry and entry.get("when") == "Active")
+
+
 def apply_value_hook(hook: str, ctx: SkillContext, player) -> int:
     """Run every registered hook the PLAYER actually has, folding ``ctx.value``."""
     for skill, fn in hooks_for(hook):
@@ -114,7 +134,7 @@ def roll_modifier(match, player, test: str, base: int = 0, **flags) -> SkillCont
     """
     ctx = SkillContext(match=match, player=player, value=base, flags={"test": test, **flags})
     for skill, fn in hooks_for("roll_modifier"):
-        if player.has_skill(skill):
+        if can_use(player, skill):
             fn(ctx)
     return ctx
 
@@ -126,11 +146,37 @@ def may_reroll(match, player, test: str, **flags) -> tuple[bool, str]:
     """
     ctx = SkillContext(match=match, player=player, flags={"test": test, **flags})
     for skill, fn in hooks_for("reroll"):
-        if player.has_skill(skill):
+        if can_use(player, skill):
             fn(ctx)
             if ctx.flags.get("may_reroll"):
                 return True, skill
     return False, ""
+
+
+# --- activation gates ------------------------------------------------------
+#
+# Five Traits share one shape: "Whenever this player is activated, AFTER DECLARING
+# THEIR ACTION they must roll a D6", and on a failure something goes wrong. They
+# differ only in the target, the modifier and the consequence — so they are one
+# mechanism with three numbers rather than five copies of a paragraph.
+#
+# The consequences, all defined in the rules rather than invented here:
+#   distracted      no Tackle Zone, no Active Skills, no Catch, no Intercept, and
+#                   "their activation immediately ends"
+#   rooted          cannot Move, cannot Follow-up, cannot be Pushed Back
+#   end_activation  nothing happens; the activation is simply over
+#   lash_out        an adjacent Standing team-mate is Knocked Down
+
+
+def activation_gates(match, player, action: str) -> list[dict]:
+    """Every gate this player must pass before performing ``action``."""
+    out = []
+    for skill, fn in hooks_for("activation_gate"):
+        if player.has_skill(skill):  # NOT can_use: a Trait you cannot avoid
+            ctx = SkillContext(match=match, player=player, flags={"action": action})
+            fn(ctx)
+            out.append({"skill": skill, "notes": ctx.notes, **ctx.flags})
+    return out
 
 
 def unmodelled_skills(player) -> list[str]:
@@ -593,6 +639,86 @@ def _juggernaut(ctx: SkillContext) -> None:
     during the Blitz Action" — is a choice on a result the engine does not offer a
     choice on yet, and Wrestle is not modelled at all, so both are still reported.
     """
+
+
+# --- the activation gates -------------------------------------------------
+
+
+def _blitzy(ctx: SkillContext) -> bool:
+    """Did they declare a Block or a Blitz? Three gates give +2 for it."""
+    return ctx.flags.get("action") in ("block", "blitz")
+
+
+@skill_hook("Bone Head", "activation_gate")
+def _bone_head(ctx: SkillContext) -> None:
+    """S3: "Whenever this player is activated, after declaring their Action they
+    must roll a D6. On a 2+, the player may perform the declared Action as normal.
+    On a 1, the player becomes Distracted." """
+    ctx.flags.update(target=2, modifier=0, on_fail="distracted")
+
+
+@skill_hook("Really Stupid", "activation_gate")
+def _really_stupid(ctx: SkillContext) -> None:
+    """S3: "…they must roll a D6. They may apply a +2 modifier to the roll if they
+    have any Standing team-mates who are not Distracted, AND DO NOT HAVE THE
+    REALLY STUPID TRAIT, adjacent to them. On a 4+, the player may perform the
+    declared Action as normal. On a 1-3, this player becomes Distracted."
+
+    Two Really Stupid players propping each other up is exactly what the rule
+    excludes, and it is the clause a paraphrase drops.
+    """
+    from .rules import adjacent, has_tackle_zone
+
+    p = ctx.player
+    helpers = [
+        q
+        for q in ctx.match.on_pitch(p.side)
+        if q.id != p.id and has_tackle_zone(q) and not q.has_skill("Really Stupid") and adjacent(q.x, q.y, p.x, p.y)
+    ]
+    ctx.flags.update(target=4, modifier=2 if helpers else 0, on_fail="distracted")
+    if helpers:
+        ctx.notes.append(f"+2 — {helpers[0].name()} is next to them")
+
+
+@skill_hook("Take Root", "activation_gate")
+def _take_root(ctx: SkillContext) -> None:
+    """S3: "…IF THEY ARE STANDING they must roll a D6. On a 2+, the player may
+    perform the declared Action as normal. On a 1, the player becomes Rooted." """
+    if ctx.player.down != "standing":
+        ctx.flags.update(skip=True)
+        return
+    ctx.flags.update(target=2, modifier=0, on_fail="rooted")
+
+
+@skill_hook("Unchannelled Fury", "activation_gate")
+def _unchannelled_fury(ctx: SkillContext) -> None:
+    """S3: "…They may apply a +2 modifier to the roll if they have declared a Block
+    Action or a Blitz Action. On a 4+, the player may perform the declared Action
+    as normal. On a 1-3, this player rages incoherently but nothing really happens.
+    Their activation immediately ends." """
+    ctx.flags.update(target=4, modifier=2 if _blitzy(ctx) else 0, on_fail="end_activation")
+
+
+@skill_hook("Animal Savagery", "activation_gate")
+def _animal_savagery(ctx: SkillContext) -> None:
+    """S3: "…+2 … if they have declared a Block Action or a Blitz Action. On a 4+,
+    the player may perform the declared action as normal. On a 1-3, this player
+    lashes out at one of their team-mates. Choose one Standing team-mate adjacent
+    to this player; the chosen player is immediately Knocked Down. This will not
+    cause a Turnover unless the player was holding the ball. … If this player rolls
+    a 1-3 and there are no Standing team-mates adjacent to them, then they are
+    Distracted."
+    """
+    ctx.flags.update(target=4, modifier=2 if _blitzy(ctx) else 0, on_fail="lash_out")
+
+
+@skill_hook("Drunkard", "roll_modifier")
+def _drunkard(ctx: SkillContext) -> None:
+    """S3: "This player applies a -1 modifier to test whenever they attempt to
+    Rush." """
+    if ctx.flags.get("test") == "rush":
+        ctx.value -= 1
+        ctx.notes.append("Drunkard: -1 to the Rush")
 
 
 @skill_hook("Wrestle", "block_result")

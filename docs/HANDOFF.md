@@ -361,10 +361,7 @@ block, blitz, foul, hand-off, Secure the Ball, pass → injuries → touchdowns 
 drives → half-time → full time.
 
 Actions: `move`, `block`, `blitz`, `foul`, `handoff`, `secure`, `pass`.
-Skills modelled — **27 of 108**: Accurate, Big Hand, Block, Brawler, Break Tackle,
-Catch, Claws, Dauntless, Dodge, Fend, Grab, Guard, Horns, Juggernaut, Jump Up,
-Mighty Blow, Nerves of Steel, Pass, Prehensile Tail, Sidestep, Stand Firm, Stunty,
-Sure Hands, Tackle, Thick Skull, Titchy, Wrestle. The other 81 are reported as unmodelled *and can still be quoted* —
+Skills modelled — **33 of 108**. The other 75 are reported as unmodelled *and can still be quoted* —
 `bb_get_skill` returns the rulebook's text for all 108 whether or not the engine
 applies them.
 
@@ -390,6 +387,23 @@ Steel says "to Catch the ball, or … to Pass the ball" and is one `in
 - A modifier that belongs to the MARKER, not the roller, goes in `rules`, not a
   hook. Titchy's "will not apply a -1 … for Marking" is never applied at all, so
   there is nothing for a hook on the dodger to cancel.
+
+**FIVE TRAITS ARE ONE MECHANISM.** Bone Head, Really Stupid, Take Root, Animal
+Savagery and Unchannelled Fury all say "Whenever this player is activated, after
+declaring their Action they must roll a D6", and differ only in the target, the
+modifier and the consequence. They register an `activation_gate` returning those
+three things, and `game._run_activation_gates` rolls them — in `act`, before
+`resolve`, because they gate the ACTIVATION rather than the Action. A gate in
+`move` would not fire on a Block.
+
+**`distracted` was dead state.** The field existed, three call sites READ it
+(Tackle Zone, Catch, Intercept) and nothing on earth set it — these Traits are
+what produce it. Its full rule adds one more clause the engine can now enforce
+for all 108 skills at once: "Whilst a player is Distracted, they cannot use ACTIVE
+Skills or Traits", and Active-versus-Passive is in the shipped catalogue. That is
+`skills.can_use`, and every hook dispatcher goes through it. Note the duration —
+"they will remain Distracted UNTIL THEY ARE NEXT ACTIVATED", so a new turn does
+NOT clear it; the player's own next activation does.
 
 **READ THE VERB: "declares" and "performs" are different triggers.** S3 gives it a
 worked example, because it reads like a technicality until it costs you a Skill:
