@@ -40,10 +40,20 @@ DASHES = {"‑": "-", "‒": "-", "–": "-", "—": "-", "−": "-"}
 
 
 def clean(s: str) -> str:
+    # The site publishes errata in place: the superseded value is wrapped in <del>
+    # and the correction printed beside it. Stripping tags without dropping the
+    # struck CONTENT fuses the two — "<del>3+</del> 4+" becomes "3+ 4+", which is
+    # worse than either, because it reads as a real value. Where the columns are
+    # letters rather than numbers ("<del>M</del>" in skill access) the fusion is
+    # invisible: the team simply keeps an access it no longer has.
+    s = re.sub(r"(?is)<del>.*?</del>", " ", s)
     s = html.unescape(re.sub(r"<[^>]+>", " ", s))
     for bad, good in DASHES.items():
         s = s.replace(bad, good)
-    return re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r"\s+", " ", s).strip()
+    # Removing a struck value leaves "Loner ( 3+ )". These strings get quoted back
+    # to a coach verbatim, so close the gap.
+    return re.sub(r"\(\s+", "(", re.sub(r"\s+\)", ")", s))
 
 
 def fetch(url: str) -> str:

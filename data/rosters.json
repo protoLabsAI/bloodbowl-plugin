@@ -1030,7 +1030,7 @@
           "AV": "10+",
           "skills": [
             "Bone Head",
-            "Loner ( 4+ 3+ )",
+            "Loner (3+)",
             "Mighty Blow",
             "Thick Skull",
             "Throw Team-mate"
@@ -2511,8 +2511,7 @@
           ],
           "secondary": [
             "A",
-            "G",
-            "M"
+            "G"
           ],
           "cost": "140K"
         }
@@ -2710,8 +2709,7 @@
           ],
           "secondary": [
             "A",
-            "G",
-            "M"
+            "G"
           ],
           "cost": "140K"
         }
@@ -3750,7 +3748,7 @@
           "cost": "50K"
         },
         {
-          "qty": "0-5 0-3",
+          "qty": "0-3",
           "position": "Halfling Hopeful",
           "role": "Lineman, Halfling",
           "MA": "5",
@@ -3957,8 +3955,7 @@
           ],
           "secondary": [
             "A",
-            "G",
-            "M"
+            "G"
           ],
           "cost": "140K"
         },
@@ -4094,7 +4091,7 @@
           "MA": "6",
           "ST": "2",
           "AG": "3+",
-          "PA": "3+ 4+",
+          "PA": "4+",
           "AV": "8+",
           "skills": [
             "Dodge",

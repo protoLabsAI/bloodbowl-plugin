@@ -485,3 +485,49 @@ def test_stars_for_a_team_are_priced_and_sorted(registry):
 def test_get_star_tool_reports_a_miss_rather_than_guessing(registry):
     out = json.loads(_tool(registry, "bb_get_star").invoke({"name": "Sir Not Appearing"}))
     assert out["ok"] is False and any("Griff" in n for n in out["known"])
+
+
+# --- errata ---------------------------------------------------------------
+#
+# The site publishes corrections in place: the old value is wrapped in <del> and
+# the new one printed beside it. Flattening tags without dropping the struck
+# CONTENT fuses them, and the result reads as a real value.
+
+
+def test_no_stat_or_quantity_cell_holds_two_fused_values():
+    """ "<del>3+</del> 4+" flattens to "3+ 4+" — ambiguous, and shaped like data."""
+    from bloodbowl.pitch import rosters
+
+    fused = [
+        (t["name"], p["position"], k, p[k])
+        for t in rosters()["teams"]
+        for p in t["positionals"]
+        for k in ("qty", "MA", "ST", "AG", "PA", "AV")
+        if " " in str(p.get(k, "")).strip()
+    ]
+    assert not fused, f"cells holding a superseded value beside its correction: {fused}"
+
+
+def test_an_erratad_stat_keeps_only_the_correction():
+    from bloodbowl.pitch import find_position, find_team
+
+    gobbo = find_position(find_team("Orc"), "Goblin Lineman")
+    assert gobbo["PA"] == "4+", "the struck 3+ is the OLD value"
+
+
+def test_an_erratad_skill_access_is_actually_removed():
+    """The silent half of the bug: struck letters in a skill-access column fuse
+    invisibly, leaving a team with an access it no longer has."""
+    from bloodbowl.pitch import find_position, find_team
+
+    for team in ("Human", "Imperial Nobility"):
+        ogre = find_position(find_team(team), "Ogre")
+        assert "M" not in ogre["secondary"], f"{team} Ogre keeps erratad Mutation access"
+
+
+def test_an_erratad_skill_qualifier_keeps_only_the_correction():
+    from bloodbowl.pitch import find_position, find_team
+
+    ogre = find_position(find_team("Chaos Renegades"), "Ogre*")
+    assert "Loner (3+)" in ogre["skills"]
+    assert not any("4+" in s for s in ogre["skills"] if s.startswith("Loner"))
