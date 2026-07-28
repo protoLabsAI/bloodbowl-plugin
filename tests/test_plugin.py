@@ -805,3 +805,29 @@ def test_the_game_routes_are_actually_reachable(client):
     assert client.get(f"{base}/game").status_code == 200, "the match API must be mounted"
     assert client.get(f"{base}/presets").status_code == 200, "and so must the board's"
     assert client.post(f"{base}/game/abandon", json={}).status_code == 200
+
+
+def test_a_mounted_route_resolves_the_engine_per_request(client, monkeypatch):
+    """A reload must not leave the plugin half-new.
+
+    The host cannot swap a mounted router, so a router that binds `act` at
+    BUILD time keeps calling the original function object for the life of the
+    process. Meanwhile anything reached through a lazy import — `store.py`
+    resolves `Match` inside a function body — does pick the reloaded module up.
+    On the live agent that combination produced a match payload carrying state
+    fields (`turn_actions`, `argue_banned`) that the rules layer did not honour,
+    and a `foul` action the engine had never heard of. New state, old rules: worse
+    than not reloading at all, because everything looks like it worked.
+
+    Monkeypatching the module attribute AFTER the router is built stands in for
+    the reload. If the route captured the function, the patch has no effect.
+    """
+    import bloodbowl.engine.game as game
+
+    base = "/api/plugins/bloodbowl"
+    client.post(f"{base}/place", json={"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    client.post(f"{base}/game/new", json={"seed": 3})
+
+    monkeypatch.setattr(game, "legal_moves", lambda *a, **k: {"ok": True, "reloaded": True})
+    out = client.get(f"{base}/game/legal", params={"player": "h00"}).json()
+    assert out.get("reloaded"), "the route is calling a function captured when the router was built"

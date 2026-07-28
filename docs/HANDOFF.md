@@ -256,6 +256,24 @@ Copy, never symlink. Then `POST /api/plugins/bloodbowl/enabled {"enabled":true}`
 > `{"detail":"Not Found"}` (capitalised); your own guard's 404 says whatever you
 > wrote.
 
+**A RELOAD USED TO LEAVE THE PLUGIN HALF-NEW, WHICH IS WORSE.** The host purges
+the plugin's modules and re-execs every file, so anything reached through a *lazy*
+import picks the new code up — `store.py` resolves `Match` inside a function body,
+so state was new. But the mounted router still held the function objects
+`build_game_router` had imported at build time, so the rules were old. Observed on
+the live agent: a match payload carrying `turn_actions` and `argue_banned` that
+nothing honoured, `move`-then-`pass` still refused, and a `foul` action the engine
+had never heard of. Everything looked like it had worked.
+
+The routers now resolve `engine.game` and `store` **per request** (a `sys.modules`
+lookup), so `POST /enabled` means what it says for behaviour changes, and a test
+monkeypatches the module attribute after the router is built to prove it. A NEW
+ROUTE still needs a restart — that part is FastAPI's and cannot be fixed here.
+
+Diagnostic for a half-applied reload: compare something only new *state* provides
+against something only a new *action module* provides. If `/game` carries a field
+the action list has never heard of, you are looking at two versions at once.
+
 **ONE ROUTER PER PREFIX.** The host mounts plugin routers keyed on
 `(plugin_id, prefix)` and skips any already mounted, so a second router for the
 same prefix has *every* route discarded. This plugin shipped two on
