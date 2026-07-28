@@ -375,6 +375,19 @@ def _play(browser, url: str, w: int, h: int) -> None:
         "no square was marked as needing a Dodge or Rush",
     )
     check("the odds badge is readable", page.locator(".cell .odds").count() > 0)
+    # It is drawn ON TOP of a player badge, and `.pc.away` is filled with
+    # --pl-color-fg — which is the colour the tag's text used to be. Every block's
+    # "2D" was white on white, present in the DOM and invisible on the board.
+    # Counting elements cannot see that; the computed background can.
+    odds_bg = page.evaluate(
+        "() => { const n = document.querySelector('.cell .odds');"
+        " return n ? getComputedStyle(n).backgroundColor : ''; }"
+    )
+    check(
+        "the odds tag has a background of its own, so it reads on a player badge",
+        bool(odds_bg) and "rgba(0, 0, 0, 0)" not in odds_bg,
+        f"computed background {odds_bg!r}",
+    )
     sel = page.locator("#sel").inner_text()
     check("the selected pane names the player", "MA" in sel, sel[:60])
 
@@ -472,6 +485,89 @@ def _play(browser, url: str, w: int, h: int) -> None:
             "the log names a block die face",
             any(w in after for w in ("Push Back", "POW", "Both Down", "Player Down", "Stumble")),
             after[:110].replace("\n", " / "),
+        )
+
+    # The Blitz. Two things a server test cannot judge: whether a coach can SEE
+    # that an opponent four squares away is reachable at all, and whether the
+    # board says so differently from a Block — because a Blitz spends the team's
+    # only one for the turn, and unlike a bad Block it cannot be taken back.
+    #
+    # Fresh seeded match again, for the same reason as the block section: the
+    # block above is dice-driven and its turnover would leave nobody to blitz.
+    page.evaluate("""async () => {
+      await fetch("/api/plugins/bloodbowl/game/new", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({seed: 7}),
+      });
+    }""")
+    page.reload(wait_until="networkidle")
+    page.wait_for_selector(".cell", timeout=10000)
+    if theme.exists():
+        page.add_style_tag(content=theme.read_text())
+    page.wait_for_timeout(500)
+
+    # Ask the ENGINE who can blitz rather than guessing from the board. A player
+    # picked by eye might be adjacent to their target, in which case the view
+    # offers a plain Block instead and the section would "pass" having tested it.
+    runner = page.evaluate("""async () => {
+      const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
+      for (const p of m.players.filter(q => q.side === "home" && q.place === "pitch")) {
+        const l = await (await fetch(`/api/plugins/bloodbowl/game/legal?player=${p.id}`)).json();
+        const far = ((l.blitz || {}).targets || []).filter(
+          t => !(l.blocks || []).some(b => b.target === t.target));
+        if (far.length) return {x: p.x, y: p.y, id: p.id, targets: far.length, steps: far[0].steps};
+      }
+      return null;
+    }""")
+    check("the seeded board has a player who could Blitz someone out of reach", runner is not None)
+    if runner is not None:
+        page.locator(f'.cell[data-x="{runner["x"]}"][data-y="{runner["y"]}"] .pc').click()
+        page.wait_for_timeout(600)
+        marks = page.locator(".cell.blitzable").count()
+        check("Blitz targets are marked on the board", marks > 0, f"{marks} marked, engine offered {runner['targets']}")
+        check(
+            "a Blitz target is marked differently from a Block target",
+            page.locator(".cell.blitzable:not(.blockable)").count() > 0,
+            "every blitz mark also carried a block mark, so the two are indistinguishable",
+        )
+        pane = page.locator("#sel").inner_text()
+        check(
+            "the pane offers the Blitz and says it is one per turn", "Blitz" in pane and "per turn" in pane, pane[:100]
+        )
+        check(
+            "the Blitz mark says how far away the target is",
+            page.locator(".cell.blitzable .odds").first.inner_text().startswith("B"),
+            page.locator(".cell.blitzable .odds").first.inner_text(),
+        )
+        page.screenshot(path=str(SHOTS / "blitz.png"), full_page=True)
+
+        before = page.locator("#log").inner_text()
+        acts_before = len([c for c in calls if "/game/act" in c])
+        page.locator(".cell.blitzable:not(.blockable) .pc").first.click()
+        with contextlib.suppress(Exception):
+            page.wait_for_function(
+                "prev => document.querySelector('#log').innerText !== prev", arg=before, timeout=8000
+            )
+        after = page.locator("#log").inner_text()
+        last = acted[-1] if acted else {}
+        check(
+            "clicking a Blitz target declares it, and is not refused",
+            len([c for c in calls if "/game/act" in c]) > acts_before and bool(last.get("ok")),
+            f"ok={last.get('ok')} text={str(last.get('text'))[:70]!r}",
+        )
+        check("the declaration lands in the log", "declares a Blitz" in after, after[:110].replace("\n", " / "))
+        pane = page.locator("#sel").inner_text()
+        check("the pane now says who is being blitzed", "Blitzing" in pane, pane[:100])
+        check(
+            "the player stays selected — a declaration rolls nothing and ends nothing",
+            page.locator(".pc.sel").count() == 1,
+            f"{page.locator('.pc.sel').count()} selected",
+        )
+        check(
+            "and can still move, because the Blitz is a Move Action",
+            page.locator(".cell.legal").count() > 0,
+            "no legal squares after declaring, so the player cannot walk to the target",
         )
 
     # The ball. A loose ball that renders under a player badge is indistinguishable

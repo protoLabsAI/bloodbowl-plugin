@@ -40,7 +40,7 @@ export function teardown() {
   if (ball) ball.remove();
   state.selected = null;
   state.legal = null;
-  clearMarks("legal", "needsroll", "blockable", "securable", "handoffable");
+  clearMarks("legal", "needsroll", "blockable", "blitzable", "securable", "handoffable");
 }
 
 export function render() {
@@ -80,9 +80,14 @@ export function render() {
       ev.stopPropagation();
       const acts = (state.legal && state.legal.ball_actions) || [];
       const block = ((state.legal && state.legal.blocks) || []).find((b) => b.target === p.id);
+      // An adjacent opponent is a plain Block. Blitzing one you can already reach
+      // is legal but spends the team's only Blitz for the turn, so it is not what
+      // a click should mean — the tool can still do it deliberately.
       if (block) return throwBlock(block);
       const hand = acts.find((b) => b.action === "handoff" && b.target === p.id);
       if (hand) return ballAction("handoff", { target: hand.target });
+      const blitz = (((state.legal || {}).blitz || {}).targets || []).find((b) => b.target === p.id);
+      if (blitz) return declareBlitz(blitz);
       select(p);
     });
     at(p.x, p.y).appendChild(node);
@@ -118,7 +123,7 @@ async function select(p) {
     // Not an error — you are allowed to look at the opposition. Just no move list.
     state.selected = p.id;
     state.legal = null;
-    clearMarks("legal", "needsroll", "blockable", "securable", "handoffable");
+    clearMarks("legal", "needsroll", "blockable", "blitzable", "securable", "handoffable");
     describeSelection(p, null);
     render();
     return;
@@ -137,7 +142,7 @@ async function select(p) {
 }
 
 function paintLegal() {
-  clearMarks("legal", "needsroll", "blockable", "securable", "handoffable");
+  clearMarks("legal", "needsroll", "blockable", "blitzable", "securable", "handoffable");
   if (!state.legal || !state.legal.ok) return;
 
   // Blockable opponents, labelled with the dice and — the part that decides
@@ -148,6 +153,22 @@ function paintLegal() {
     const o = document.createElement("span");
     o.className = "odds";
     o.textContent = `${b.dice}D${b.chooser === "attacker" ? "" : "!"}`;
+    cell.appendChild(o);
+  }
+
+  // Blitz targets, tagged with how far away they are. Only the ones out of
+  // arm's reach are marked: an adjacent opponent is already offered as a plain
+  // Block, and two marks on one square would be a choice nobody asked for.
+  for (const b of ((state.legal || {}).blitz || {}).targets || []) {
+    if ((state.legal.blocks || []).some((k) => k.target === b.target)) continue;
+    const cell = at(b.x, b.y);
+    cell.classList.add("blitzable");
+    const o = document.createElement("span");
+    o.className = "odds";
+    o.textContent = `B${b.steps}`;
+    o.title = b.can_block
+      ? `Blitz — ${b.steps} squares away, ${b.budget} available`
+      : `Blitz — ${b.steps} squares of ${b.budget}, nothing left to pay for the Block`;
     cell.appendChild(o);
   }
 
@@ -235,6 +256,34 @@ function describeSelection(p, legal) {
         )
         .join("");
   }
+  if (legal && legal.ok && legal.blitz) {
+    const bz = legal.blitz;
+    if (bz.declared && bz.declared.player === p.id) {
+      const foe = (state.match.players || []).find((q) => q.id === bz.declared.target);
+      html +=
+        `<div class="blockrow blitzrow">Blitzing <b>${esc((foe && foe.position) || bz.declared.target)}</b> — ` +
+        (bz.declared.blocked ? "Block thrown; keep moving if you have the squares" : "Block legal once adjacent") +
+        `</div>`;
+    } else if (bz.declared) {
+      html += `<div class="blockrow muted">Blitz already used this turn</div>`;
+    } else if ((bz.targets || []).length) {
+      html +=
+        `<div class="muted" style="margin-top:6px">Blitz <span class="muted">(one per turn)</span></div>` +
+        bz.targets
+          .map(
+            (b) =>
+              `<div class="blockrow blitzrow${b.can_block ? "" : " bad"}">` +
+              `${esc(b.position || b.target)} — ` +
+              // An adjacent target is already blockable for free. Blitzing one is
+              // legal and occasionally right — it is the only way to hit someone
+              // and then keep running — but "0 sq" reads as a glitch, so say it.
+              (b.steps === 0 ? `<b>adjacent</b> <span class="muted">(only to move on after)</span>` : `<b>${b.steps} sq</b> of ${b.budget}`) +
+              (b.can_block ? "" : ` <span class="muted">(nothing left for the Block)</span>`) +
+              `</div>`,
+          )
+          .join("");
+    }
+  }
   if (legal && legal.ok && (legal.ball_actions || []).length) {
     html +=
       `<div class="muted" style="margin-top:6px">Ball</div>` +
@@ -286,14 +335,33 @@ async function ballAction(action, extra) {
   // move list is stale either way.
   state.selected = null;
   state.legal = null;
-  clearMarks("legal", "needsroll", "blockable", "securable", "handoffable");
+  clearMarks("legal", "needsroll", "blockable", "blitzable", "securable", "handoffable");
   describeSelection(null, null);
   render();
   await renderLog();
 }
 
+async function declareBlitz(target) {
+  // Declaring rolls nothing, so the player stays selected and the move list is
+  // simply refreshed — the coach then walks over and clicks them again.
+  try {
+    const report = await api("/game/act", json({ action: "blitz", player: state.selected, target: target.target }));
+    state.match = report.match;
+    ok();
+    state.legal = await api(`/game/legal?player=${encodeURIComponent(state.selected)}`);
+    paintLegal();
+    describeSelection(
+      (state.match.players || []).find((q) => q.id === state.selected),
+      state.legal,
+    );
+  } catch (e) {
+    fail(e);
+  }
+  render();
+  await renderLog();
+}
+
 async function throwBlock(block) {
-  const chooses = block.chooser === "attacker";
   try {
     const report = await api(
       "/game/act",
@@ -301,14 +369,19 @@ async function throwBlock(block) {
     );
     state.match = report.match;
     ok();
-    if (report.turnover || !chooses) {
+    // Whether the player may do anything else is the ENGINE's answer, not a
+    // guess from the result: an ordinary Block ends the activation, a Blitz's
+    // Block does not, and a Player Down ends the turn under everybody.
+    const still = (state.match.players || []).find((q) => q.id === state.selected);
+    if (report.turnover || !still || still.done || still.down !== "standing") {
       state.selected = null;
       state.legal = null;
-      clearMarks("legal", "needsroll", "blockable", "securable", "handoffable");
+      clearMarks("legal", "needsroll", "blockable", "blitzable", "securable", "handoffable");
       describeSelection(null, null);
     } else {
       state.legal = await api(`/game/legal?player=${encodeURIComponent(state.selected)}`);
       paintLegal();
+      describeSelection(still, state.legal);
     }
   } catch (e) {
     fail(e);
@@ -341,7 +414,7 @@ export async function onCellClick(x, y) {
     if (report.turnover || !still || still.down !== "standing") {
       state.selected = null;
       state.legal = null;
-      clearMarks("legal", "needsroll", "blockable", "securable", "handoffable");
+      clearMarks("legal", "needsroll", "blockable", "blitzable", "securable", "handoffable");
       describeSelection(null, null);
     } else {
       state.legal = await api(`/game/legal?player=${encodeURIComponent(state.selected)}`);
@@ -395,7 +468,7 @@ export function wire(onChanged) {
       state.match = r.match;
       state.selected = null;
       state.legal = null;
-      clearMarks("legal", "needsroll", "blockable", "securable", "handoffable");
+      clearMarks("legal", "needsroll", "blockable", "blitzable", "securable", "handoffable");
       describeSelection(null, null);
       ok();
     } catch (e) {

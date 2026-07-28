@@ -22,10 +22,18 @@ from __future__ import annotations
 
 from ...pitch import in_bounds
 from ..ball import check_touchdown
-from ..dice import BLOCK_LABELS
+from ..dice import BLOCK_LABELS, roll_target
 from ..events import Event
 from ..injury import knock_down, risk_injury
-from ..rules import adjacent, assist_count, block_dice, has_tackle_zone, push_squares, strength_of
+from ..rules import (
+    MAX_RUSHES,
+    adjacent,
+    assist_count,
+    block_dice,
+    has_tackle_zone,
+    push_squares,
+    strength_of,
+)
 from ..skills import SkillContext, hooks_for, unmodelled_skills
 from ..state import Match
 from . import Legality, Outcome, Recorder, register
@@ -43,8 +51,6 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, f"it is {match.clock.active}'s turn, and that player is {p.side}")
     if p.down != "standing":
         return Legality(False, f"a {p.down} player cannot Block; they must stand up first")
-    if p.acted:
-        return Legality(False, f"{p.name()} has already acted this turn")
 
     t = match.by_id(str(cmd.get("target") or ""))
     if t is None:
@@ -53,10 +59,33 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, "the target is not on the pitch")
     if t.side == p.side:
         return Legality(False, "you cannot Block your own team-mate")
+    if t.down != "standing":
+        # S3: "they must nominate one Standing opposition player they are Marking
+        # to be the target of the Block Action." Flooring someone who is already
+        # down is what the Foul Action is for.
+        return Legality(False, f"{t.name()} is {t.down} — a Block may only target a Standing player")
+
+    blitzing = is_blitzing(match, p, t)
+    if p.acted and not blitzing:
+        return Legality(False, f"{p.name()} has already acted this turn")
+
     if not adjacent(p.x, p.y, t.x, t.y):
         return Legality(False, "a Block targets a player you are Marking — they must be adjacent")
     if not has_tackle_zone(p):
         return Legality(False, "a player with no Tackle Zone is not Marking anyone and cannot Block")
+
+    # A Blitz's Block costs a point of Move Allowance, and a player who has none
+    # left may Rush for it — but only within the two Rushes an activation allows.
+    rush_for_block = 0
+    if blitzing:
+        over = (p.ma_used + 1) - p.movement()
+        if over > MAX_RUSHES:
+            return Legality(
+                False,
+                f"{p.name()} has no Move Allowance left for the Block "
+                f"(a Blitz's Block costs one) and has used both Rushes",
+            )
+        rush_for_block = 1 if over > 0 else 0
 
     # Neither participant assists: the blocker is throwing the block and the
     # target cannot help themselves resist it.
@@ -74,8 +103,23 @@ def validate(match: Match, cmd: dict) -> Legality:
             "defender_strength": d_st,
             "offensive_assists": off,
             "defensive_assists": dfn,
+            "blitz": blitzing,
+            "costs_move_allowance": 1 if blitzing else 0,
+            "rush_for_block": bool(rush_for_block),
         },
     )
+
+
+def is_blitzing(match: Match, p, t) -> bool:
+    """Is this Block the Block of a declared Blitz?
+
+    All three have to line up: the right player, the declared target, and a Blitz
+    whose Block has not been thrown yet. A Blitz does not license a second Block,
+    nor a Block against somebody else — "they must ALSO declare which opposition
+    player is the intended target".
+    """
+    b = match.blitz
+    return bool(b) and b.get("player") == p.id and b.get("target") == t.id and not b.get("blocked")
 
 
 def _push_to(match: Match, blocker, target, prefer: tuple | None = None):
@@ -182,6 +226,50 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     rec = Recorder(match)
     unmodelled = sorted(set(unmodelled_skills(p)) | set(unmodelled_skills(t)))
     n, chooser = legal.detail["dice"], legal.detail["chooser"]
+    blitzing = legal.detail["blitz"]
+
+    # A Blitz's Block is paid for BEFORE it is thrown: "this Block Action will
+    # cost the player that declared the Blitz Action a point of Move Allowance",
+    # and "if a player has used all of their Move Allowance before making the
+    # Block Action against their intended target then they may attempt to Rush as
+    # normal to gain the extra point of Move Allowance required".
+    if blitzing:
+        if legal.detail["rush_for_block"]:
+            r = roll_target(dice, "Rush", 2, note="for the Blitz's Block")
+            if not r.passed:
+                # "On a 1, the player trips and Falls Over in the square they were
+                # attempting to Rush into and their activation immediately ends."
+                # There is no square here — the Rush buys the Block, not a step.
+                # The rules address the same shape for a Jump: "If a Rush attempt
+                # to Jump over a player fails, the rushing player will Fall Over in
+                # the square they are in rather than the square they are attempting
+                # to Jump into." So: where they stand. INFERRED from that
+                # precedent, which is the nearest case the text actually settles.
+                rec.emit(
+                    Event(
+                        kind="note",
+                        actor=p.id,
+                        rolls=[r],
+                        text=f"{p.name()} Rushes for the Blitz and trips before landing the Block. {r.describe()}",
+                    )
+                )
+                rec.absorb(knock_down(match, p, dice, cause="tripped Rushing"))
+                return Outcome(
+                    ok=False,
+                    events=rec.events,
+                    turnover=True,
+                    text=f"{p.name()} failed the Rush and Falls Over before the Block — turnover.",
+                    unmodelled=unmodelled,
+                )
+            rec.emit(Event(kind="note", actor=p.id, rolls=[r], text=f"Rush succeeds. {r.describe()}"))
+        rec.emit(
+            Event(
+                kind="move_allowance_spent",
+                actor=p.id,
+                detail={"ma_used": p.ma_used + 1, "reason": "blitz_block"},
+                text=f"The Blitz's Block costs {p.name()} a square of movement.",
+            )
+        )
 
     faces = dice.block(n)
     face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"))]
@@ -192,9 +280,9 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         Event(
             kind="block_rolled",
             actor=p.id,
-            detail={"faces": list(faces), "chosen": face, "chooser": chooser, "target": t.id},
+            detail={"faces": list(faces), "chosen": face, "chooser": chooser, "target": t.id, "blitz": blitzing},
             rolls=[roll],
-            text=f"{p.name()} Blocks {t.name()}: "
+            text=f"{p.name()} {'Blitzes' if blitzing else 'Blocks'} {t.name()}: "
             + ", ".join(BLOCK_LABELS[f] for f in faces)
             + f" — {BLOCK_LABELS[face]} applied ({chooser} chooses).",
         )
@@ -260,13 +348,34 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     for who in pushed:
         rec.absorb(check_touchdown(match, who))
 
-    rec.emit(
-        Event(
-            kind="activation_ended",
-            actor=p.id,
-            text=f"{p.name()}'s Block Action is over.",
+    # "After the player has performed the Block Action, they can continue their
+    # Move Action using any remaining Move Allowance they have left." So a Blitz's
+    # Block does NOT end the activation — the one Block that doesn't.
+    #
+    # `acted` is still set, because it is what stops a SECOND Block Action, and
+    # movement is governed by Move Allowance rather than by this flag. The Blitz's
+    # own Block is already spent (`match.blitz["blocked"]`), so the exemption in
+    # validate does not fire twice.
+    left = max(0, p.movement() - p.ma_used)
+    if blitzing and not turnover and p.down == "standing" and p.place == "pitch":
+        rec.emit(
+            Event(
+                kind="note",
+                actor=p.id,
+                detail={"blitz": True, "movement_left": left},
+                text=f"{p.name()} may keep moving — {left} square(s) of Move Allowance left."
+                if left
+                else f"{p.name()} has no Move Allowance left, but may still Rush.",
+            )
         )
-    )
+    else:
+        rec.emit(
+            Event(
+                kind="activation_ended",
+                actor=p.id,
+                text=f"{p.name()}'s Block Action is over.",
+            )
+        )
 
     return Outcome(
         ok=not turnover,

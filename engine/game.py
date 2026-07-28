@@ -289,6 +289,23 @@ def legal_moves(match: Match, player_id: str) -> dict:
             }
         )
 
+    # Blitz targets, with the distance already walked. A coach eyeballing "I can
+    # get there" is how a team's ONE Blitz per turn gets spent on an opponent two
+    # squares out of reach — and unlike a bad Block, that one cannot be taken back.
+    blitz = {"available": False, "targets": []}
+    declare = actions.get("blitz")
+    if declare is not None:
+        if match.blitz:
+            blitz["declared"] = dict(match.blitz)
+        for foe in match.on_pitch(match.opponent(p.side)):
+            legal = declare["validate"](match, {"player": player_id, "target": foe.id})
+            if not legal.ok:
+                continue
+            blitz["available"] = True
+            blitz["targets"].append(
+                {"target": foe.id, "x": foe.x, "y": foe.y, "position": foe.player.position, **legal.detail}
+            )
+
     # Ball actions this player could take right now, so the view and the coach
     # both learn about Secure the Ball from the engine rather than being expected
     # to remember that S3 added it.
@@ -323,6 +340,7 @@ def legal_moves(match: Match, player_id: str) -> dict:
         "movement_left": max(0, p.movement() - p.ma_used),
         "squares": squares,
         "blocks": blocks,
+        "blitz": blitz,
         "ball": match.ball.to_dict(),
         "ball_actions": ball_actions,
     }

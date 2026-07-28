@@ -75,6 +75,56 @@ def occupied(match: Match, x: int, y: int) -> bool:
     return match.at(x, y) is not None
 
 
+def steps_to_mark(match: Match, player: PlayerState, target: PlayerState) -> int | None:
+    """Fewest Move steps for ``player`` to end up ADJACENT to ``target``.
+
+    Board maths, not a rule — it answers "could this player get to them at all",
+    which is what a Blitz declaration turns on: "Players may not declare an
+    opposition player as the intended target of the Block Action if they cannot
+    reach the player at all with their Move Action (including any extra squares
+    gained by attempting to Rush)."
+
+    DISTANCE, not probability. A Dodge or a Rush is a roll made FOR a step, not an
+    extra step, so a route through three Tackle Zones is exactly as long as one
+    through none — it is only less likely to survive. Weighting the search by risk
+    would quietly refuse declarations the rules allow.
+
+    Returns None when there is no route: a target walled in by other players is
+    unreachable however much Move Allowance is going spare.
+    """
+    from ..pitch import in_bounds
+
+    if adjacent(player.x, player.y, target.x, target.y):
+        return 0
+
+    goals = {
+        (target.x + dx, target.y + dy)
+        for dx in (-1, 0, 1)
+        for dy in (-1, 0, 1)
+        if (dx, dy) != (0, 0) and in_bounds(target.x + dx, target.y + dy)
+    }
+    seen = {(player.x, player.y)}
+    frontier = [(player.x, player.y)]
+    steps = 0
+    while frontier:
+        steps += 1
+        nxt = []
+        for x, y in frontier:
+            for dx, dy in ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)):
+                sq = (x + dx, y + dy)
+                # A square holding anyone is not a square you can move through;
+                # the TARGET's own square included, which is why the goal is the
+                # ring around them rather than the square itself.
+                if sq in seen or not in_bounds(*sq) or match.at(*sq) is not None:
+                    continue
+                seen.add(sq)
+                if sq in goals:
+                    return steps
+                nxt.append(sq)
+        frontier = nxt
+    return None
+
+
 # --- blocking -------------------------------------------------------------
 
 # The eight directions, in ring order, so "the two directions either side of this

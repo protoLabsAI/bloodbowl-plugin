@@ -1587,3 +1587,288 @@ def test_the_pass_log_line_is_grammatical():
     line = next(e.text for e in out.events if e.kind == "pass_thrown")
     assert "throws an accurate" in line, line
     assert "a n" not in line
+
+
+# --- the Blitz Action ------------------------------------------------------
+#
+# S3: "Simply put, a Blitz Action combines both a Move Action and a Block Action;
+# however, only a single player may perform a Blitz Action each Turn."
+#
+# Modelled as a DECLARATION plus the ordinary move and block, because "if at any
+# point during this Move Action they are adjacent to … their intended target" is a
+# decision the coach makes step by step.
+
+
+def _declare(m, pid, target):
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    return actions.get("blitz")["resolve"](m, {"player": pid, "target": target}, _dice([]))
+
+
+def test_a_blitz_is_move_then_block_then_more_move():
+    """The whole shape in one test: declare, walk, hit them, walk on.
+
+    "After the player has performed the Block Action, they can continue their Move
+    Action using any remaining Move Allowance they have left."
+    """
+    m = _match(("home", 7, 10, 6), ("away", 7, 14, 6))
+    assert _declare(m, "h00", "a01").ok
+
+    for y in (11, 12, 13):
+        assert _move(m, "h00", 7, y, _dice([])).ok
+    assert m.by_id("h00").ma_used == 3
+
+    out = _block(m, "h00", "a01", _dice([], [["push_back"]]), follow_up=False)
+    assert out.ok
+    assert m.by_id("h00").ma_used == 4, "the Blitz's Block costs a point of Move Allowance"
+    assert (m.by_id("a01").x, m.by_id("a01").y) == (7, 15), "the target was pushed"
+
+    # …and they may keep going.
+    assert _move(m, "h00", 6, 13, _dice([])).ok
+    assert m.by_id("h00").ma_used == 5
+
+
+def test_the_rulebooks_own_worked_example():
+    """Reproduced verbatim from the S3 text:
+
+    "The Skeleton Lineman has declared a Blitz Action against the Bretonnian
+     Squire and uses all of their Move Allowance of 5 to end next to their
+     intended target. As a result, the Skeleton Lineman must Rush in order to
+     perform the Block Action part of the Blitz Action. The Skeleton Lineman rolls
+     a 4 and succeeds, so the Block Action can go ahead."
+    """
+    m = _match(("home", 7, 8, 5), ("away", 7, 14, 6))
+    assert _declare(m, "h00", "a01").ok
+    for y in (9, 10, 11, 12, 13):
+        assert _move(m, "h00", 7, y, _dice([])).ok
+    assert m.by_id("h00").ma_used == 5 == m.by_id("h00").movement(), "all of their Move Allowance"
+
+    out = _block(m, "h00", "a01", _dice([4], [["push_back"]]), follow_up=False)
+    assert out.ok, "the Block Action can go ahead"
+    rush = next(r for e in out.events for r in e.rolls if r.kind == "Rush")
+    assert rush.dice == [4] and rush.passed
+    assert any(e.kind == "block_rolled" for e in out.events)
+
+
+def test_a_failed_rush_for_the_block_floors_them_where_they_stand():
+    """ "On a 1, the player trips and Falls Over in the square they were attempting
+    to Rush into" — but a Rush that buys the Block buys no square. The rules settle
+    the same shape for a Jump: "the rushing player will Fall Over in the square
+    they are in rather than the square they are attempting to Jump into." So: where
+    they stand, and the Block never happens.
+    """
+    m = _match(("home", 7, 8, 5), ("away", 7, 14, 6))
+    _declare(m, "h00", "a01")
+    for y in (9, 10, 11, 12, 13):
+        _move(m, "h00", 7, y, _dice([]))
+
+    out = _block(m, "h00", "a01", _dice([1, 2, 2], [["pow"]]))
+    assert not out.ok and out.turnover
+    p = m.by_id("h00")
+    assert (p.x, p.y) == (7, 13), "they fall where they are, not into the target's square"
+    assert p.down in ("prone", "stunned")
+    assert not any(e.kind == "block_rolled" for e in out.events), "the Block never happened"
+
+
+def test_only_one_blitz_per_team_per_turn():
+    """ "only a single player may perform a Blitz Action each Turn" — and
+    "Players are never required to perform the Block Action against their intended
+    target if they decide not to, though they will still count as having used
+    their team's one Blitz Action for the Turn." So DECLARING spends it.
+    """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 10, 6), ("home", 8, 10, 6), ("away", 7, 14, 6))
+    assert _declare(m, "h00", "a02").ok
+
+    second = actions.get("blitz")["validate"](m, {"player": "h01", "target": "a02"})
+    assert not second.ok
+    assert "already used their one Blitz" in second.reason
+
+
+def test_a_new_turn_gives_the_team_its_blitz_back():
+    from bloodbowl.engine.game import end_turn
+
+    m = _match(("home", 7, 10, 6), ("away", 7, 14, 6))
+    _declare(m, "h00", "a01")
+    assert m.blitz
+    end_turn(m)
+    assert m.blitz == {}
+
+
+def test_an_unreachable_target_may_not_be_declared():
+    """ "Players may not declare an opposition player as the intended target of the
+    Block Action if they cannot reach the player at all with their Move Action
+    (including any extra squares gained by attempting to Rush)."
+
+    MA 3 plus two Rushes is five squares; getting adjacent to a player nine away
+    is not on.
+    """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 5, 3), ("away", 7, 14, 6))
+    legal = actions.get("blitz")["validate"](m, {"player": "h00", "target": "a01"})
+    assert not legal.ok and "out of reach" in legal.reason
+
+    # The boundary, both sides of it. MA 5 plus two Rushes is 7 squares, and the
+    # ring around a player at (7,14) starts at (7,13):
+    #   from (7,6) that ring is exactly 7 steps — reachable, and the declaration
+    #   stands even though every square is spent getting there and the Block
+    #   itself costs one more. The rules gate the declaration on REACH alone, and
+    #   "players are never required to perform the Block Action", so this is a
+    #   legal thing to do rather than something to refuse — but the coach is told.
+    at_the_limit = actions.get("blitz")["validate"](
+        _match(("home", 7, 6, 5), ("away", 7, 14, 6)), {"player": "h00", "target": "a01"}
+    )
+    assert at_the_limit.ok
+    assert at_the_limit.detail["steps"] == 7 and at_the_limit.detail["budget"] == 7
+    assert at_the_limit.detail["can_reach"] is True
+    assert at_the_limit.detail["can_block"] is False, "no square left to pay for the Block"
+
+    #   one square further back and it is out of reach altogether.
+    beyond = actions.get("blitz")["validate"](
+        _match(("home", 7, 5, 5), ("away", 7, 14, 6)), {"player": "h00", "target": "a01"}
+    )
+    assert not beyond.ok and "out of reach" in beyond.reason
+
+
+def test_reach_is_a_route_and_not_a_straight_line():
+    """A target with every neighbouring square occupied cannot be reached however
+    much Move Allowance is going spare. Measuring the distance rather than walking
+    it would declare a Blitz that can never land."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    ring = [("home", x, y, 6) for x in (6, 7, 8) for y in (13, 14, 15) if (x, y) != (7, 14)]
+    m = _match(("home", 7, 10, 6), ("away", 7, 14, 6), *ring)
+    legal = actions.get("blitz")["validate"](m, {"player": "h00", "target": "a01"})
+    assert not legal.ok and "no route" in legal.reason
+
+
+def test_the_blitz_block_must_be_against_the_declared_target():
+    """ "they must ALSO declare which opposition player is the intended target."
+    A Blitz is not a licence to block whoever turns out to be handy."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    # The second opponent sits at (6,14): adjacent to the square h00 walks INTO,
+    # but not to the one it leaves, so the step needs no Dodge and the test is
+    # about the Blitz rather than about the dice.
+    m = _match(("home", 7, 12, 6), ("away", 7, 14, 6), ("away", 6, 14, 6))
+    _declare(m, "h00", "a01")
+    _move(m, "h00", 7, 13, _dice([]))  # now adjacent to BOTH away players
+
+    other = actions.get("block")["validate"](m, {"player": "h00", "target": "a02"})
+    assert not other.ok and "already acted" in other.reason
+    assert actions.get("block")["validate"](m, {"player": "h00", "target": "a01"}).ok
+
+
+def test_a_blitz_does_not_buy_a_second_block():
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    _declare(m, "h00", "a01")
+    assert _block(m, "h00", "a01", _dice([], [["push_back"]]), follow_up=False).ok
+    assert m.blitz["blocked"] is True
+
+    again = actions.get("block")["validate"](m, {"player": "h00", "target": "a01"})
+    assert not again.ok and "already acted" in again.reason
+
+
+def test_a_block_may_only_target_a_standing_player():
+    """ "they must nominate one Standing opposition player they are Marking to be
+    the target of the Block Action." Flooring someone already down is what the Foul
+    Action is for — and the engine used to allow it."""
+    from bloodbowl.engine import actions
+    from bloodbowl.engine.events import Event
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    m.apply(Event(kind="player_placed_prone", actor="a01", detail={"down": "prone"}))
+
+    plain = actions.get("block")["validate"](m, {"player": "h00", "target": "a01"})
+    assert not plain.ok and "Standing" in plain.reason
+    declared = actions.get("blitz")["validate"](m, {"player": "h00", "target": "a01"})
+    assert not declared.ok and "Standing" in declared.reason
+
+
+def test_the_declared_blitz_survives_the_fold():
+    """Per-turn state like everything else: recorded, folded, never remembered."""
+    from bloodbowl.engine.state import Match, fold
+
+    m = _match(("home", 7, 10, 6), ("away", 7, 14, 6))
+    _declare(m, "h00", "a01")
+    for who in (fold(_match(("home", 7, 10, 6), ("away", 7, 14, 6)), list(m.events)), Match.from_dict(m.to_dict())):
+        assert who.blitz == {"player": "h00", "target": "a01", "blocked": False}
+
+
+def test_legal_moves_offers_the_blitz_with_the_distance_already_walked():
+    """The coach asks the engine rather than eyeballing it — a team's one Blitz
+    per turn cannot be taken back once declared."""
+    from bloodbowl.engine.game import legal_moves
+
+    m = _match(("home", 7, 10, 6), ("away", 7, 14, 6), ("away", 2, 25, 6))
+    out = legal_moves(m, "h00")
+    assert out["blitz"]["available"] is True
+    targets = {t["target"]: t for t in out["blitz"]["targets"]}
+    assert "a01" in targets and targets["a01"]["steps"] == 3 and targets["a01"]["can_block"] is True
+    assert "a02" not in targets, "the one across the pitch is out of reach and is not offered"
+
+    _declare(m, "h00", "a01")
+    assert legal_moves(m, "h00")["blitz"]["declared"]["target"] == "a01"
+
+
+def test_an_ordinary_block_ends_the_activation_but_a_blitzs_block_does_not():
+    """The distinction the Blitz exists to make, and the reason `done` is a
+    separate flag from `acted`.
+
+    `acted` means an activation has BEGUN — a single step of movement sets it, so
+    it can never be what stops movement. `done` means it is OVER. With only
+    `acted` to go on, movement was ungated and a player could throw a Block
+    Action and then stroll away, which no Action in the game allows.
+    """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+
+    plain = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    assert _block(plain, "h00", "a01", _dice([], [["push_back"]]), follow_up=False).ok
+    assert plain.by_id("h00").done is True
+    after = actions.get("move")["validate"](plain, {"player": "h00", "x": 6, "y": 12})
+    assert not after.ok and "activation is over" in after.reason
+
+    blitzed = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    _declare(blitzed, "h00", "a01")
+    assert _block(blitzed, "h00", "a01", _dice([], [["push_back"]]), follow_up=False).ok
+    assert blitzed.by_id("h00").done is False, "a Blitz's Block leaves the activation open"
+    assert actions.get("move")["validate"](blitzed, {"player": "h00", "x": 6, "y": 12}).ok
+
+
+@pytest.mark.parametrize("action", ["block", "handoff", "secure", "pass"])
+def test_no_action_lets_a_player_walk_on_afterwards(action):
+    """None of these includes movement after the fact — "may not continue moving
+    after the pass has been made", "their activation immediately ends"."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m, cmd, script, block = _acting_board(action)
+    actions.get(action)["resolve"](m, {"player": "h00", **cmd}, _dice(script, block))
+    p = m.by_id("h00")
+    legal = actions.get("move")["validate"](m, {"player": "h00", "x": p.x - 1, "y": p.y - 1})
+    assert not legal.ok, f"{action} left the player free to keep moving"
+
+
+def test_the_activation_being_over_survives_the_fold_too():
+    from bloodbowl.engine.state import fold
+
+    m, cmd, script, block = _acting_board("block")
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    actions.get("block")["resolve"](m, {"player": "h00", **cmd}, _dice(script, block))
+    fresh, _c, _s, _b = _acting_board("block")
+    assert fold(fresh, list(m.events)).by_id("h00").done is True

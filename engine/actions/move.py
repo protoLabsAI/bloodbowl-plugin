@@ -63,6 +63,14 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, f"it is {match.clock.active}'s turn, and that player is {p.side}")
     if p.down == "stunned":
         return Legality(False, "a Stunned player cannot act; they recover to Prone at the end of the turn")
+    if p.done:
+        # A Block Action, a Pass, a Hand-off and a Secure the Ball each END the
+        # activation, and none of them includes movement afterwards: "may not
+        # continue moving after the pass has been made", "their activation
+        # immediately ends". This used to go unchecked because the only flag was
+        # `acted`, which a single step sets — so a player who Blocked could then
+        # stroll away. The Blitz's Block is the one that leaves `done` false.
+        return Legality(False, f"{p.name()}'s activation is over")
 
     try:
         x, y = int(cmd["x"]), int(cmd["y"])
