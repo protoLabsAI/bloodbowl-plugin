@@ -531,3 +531,28 @@ def test_an_erratad_skill_qualifier_keeps_only_the_correction():
     ogre = find_position(find_team("Chaos Renegades"), "Ogre*")
     assert "Loner (3+)" in ogre["skills"]
     assert not any("4+" in s for s in ogre["skills"] if s.startswith("Loner"))
+
+
+# --- knowledge-base documents ---------------------------------------------
+
+
+def test_kb_docs_label_every_stat():
+    """The whole point of generating these rather than ingesting the team pages.
+    A flattened row reads "6 2 3+ 3+ 4+ 8+" — six values for five stats, nothing
+    saying which is which. Labelled, it cannot be misread."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("kbdocs", ROOT / "tools_kb_docs.py")
+    kbdocs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(kbdocs)
+
+    docs = kbdocs.build()
+    assert len(docs) >= 28
+    # Exact filename: "Orc.md" also matches "Black_Orc.md", which is a different team.
+    orc = next(body for name, _t, body in docs if name == "bloodbowl-team-Orc.md")
+    assert "Statline: MA 6, ST 2, AG 3+, PA 4+, AV 8+" in orc, "Goblin Lineman must carry the erratad PA"
+    assert "Team Re-roll for Orc costs 60K" in orc
+    for _name, _title, body in docs:
+        for line in body.splitlines():
+            if line.startswith("- Statline:"):
+                assert line.count(",") == 4, f"a statline lost a label: {line!r}"
