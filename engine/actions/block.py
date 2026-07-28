@@ -24,7 +24,7 @@ from ...pitch import in_bounds
 from ..ball import check_touchdown
 from ..dice import BLOCK_LABELS, roll_target
 from ..events import Event
-from ..injury import injure_by_crowd, knock_down
+from ..injury import injure_by_crowd, knock_down, place_prone
 from ..rules import (
     MAX_RUSHES,
     adjacent,
@@ -91,14 +91,22 @@ def validate(match: Match, cmd: dict) -> Legality:
     # target cannot help themselves resist it.
     off = assist_count(match, p.side, t, exclude={p.id})
     dfn = assist_count(match, t.side, p, exclude={t.id})
-    a_st, d_st = strength_of(match, p) + off, strength_of(match, t) + dfn
+    horns = 1 if (p.has_skill("Horns") and blitzing) else 0
+    a_st, d_st = strength_of(match, p) + off + horns, strength_of(match, t) + dfn
     n, chooser = block_dice(a_st, d_st)
+    # DAUNTLESS is a ROLL, so validate cannot make it — validate is asked freely
+    # and must never touch the dice. It reports that the roll is coming and what
+    # it would do, and resolve makes it. Reporting odds that resolve then ignores
+    # would be worse than not reporting them.
+    dauntless = p.has_skill("Dauntless") and strength_of(match, t) > strength_of(match, p)
     return Legality(
         True,
         "",
         {
             "dice": n,
             "chooser": chooser,
+            "horns": horns,
+            "dauntless": dauntless,
             "attacker_strength": a_st,
             "defender_strength": d_st,
             "offensive_assists": off,
@@ -120,6 +128,30 @@ def is_blitzing(match: Match, p, t) -> bool:
     """
     b = match.blitz
     return bool(b) and b.get("player") == p.id and b.get("target") == t.id and not b.get("blocked")
+
+
+def declared_a_block(match: Match, blocker) -> bool:
+    """Was a BLOCK Action declared, as opposed to a Blitz that contains one?
+
+    S3 spells this out and gives the worked example, because it decides several
+    Skills and reads like a technicality until it costs you one:
+
+        "An action is declared at the start of a player's activation… Rules that
+         come into play when an action is declared will take effect at this time —
+         SO LONG AS THE DECLARED ACTION MATCHES the action in the relevant rule.
+         … During a Blitz Action: a rule that comes into play when a player
+         DECLARES a Block Action would not come into effect, as no Block Action
+         has been declared — the declared Action was a Blitz Action. A rule that
+         comes into play when a player PERFORMS a Block Action would come into
+         effect."
+
+    So a Skill whose text says "declares a Block Action" — Grab, Brawler, Multiple
+    Block — is switched OFF during a Blitz, while one that says "performs" —
+    Tackle, Dauntless, Wrestle, Claws, Fend — is not. Read the verb; it is load
+    bearing.
+    """
+    b = match.blitz
+    return not (bool(b) and b.get("player") == blocker.id)
 
 
 def _juggernaut_suppresses(match: Match, blocker) -> bool:
@@ -175,7 +207,9 @@ def _push_to(match: Match, blocker, target, prefer: tuple | None = None):
     on_pitch = [(x, y) for x, y in options if in_bounds(x, y)]
     empty = [sq for sq in on_pitch if match.at(*sq) is None]
 
-    if blocker.has_skill("Grab"):
+    # Grab reads "When this player DECLARES a Block Action", so it is off during a
+    # Blitz — see declared_a_block.
+    if blocker.has_skill("Grab") and declared_a_block(match, blocker):
         wider = _free_around(match, target)
         if wider:
             if prefer and tuple(prefer) in wider:
@@ -274,6 +308,43 @@ def _uses_block(match: Match, p) -> tuple[bool, list[str]]:
     return bool(ctx.flags.get("stays_up")), ctx.notes
 
 
+def _would_fall(match: Match, who) -> bool:
+    """Would this player hit the ground on a Both Down? Block is the only thing
+    that keeps them up, and every Both Down decision below turns on the answer."""
+    return not _uses_block(match, who)[0]
+
+
+def _both_down_choice(match: Match, p, t) -> tuple[str, str]:
+    """What to do about a Both Down, and who is doing it.
+
+    Three Skills offer a choice here and all three say "may", so the engine needs
+    a stated policy rather than a coin toss. Each is taken only when it changes
+    the outcome for the player whose choice it is:
+
+      JUGGERNAUT "When this player declares a Blitz Action, they may treat any
+                result of Both Down as Pushed Back during any Block Actions they
+                perform during the Blitz Action." Same test, opposite trigger:
+                only on a Blitz, and only when the blocker would otherwise fall.
+      WRESTLE   "…if the Both Down result is applied, this player may choose to
+                use this Skill. If they do, both players are Placed Prone,
+                regardless of any other Skills." Either participant may. Placed
+                Prone is HARMLESS — "they aren't at risk of being caused harm" —
+                so it is taken by anyone who would otherwise be Knocked Down.
+
+    (Brawler is the third, and is applied to the DICE before this is asked — it
+    re-rolls rather than reinterpreting, so it belongs beside the roll.)
+
+    Returns (choice, actor id) with choice in {"", "push", "wrestle"}.
+    """
+    blocker_falls = _would_fall(match, p)
+    if blocker_falls and p.has_skill("Juggernaut") and not declared_a_block(match, p):
+        return "push", p.id
+    for who in (t, p):
+        if who.has_skill("Wrestle") and _would_fall(match, who) and not _juggernaut_suppresses(match, p):
+            return "wrestle", who.id
+    return "", ""
+
+
 def _choose(faces: list[str], chooser: str, acting: str, choice) -> int:
     """Which die is applied.
 
@@ -305,6 +376,41 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     unmodelled = sorted(set(unmodelled_skills(p)) | set(unmodelled_skills(t)))
     n, chooser = legal.detail["dice"], legal.detail["chooser"]
     blitzing = legal.detail["blitz"]
+
+    # DAUNTLESS: "this player may roll a D6 and add their own Strength
+    # Characteristic. If the result is HIGHER than the opposition player's
+    # UNMODIFIED Strength Characteristic, then this player increases their
+    # unmodified Strength Characteristic to match the opposition player for the
+    # duration of the Block Action. Modifiers are then applied as normal."
+    #
+    # Match, not exceed — so it equalises Strength and no more, and the assists on
+    # both sides are then re-counted against the new number.
+    if legal.detail.get("dauntless"):
+        theirs = strength_of(match, t)
+        dr = roll_target(dice, "Dauntless", theirs + 1, modifier=strength_of(match, p), note=f"beat ST {theirs}")
+        if dr.passed:
+            off, dfn = legal.detail["offensive_assists"], legal.detail["defensive_assists"]
+            n, chooser = block_dice(theirs + off + legal.detail["horns"], theirs + dfn)
+            rec.emit(
+                Event(
+                    kind="note",
+                    actor=p.id,
+                    rolls=[dr],
+                    detail={"skill": "Dauntless", "strength": theirs, "dice": n},
+                    text=f"{p.name()} uses Dauntless and matches ST {theirs} — {n} dice, {chooser} chooses. "
+                    f"{dr.describe()}",
+                )
+            )
+        else:
+            rec.emit(
+                Event(
+                    kind="note",
+                    actor=p.id,
+                    rolls=[dr],
+                    detail={"skill": "Dauntless"},
+                    text=f"{p.name()} fails the Dauntless roll. {dr.describe()}",
+                )
+            )
 
     # A Blitz's Block is paid for BEFORE it is thrown: "this Block Action will
     # cost the player that declared the Blitz Action a point of Move Allowance",
@@ -353,16 +459,29 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"))]
     roll = Roll(kind="Block", dice=list(faces), note=f"{n} dice, {chooser} chooses")
     dice.rolls.append(roll)
+    rolls = [roll]
+
+    # BRAWLER re-rolls before anything is applied, because it re-rolls the DICE
+    # rather than changing the result: "they may re-roll a single Both Down
+    # result." Once — a second Both Down stands. It reads "declares a Block
+    # Action", so a Blitz switches it off.
+    if face == "both_down" and p.has_skill("Brawler") and declared_a_block(match, p) and _would_fall(match, p):
+        faces = dice.block(n)
+        face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"))]
+        again = Roll(kind="Block (re-roll)", dice=list(faces), note="Brawler, a single Both Down")
+        dice.rolls.append(again)
+        rolls.append(again)
 
     first = rec.emit(
         Event(
             kind="block_rolled",
             actor=p.id,
             detail={"faces": list(faces), "chosen": face, "chooser": chooser, "target": t.id, "blitz": blitzing},
-            rolls=[roll],
+            rolls=rolls,
             text=f"{p.name()} {'Blitzes' if blitzing else 'Blocks'} {t.name()}: "
             + ", ".join(BLOCK_LABELS[f] for f in faces)
-            + f" — {BLOCK_LABELS[face]} applied ({chooser} chooses).",
+            + f" — {BLOCK_LABELS[face]} applied ({chooser} chooses)."
+            + (" Brawler re-rolled the Both Down." if len(rolls) > 1 else ""),
         )
     )
 
@@ -431,17 +550,48 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         turnover = True
 
     elif face == "both_down":
-        going_down = []
-        for who, other in ((p, t), (t, p)):
-            stays, notes = _uses_block(match, who)
-            if stays:
-                rec.emit(Event(kind="note", actor=who.id, text=f"{who.name()} — {'; '.join(notes)}."))
-                continue
-            going_down.append((who, other))
-        for who, other in going_down:
-            rec.absorb(knock_down(match, who, dice, by=other))
-        # A turnover only when it is the ACTIVE team's player who went down.
-        turnover = any(who.id == p.id for who, _ in going_down)
+        choice, actor = _both_down_choice(match, p, t)
+
+        if choice == "push":
+            rec.emit(
+                Event(
+                    kind="note",
+                    actor=p.id,
+                    detail={"skill": "Juggernaut"},
+                    text=f"{p.name()} uses Juggernaut and treats the Both Down as a Push Back.",
+                )
+            )
+            _push_and_follow(knock_after=False)
+
+        elif choice == "wrestle":
+            # "both players in the Block Action are Placed Prone, regardless of any
+            # other Skills they may possess" — and Placed Prone is harmless, so
+            # neither of them rolls armour. That is the whole point of the Skill.
+            who = match.by_id(actor)
+            rec.emit(
+                Event(
+                    kind="note",
+                    actor=actor,
+                    detail={"skill": "Wrestle"},
+                    text=f"{who.name()} uses Wrestle — both players are Placed Prone, and neither is at risk.",
+                )
+            )
+            for each in (p, t):
+                rec.absorb(place_prone(match, each, dice, reason="Wrestle"))
+            turnover = True  # the active team's player is on the floor
+
+        else:
+            going_down = []
+            for who, other in ((p, t), (t, p)):
+                stays, notes = _uses_block(match, who)
+                if stays:
+                    rec.emit(Event(kind="note", actor=who.id, text=f"{who.name()} — {'; '.join(notes)}."))
+                    continue
+                going_down.append((who, other))
+            for who, other in going_down:
+                rec.absorb(knock_down(match, who, dice, by=other))
+            # A turnover only when it is the ACTIVE team's player who went down.
+            turnover = any(who.id == p.id for who, _ in going_down)
 
     # Now that everything has resolved, see if anyone ended up Standing in an End
     # Zone holding the ball — a shove can score, a POW cannot.

@@ -26,6 +26,7 @@ from .skills import SkillContext, hooks_for
 
 STUNNED_MAX = 7
 KO_MAX = 9
+CLAWS_BREAKS_FROM = 8
 
 
 def _emit(match, sink: list, event: Event) -> Event:
@@ -34,6 +35,33 @@ def _emit(match, sink: list, event: Event) -> Event:
     match.apply(event)
     sink.append(event)
     return event
+
+
+def place_prone(match, player, dice, reason: str = "") -> list[Event]:
+    """The third way onto the floor, and the harmless one.
+
+    S3 names all three — "Placed Prone, Falls Over or Knocked Down" — and only
+    this one costs nothing: "When a player is Placed Prone THEY AREN'T AT RISK OF
+    BEING CAUSED HARM." No Armour Roll, no Injury Roll. That is the entire value
+    of Wrestle, and treating it as a knock-down would quietly hand out two armour
+    rolls the rules do not allow.
+
+    The ball still goes: "If a player with the ball is Placed Prone then the ball
+    will Bounce from the player's square."
+    """
+    events = [
+        Event(
+            kind="player_placed_prone",
+            actor=player.id,
+            detail={"down": "prone", "reason": reason},
+            text=f"{player.name()} is Placed Prone" + (f" ({reason})." if reason else "."),
+        )
+    ]
+    match.apply(events[0])
+    from .ball import drop
+
+    events.extend(drop(match, player, dice, reason="is Placed Prone"))
+    return events
 
 
 def knock_down(match, player, dice, by=None, cause: str = "Knocked Down") -> list[Event]:
@@ -83,7 +111,13 @@ def risk_injury(match, player, dice, by=None, armour_modifier: int = 0) -> list[
                 fn(ctx)
         mighty = ctx.value
 
+    # CLAWS: "any roll of a natural 8+ on the Armour Roll will break the
+    # opposition player's armour REGARDLESS OF THEIR ACTUAL ARMOUR VALUE" — so it
+    # lowers the bar to 8 rather than adding to the roll, which matters for AV 10+
+    # and matters not at all for AV 8+. Natural, so the Mighty Blow +1 below
+    # cannot manufacture one.
     av = armour_target(player)
+    clawed = by is not None and by.has_skill("Claws") and av > CLAWS_BREAKS_FROM
     armour = roll_2d6(
         dice,
         "Armour",
@@ -98,6 +132,10 @@ def risk_injury(match, player, dice, by=None, armour_modifier: int = 0) -> list[
         armour.total += mighty
         armour.passed = True
         armour.note = (armour.note + " · Mighty Blow +1").strip(" ·")
+
+    if clawed and not armour.passed and armour.dice[0] + armour.dice[1] >= CLAWS_BREAKS_FROM:
+        armour.passed = True
+        armour.note = (armour.note + " · Claws break on a natural 8+").strip(" ·")
 
     _emit(
         match,

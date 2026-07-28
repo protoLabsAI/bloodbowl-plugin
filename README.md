@@ -66,7 +66,7 @@ template — the derived number is isolated in one file that says so, cross-chec
 against an independent source, made configurable, and reported to the user as
 measured rather than quoted.
 
-Twenty-two skills are modelled, and where one is applied only in part the engine
+Twenty-seven skills are modelled, and where one is applied only in part the engine
 says which half it left out. A skill the engine does not model can still be **quoted**: `bb_get_skill` returns
 the rulebook's own words plus whether this engine applies it. That split matters —
 modelling a skill changes the game, quoting it changes what can honestly be said

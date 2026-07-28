@@ -2744,3 +2744,159 @@ def test_a_carrier_thrown_into_the_crowd_leaves_the_ball_behind():
     assert m.by_id("a01").place == "reserves"
     assert m.ball.carrier == "", "the ball went into the Crowd too"
     assert m.ball.in_play
+
+
+def test_declares_a_block_and_performs_a_block_are_different_triggers():
+    """S3 gives this its own worked example: "a rule that comes into play when a
+    player DECLARES a Block Action would not come into effect [during a Blitz], as
+    no Block Action has been declared — the declared Action was a Blitz Action. A
+    rule that comes into play when a player PERFORMS a Block Action would."
+
+    Grab says "declares", Tackle says "performs". Reading the verb is the whole
+    rule, and Grab shipped without it.
+    """
+    from bloodbowl.engine.actions.block import _push_to
+
+    # Grab off a Blitz: reaches a square outside the ordinary arc.
+    plain = _match(("home", 7, 13, 6, "3+", ["Grab"]), ("away", 7, 14, 6))
+    assert _push_to(plain, plain.by_id("h00"), plain.by_id("a01"), prefer=(6, 13))[0] == (6, 13)
+
+    # The same Grab as part of a declared Blitz: it does not apply.
+    blitzed = _match(("home", 7, 13, 6, "3+", ["Grab"]), ("away", 7, 14, 6))
+    _declare(blitzed, "h00", "a01")
+    assert _push_to(blitzed, blitzed.by_id("h00"), blitzed.by_id("a01"), prefer=(6, 13))[0] != (6, 13)
+
+    # Tackle says "performs", so a Blitz does not switch it off.
+    m = _match(("home", 7, 13, 6, "3+", ["Tackle"]), ("away", 7, 14, 6, "3+", ["Dodge"]))
+    _declare(m, "h00", "a01")
+    _block(m, "h00", "a01", _dice([2, 2], [["stumble"]]), follow_up=False)
+    assert m.by_id("a01").down != "standing", "Tackle should still apply during a Blitz"
+
+
+# --- skills batch three: the Both Down family and the block result ---------
+
+
+def test_wrestle_places_both_players_prone_and_neither_is_harmed():
+    """ "both players in the Block Action are Placed Prone, REGARDLESS of any other
+    Skills they may possess" — and Placed Prone is the harmless one of the three
+    ways onto the floor: "they aren't at risk of being caused harm". Neither
+    player rolls armour, which is the whole value of the Skill."""
+    m = _match(("home", 7, 13, 6, "3+", ["Block"]), ("away", 7, 14, 6, "3+", ["Wrestle"]))
+    out = _block(m, "h00", "a01", _dice([], [["both_down"]]), follow_up=False)
+
+    assert m.by_id("h00").down == "prone", "Wrestle drags the blocker down through Block"
+    assert m.by_id("a01").down == "prone"
+    kinds = [r.kind for e in out.events for r in e.rolls]
+    assert "Armour" not in kinds, f"Placed Prone must risk no harm: {kinds}"
+    assert out.turnover
+
+
+def test_without_wrestle_block_keeps_the_blocker_up_and_the_target_rolls_armour():
+    """The control: the same Both Down with no Wrestle behaves as before."""
+    m = _match(("home", 7, 13, 6, "3+", ["Block"]), ("away", 7, 14, 6))
+    out = _block(m, "h00", "a01", _dice([2, 2], [["both_down"]]), follow_up=False)
+    assert m.by_id("h00").down == "standing"
+    assert m.by_id("a01").down == "prone"
+    assert "Armour" in [r.kind for e in out.events for r in e.rolls]
+
+
+def test_brawler_re_rolls_one_both_down_and_only_off_a_blitz():
+    """ "they may re-roll a SINGLE Both Down result" — and it reads "declares a
+    Block Action", so a Blitz switches it off."""
+    m = _match(("home", 7, 13, 6, "3+", ["Brawler"]), ("away", 7, 14, 6))
+    out = _block(m, "h00", "a01", _dice([], [["both_down"], ["push_back"]]), follow_up=False)
+    kinds = [r.kind for e in out.events for r in e.rolls]
+    assert kinds.count("Block") == 1 and kinds.count("Block (re-roll)") == 1, kinds
+    assert m.by_id("h00").down == "standing", "the re-roll came up Push Back"
+
+    blitzed = _match(("home", 7, 13, 6, "3+", ["Brawler"]), ("away", 7, 14, 6))
+    _declare(blitzed, "h00", "a01")
+    out2 = _block(blitzed, "h00", "a01", _dice([2, 2, 2, 2], [["both_down"]]), follow_up=False)
+    assert "Block (re-roll)" not in [r.kind for e in out2.events for r in e.rolls], "Brawler fired on a Blitz"
+
+
+def test_brawler_keeps_a_both_down_that_is_already_good_for_it():
+    """A Both Down that floors only the target is a GOOD result. Re-rolling it
+    away would be a bug wearing a rule's clothes."""
+    m = _match(("home", 7, 13, 6, "3+", ["Brawler", "Block"]), ("away", 7, 14, 6))
+    out = _block(m, "h00", "a01", _dice([2, 2], [["both_down"]]), follow_up=False)
+    assert "Block (re-roll)" not in [r.kind for e in out.events for r in e.rolls]
+    assert m.by_id("h00").down == "standing" and m.by_id("a01").down == "prone"
+
+
+def test_juggernaut_turns_a_both_down_into_a_push_on_a_blitz():
+    """ "they may treat any result of Both Down as Pushed Back during any Block
+    Actions they perform during the Blitz Action." Only on a Blitz."""
+    m = _match(("home", 7, 13, 6, "3+", ["Juggernaut"]), ("away", 7, 14, 6))
+    _declare(m, "h00", "a01")
+    out = _block(m, "h00", "a01", _dice([], [["both_down"]]), follow_up=False)
+    assert m.by_id("h00").down == "standing", "the blitzer should not have gone down"
+    assert (m.by_id("a01").x, m.by_id("a01").y) != (7, 14), "the target should have been pushed"
+    assert not out.turnover
+
+    plain = _match(("home", 7, 13, 6, "3+", ["Juggernaut"]), ("away", 7, 14, 6))
+    _block(plain, "h00", "a01", _dice([2, 2, 2, 2], [["both_down"]]), follow_up=False)
+    assert plain.by_id("h00").down == "prone", "off a Blitz, Juggernaut does nothing here"
+
+
+def test_dauntless_matches_the_stronger_player_rather_than_beating_them():
+    """ "increases their unmodified Strength Characteristic to MATCH the opposition
+    player for the duration of the Block Action. Modifiers are then applied as
+    normal." Match, never exceed — ST 3 against ST 5 becomes 5 v 5, one die."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 6, "3+", ["Dauntless"]), ("away", 7, 14, 6))
+    m.by_id("h00").player.ST, m.by_id("a01").player.ST = "3", "5"
+
+    ahead = actions.get("block")["validate"](m, {"player": "h00", "target": "a01"})
+    assert ahead.detail["dauntless"] is True
+    assert ahead.detail["dice"] == 2 and ahead.detail["chooser"] == "defender", "before the roll it is a bad block"
+
+    out = _block(m, "h00", "a01", _dice([4], [["push_back"]]), follow_up=False)  # 4 + ST 3 = 7 > 5
+    note = next(e for e in out.events if "Dauntless" in (e.text or ""))
+    assert "matches ST 5" in note.text, note.text
+    assert note.detail["dice"] == 1, "5 v 5 is one die"
+
+    # A failed roll leaves it alone.
+    m2 = _match(("home", 7, 13, 6, "3+", ["Dauntless"]), ("away", 7, 14, 6))
+    m2.by_id("h00").player.ST, m2.by_id("a01").player.ST = "3", "5"
+    out2 = _block(m2, "h00", "a01", _dice([1, 2, 2], [["push_back"]]), follow_up=False)
+    assert any("fails the Dauntless" in (e.text or "") for e in out2.events)
+
+
+def test_horns_adds_strength_only_on_a_blitz_and_shows_up_in_the_odds():
+    """ "Whenever this player declares a Blitz Action, then they apply a +1 modifier
+    to their Strength Characteristic for any Block Actions performed during that
+    Blitz Action." Deterministic, so bb_game_odds shows the same dice resolve uses."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 6, "3+", ["Horns"]), ("away", 7, 14, 6))
+    m.by_id("h00").player.ST, m.by_id("a01").player.ST = "3", "3"
+
+    plain = actions.get("block")["validate"](m, {"player": "h00", "target": "a01"})
+    assert plain.detail["horns"] == 0 and plain.detail["dice"] == 1
+
+    _declare(m, "h00", "a01")
+    blitz = actions.get("block")["validate"](m, {"player": "h00", "target": "a01"})
+    assert blitz.detail["horns"] == 1
+    assert blitz.detail["attacker_strength"] == 4 and blitz.detail["dice"] == 2
+
+
+def test_claws_break_armour_on_a_natural_eight_whatever_the_armour_value():
+    """ "any roll of a NATURAL 8+ on the Armour Roll will break the opposition
+    player's armour regardless of their actual Armour Value." Natural, so Mighty
+    Blow cannot manufacture one."""
+    m = _match(("home", 7, 13, 6, "3+", ["Claws"]), ("away", 7, 14, 6))
+    m.by_id("a01").player.AV = "11+"
+    out = _block(m, "h00", "a01", _dice([4, 4, 3, 3], [["pow"]]), follow_up=False)
+    armour = next(r for e in out.events for r in e.rolls if r.kind == "Armour")
+    assert armour.dice == [4, 4] and armour.passed, "a natural 8 should break AV 11+"
+    assert any(r.kind == "Injury" for e in out.events for r in e.rolls)
+
+    # A natural 7 does not, however tempting.
+    m2 = _match(("home", 7, 13, 6, "3+", ["Claws"]), ("away", 7, 14, 6))
+    m2.by_id("a01").player.AV = "11+"
+    out2 = _block(m2, "h00", "a01", _dice([3, 4], [["pow"]]), follow_up=False)
+    assert not next(r for e in out2.events for r in e.rolls if r.kind == "Armour").passed
