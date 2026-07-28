@@ -23,6 +23,15 @@ def register(registry) -> None:
     cfg = registry.config or {}
 
     try:
+        # The Range Ruler is the one measured (not quoted) thing in the engine, so
+        # it is configurable — see engine/ruler.py.
+        from .engine.ruler import configure as _configure_ruler
+
+        _configure_ruler(cfg)
+    except Exception:  # noqa: BLE001
+        log.exception("[bloodbowl] range-ruler config failed")
+
+    try:
         from .api import build_data_router, build_game_router, build_view_router
 
         registry.register_router(build_view_router(cfg), prefix="/plugins/bloodbowl")
@@ -263,6 +272,8 @@ def _tools(cfg: dict):
                       lying on the square you step onto
           "block"   — with ``target``
           "handoff" — with ``target``, an ADJACENT team-mate who must Catch it
+          "pass"    — with ``x``/``y``, the target SQUARE. Check bb_game_legal
+                      first: it gives the range band and the modifier
           "secure"  — S3's Secure the Ball: a flat 2+ pick-up that ends the
                       activation, legal only when no Standing opponent is within
                       2 squares OF THE BALL
@@ -326,6 +337,19 @@ def _tools(cfg: dict):
         out = end_turn(m)
         save_match(m)
         return json.dumps(out)
+
+    @tool
+    def bb_pass_ranges() -> str:
+        """How far each pass band reaches, and the caveat that comes with it.
+
+        The Range Ruler is a physical template: the rules define passing by laying
+        it on the table and give no table of squares. These limits are MEASURED
+        and cross-checked, not quoted from the rulebook — say so if a coach asks
+        why a pass was a Long Bomb rather than a Long Pass.
+        """
+        from .engine.ruler import describe
+
+        return json.dumps({"ok": True, **describe()})
 
     @tool
     def bb_game_kickoff(receiving: str = "") -> str:
@@ -527,6 +551,7 @@ def _tools(cfg: dict):
         bb_game_odds,
         bb_game_end_turn,
         bb_game_kickoff,
+        bb_pass_ranges,
         bb_game_log,
         bb_game_abandon,
     ]

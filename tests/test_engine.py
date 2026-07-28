@@ -1243,3 +1243,206 @@ def test_a_log_line_always_names_somebody():
     assert nameless.name() == "h07"
     real = PlayerState(player=Player(side="home", x=1, y=1, position="Orc Blitzer", label="OB"), id="h01")
     assert real.name() == "Orc Blitzer", "a real positional wins over its badge"
+
+
+# --- passing ---------------------------------------------------------------
+#
+# Everything here is quoted from the source EXCEPT how far each band reaches,
+# which is measured off the physical ruler — see engine/ruler.py. The tests keep
+# those two things apart: the rules get exact assertions, the ruler gets a
+# cross-check against the evidence it was derived from.
+
+
+def test_the_range_bands_reproduce_the_reported_maximum_reaches():
+    """The derivation, asserted. Two independent community sources: measured
+    section lengths, and separately reported maximum reaches per band ("N across,
+    M down"). Every reported maximum must fall inside its band, and the next
+    square along the same line must fall outside it — otherwise the reported
+    maximum was not the maximum and the thresholds are wrong."""
+    import math
+
+    from bloodbowl.engine.ruler import band
+
+    maxima = {"Quick Pass": (3, 1), "Short Pass": (6, 0), "Long Pass": (10, 2), "Long Bomb": (13, 1)}
+    for name, (dx, dy) in maxima.items():
+        got = band(0, 0, dx, dy)
+        assert got is not None and got[0] == name, f"{dx}x{dy} should be {name}, got {got}"
+        further = band(0, 0, dx + 1, dy)
+        assert further is None or further[0] != name, f"{dx + 1}x{dy} should be beyond {name}"
+        assert math.hypot(dx, dy) > 0
+
+
+def test_the_ruler_declares_itself_measured_rather_than_quoted():
+    """A coach must never be told a range is rules-derived when it is measured."""
+    from bloodbowl.engine.ruler import describe
+
+    d = describe()
+    assert d["measured_not_quoted"] is True
+    assert "no table of squares" in d["note"]
+    assert [b["modifier"] for b in d["bands"]] == [0, -1, -2, -3]
+
+
+def test_out_of_range_is_refused_rather_than_thrown():
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 2))
+    m.by_id("h00").player.PA = "3+"
+    _with_ball(m, 7, 2, carrier="h00")
+    legal = actions.get("pass")["validate"](m, {"player": "h00", "x": 7, "y": 22})
+    assert legal.ok is False and "out of range" in legal.reason
+
+
+def test_the_range_modifier_follows_the_band():
+    """S3: Quick no modifier, Short -1, Long -2, Long Bomb -3."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 2))
+    m.by_id("h00").player.PA = "3+"
+    _with_ball(m, 7, 2, carrier="h00")
+    v = actions.get("pass")["validate"]
+    assert v(m, {"player": "h00", "x": 7, "y": 4}).detail["range_modifier"] == 0
+    assert v(m, {"player": "h00", "x": 7, "y": 8}).detail["range_modifier"] == -1
+    assert v(m, {"player": "h00", "x": 7, "y": 12}).detail["range_modifier"] == -2
+    assert v(m, {"player": "h00", "x": 7, "y": 15}).detail["range_modifier"] == -3
+
+
+def test_marking_the_passer_modifies_the_throw():
+    """S3: "Apply a -1 modifier for each opposition player Marking the player
+    performing the Pass Action.\""""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 2), ("away", 6, 2), ("away", 8, 2))
+    m.by_id("h00").player.PA = "3+"
+    _with_ball(m, 7, 2, carrier="h00")
+    d = actions.get("pass")["validate"](m, {"player": "h00", "x": 7, "y": 4}).detail
+    assert d["marking_passer"] == -2 and d["modifier"] == -2
+
+
+def _pass(m, pid, x, y, dice):
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    return actions.get("pass")["resolve"](m, {"player": pid, "x": x, "y": y}, dice)
+
+
+def test_an_accurate_pass_lands_in_the_target_square_and_is_caught():
+    m = _match(("home", 7, 2, 6, "3+"), ("home", 7, 5, 6, "3+"))
+    m.by_id("h00").player.PA = "3+"
+    _with_ball(m, 7, 2, carrier="h00")
+    out = _pass(m, "h00", 7, 5, _dice([5, 5]))  # pass passes, catch passes
+    assert out.ok and m.ball.carrier == "h01"
+
+
+def test_an_inaccurate_pass_scatters_three_squares_from_the_target():
+    """S3: "the ball will Scatter (3) from the target square before landing.\""""
+    m = _match(("home", 7, 2, 6, "3+"))
+    m.by_id("h00").player.PA = "5+"
+    _with_ball(m, 7, 2, carrier="h00")
+    out = _pass(m, "h00", 7, 5, _dice([2, 5, 5, 5, 4]))  # fail, then 3 scatters + a bounce
+    kinds = [r.kind for e in out.events for r in e.rolls]
+    assert kinds.count("Direction") >= 3, f"expected Scatter (3): {kinds}"
+
+
+def test_a_natural_one_fumbles_and_the_ball_bounces_from_the_thrower():
+    """S3: "The ball is dropped and will Bounce from the throwing player's square
+    and a Turnover will be caused.\""""
+    m = _match(("home", 7, 2, 6, "3+"))
+    m.by_id("h00").player.PA = "2+"
+    _with_ball(m, 7, 2, carrier="h00")
+    out = _pass(m, "h00", 7, 4, _dice([1, 5]))
+    assert out.turnover and not out.ok
+    assert m.ball.carrier == ""
+    assert abs(m.ball.x - 7) <= 1 and abs(m.ball.y - 2) <= 1, "it bounces from the THROWER's square"
+
+
+def test_a_one_after_modifiers_also_fumbles():
+    """S3 fumbles on "a 1 after modifiers, OR the roll is a natural 1" — so a
+    heavily modified pass can fumble on a die that was not a 1."""
+    m = _match(("home", 7, 2, 6, "3+"), ("away", 6, 2), ("away", 8, 2), ("away", 6, 3))
+    m.by_id("h00").player.PA = "3+"
+    _with_ball(m, 7, 2, carrier="h00")
+    out = _pass(m, "h00", 7, 5, _dice([2, 5, 5, 5]))  # 2, then the bounce and any catch
+    assert out.turnover, "a total of 1 or less is a fumble even on a 2"
+    fumble = next(r for e in out.events for r in e.rolls if r.kind == "Pass")
+    assert fumble.dice[0] != 1 and (fumble.total or 0) <= 1, "fumbled without a natural 1"
+
+
+def test_a_player_with_no_passing_ability_cannot_pass():
+    """A Troll's PA reads "-". Treating that as a 4+ would invent an ability."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 2))
+    m.by_id("h00").player.PA = "-"
+    _with_ball(m, 7, 2, carrier="h00")
+    legal = actions.get("pass")["validate"](m, {"player": "h00", "x": 7, "y": 4})
+    assert legal.ok is False and "Passing Ability" in legal.reason
+
+
+def test_an_opponent_in_the_path_can_intercept_and_that_is_a_turnover():
+    m = _match(("home", 7, 2, 6, "3+"), ("home", 7, 8, 6, "3+"), ("away", 7, 5, 6, "2+"))
+    m.by_id("h00").player.PA = "2+"
+    _with_ball(m, 7, 2, carrier="h00")
+    out = _pass(m, "h00", 7, 8, _dice([6, 6]))  # accurate, then a natural 6 intercepts
+    assert out.turnover and not out.ok
+    assert m.ball.carrier == "a02"
+
+
+def test_a_prone_opponent_in_the_path_cannot_intercept():
+    """Only Standing players, and "Players that have lost their Tackle Zone may
+    not attempt to Intercept.\""""
+    m = _match(("home", 7, 2, 6, "3+"), ("home", 7, 8, 6, "3+"), ("away", 7, 5, 6, "2+"))
+    m.by_id("h00").player.PA = "2+"
+    m.by_id("a02").down = "prone"
+    _with_ball(m, 7, 2, carrier="h00")
+    out = _pass(m, "h00", 7, 8, _dice([6, 5]))  # no interception die scripted
+    assert out.ok and m.ball.carrier == "h01"
+
+
+def test_a_distracted_opponent_cannot_intercept_either():
+    m = _match(("home", 7, 2, 6, "3+"), ("home", 7, 8, 6, "3+"), ("away", 7, 5, 6, "2+"))
+    m.by_id("h00").player.PA = "2+"
+    m.by_id("a02").distracted = True
+    _with_ball(m, 7, 2, carrier="h00")
+    out = _pass(m, "h00", 7, 8, _dice([6, 5]))
+    assert out.ok
+
+
+def test_a_pass_that_ends_loose_is_a_turnover():
+    """S3 treats a Pass that does not end in your own hands as a Turnover."""
+    m = _match(("home", 7, 2, 6, "3+"))
+    m.by_id("h00").player.PA = "2+"
+    _with_ball(m, 7, 2, carrier="h00")
+    out = _pass(m, "h00", 7, 4, _dice([5, 5]))  # accurate into an empty square, bounces
+    assert out.turnover and m.ball.carrier == ""
+
+
+def test_a_modified_roll_reads_as_arithmetic_that_actually_works():
+    """The log is the narration source, so a coach must be able to read it
+    literally. It used to print the post-modifier total AND the modifier —
+    "rolled 3-3 — passed" — which reads as 3 minus 3 = 0 passing a 3+, i.e. a
+    broken engine. It was a natural 6 with a -3."""
+    from bloodbowl.engine.dice import roll_target
+
+    d = _dice([6])
+    r = roll_target(d, "Intercept", 3, -3)
+    line = r.describe()
+    assert r.passed, "a natural 6 always succeeds"
+    assert "rolled 6 -3 = 3" in line, line
+    assert "rolled 3-3" not in line
+
+    plain = roll_target(_dice([4]), "Dodge", 3)
+    assert plain.describe() == "Dodge: needed 3+, rolled 4 — passed"
+
+
+def test_the_pass_log_line_is_grammatical():
+    m = _match(("home", 7, 2, 6, "3+"))
+    m.by_id("h00").player.PA = "2+"
+    _with_ball(m, 7, 2, carrier="h00")
+    out = _pass(m, "h00", 7, 4, _dice([5, 5]))
+    line = next(e.text for e in out.events if e.kind == "pass_thrown")
+    assert "throws an accurate" in line, line
+    assert "a n" not in line

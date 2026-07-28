@@ -74,12 +74,20 @@ class Roll:
     note: str = ""
 
     def describe(self) -> str:
+        """The line a coach reads, so it has to survive being read literally.
+
+        It used to print the POST-modifier total followed by the modifier —
+        "rolled 3-3 — passed" — which reads as 3 minus 3 equals 0, and passing on
+        0 against a 3+ looks like a broken engine. It was a natural 6 with a -3.
+        Show the raw dice, then the modifier, then the total they make.
+        """
+        raw = "+".join(str(d) for d in self.dice)
         if self.target is None:
-            return f"{self.kind}: {'+'.join(str(d) for d in self.dice)}"
-        mod = f"{self.modifier:+d}" if self.modifier else ""
-        got = self.total if self.total is not None else self.dice[0]
+            return f"{self.kind}: {raw}"
         verdict = "passed" if self.passed else "FAILED"
-        return f"{self.kind}: needed {self.target}+, rolled {got}{mod} — {verdict}"
+        if self.modifier:
+            return f"{self.kind}: needed {self.target}+, rolled {raw} {self.modifier:+d} = {self.total} — {verdict}"
+        return f"{self.kind}: needed {self.target}+, rolled {raw} — {verdict}"
 
     def to_dict(self) -> dict:
         return {

@@ -20,6 +20,7 @@ export const state = {
   nodes: new Map(),
   selected: null,
   legal: null,
+  passing: false,
 };
 
 export function has() {
@@ -154,6 +155,17 @@ function paintLegal() {
   // it is new in S3 and nobody will think to try it unless it is offered.
   for (const b of state.legal.ball_actions || []) {
     const cell = at(b.x, b.y);
+    if (b.action === "pass") {
+      if (!state.passing) continue;
+      cell.classList.add("passable");
+      const o = document.createElement("span");
+      o.className = "odds";
+      // The band's modifier, which is what actually decides the throw.
+      o.textContent = b.modifier ? `${b.modifier}` : "0";
+      o.title = `${b.range} (${b.modifier >= 0 ? "+" : ""}${b.modifier})`;
+      cell.appendChild(o);
+      continue;
+    }
     cell.classList.add(b.action === "secure" ? "securable" : "handoffable");
     const o = document.createElement("span");
     o.className = "odds";
@@ -230,12 +242,36 @@ function describeSelection(p, legal) {
         .map((b) =>
           b.action === "secure"
             ? `<div class="blockrow">Secure the Ball — <b>2+</b>, ends the activation</div>`
-            : `<div class="blockrow">Hand-off to a team-mate at (${b.x},${b.y})</div>`,
+            : b.action === "pass"
+              ? ""
+              : `<div class="blockrow">Hand-off to a team-mate at (${b.x},${b.y})</div>`,
         )
         .join("");
+    const passes = (legal.ball_actions || []).filter((b) => b.action === "pass");
+    if (passes.length) {
+      const byBand = {};
+      for (const b of passes) byBand[b.range] = (byBand[b.range] || 0) + 1;
+      html +=
+        `<div class="blockrow">Pass — ` +
+        Object.entries(byBand)
+          .map(([r, n]) => `${esc(r)} ${n} sq`)
+          .join(", ") +
+        ` <button id="passArm" class="mini">${state.passing ? "cancel" : "throw…"}</button></div>`;
+    }
   }
   if (p.skills && p.skills.length) html += `<div class="sk muted">${p.skills.map(esc).join(" · ")}</div>`;
   host.innerHTML = html;
+  const arm = $("#passArm");
+  if (arm) {
+    arm.addEventListener("click", () => {
+      // Arming is explicit: with the ball in hand, most of the pitch is a legal
+      // pass target, and an un-armed click would throw the ball at the first
+      // square a coach touched.
+      state.passing = !state.passing;
+      paintLegal();
+      describeSelection(p, legal);
+    });
+  }
 }
 
 async function ballAction(action, extra) {
@@ -283,10 +319,11 @@ async function throwBlock(block) {
 
 export async function onCellClick(x, y) {
   if (!state.selected || !state.legal) return;
-  const secure = ((state.legal && state.legal.ball_actions) || []).find(
-    (b) => b.action === "secure" && b.x === x && b.y === y,
-  );
+  const acts = (state.legal && state.legal.ball_actions) || [];
+  const secure = acts.find((b) => b.action === "secure" && b.x === x && b.y === y);
   if (secure) return ballAction("secure", {});
+  const throwTo = acts.find((b) => b.action === "pass" && b.x === x && b.y === y);
+  if (throwTo && state.passing) return ballAction("pass", { x, y });
   const square = state.legal.squares.find((s) => s.x === x && s.y === y);
   if (!square || !square.legal) return;
   try {

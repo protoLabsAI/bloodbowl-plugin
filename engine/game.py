@@ -249,6 +249,16 @@ def legal_moves(match: Match, player_id: str) -> dict:
     # both learn about Secure the Ball from the engine rather than being expected
     # to remember that S3 added it.
     ball_actions = []
+    # Pass targets, with the band and modifier already worked out. A coach
+    # eyeballing "that looks catchable" is how a Long Bomb gets thrown by
+    # accident — the ruler is measured, not intuited.
+    throw = actions.get("pass")
+    if throw is not None and match.ball.carrier == player_id:
+        for tx in range(1, 16):
+            for ty in range(1, 27):
+                legal = throw["validate"](match, {"player": player_id, "x": tx, "y": ty})
+                if legal.ok:
+                    ball_actions.append({"action": "pass", "x": tx, "y": ty, **legal.detail})
     for name in ("secure", "handoff"):
         entry = actions.get(name)
         if entry is None:
