@@ -39,12 +39,14 @@ def test_declared_capabilities_are_honest():
 # --- registration ---------------------------------------------------------
 
 
-def test_register_mounts_two_routers_on_the_right_prefixes(registry):
+def test_register_mounts_the_routers_on_the_right_prefixes(registry):
+    """The page is PUBLIC; everything that reads or writes state is GATED. The
+    match router shares the gated prefix — it is state like any other."""
     import bloodbowl
 
     bloodbowl.register(registry)
     prefixes = sorted(p for _, p in registry.routers)
-    assert prefixes == ["/api/plugins/bloodbowl", "/plugins/bloodbowl"]
+    assert prefixes == ["/api/plugins/bloodbowl", "/api/plugins/bloodbowl", "/plugins/bloodbowl"]
 
 
 def test_register_contributes_the_tools(registry):
@@ -90,27 +92,32 @@ def test_the_view_is_public_not_under_api(client):
 
 
 def test_view_is_four_rules_compliant(client):
+    """Still all four rules — but the page is a shell now, so the kit import and
+    the authed fetch live in the module the shell loads."""
     page = client.get("/plugins/bloodbowl/view").text
+    modules = client.get("/plugins/bloodbowl/static/js/api.js").text
     # Rule 3 — slug-aware base derived from the served path.
     assert 'location.pathname.split("/plugins/")[0]' in page
     # Rule 4 — the DS kit, CSS off BASE and JS via dynamic import (it is an ES module).
     assert "/_ds/plugin-kit.css" in page
-    assert 'import(BASE + "/_ds/plugin-kit.js")' in page
+    assert 'import(window.BASE + "/_ds/plugin-kit.js")' in modules
     # Rule 2 — data through the kit's authed fetch, on the gated prefix.
-    assert "kit.apiFetch" in page
-    assert "/api/plugins/bloodbowl" in page
+    assert "kit.apiFetch" in modules
+    assert "/api/plugins/bloodbowl" in modules
     # Don't hand-roll what the kit owns.
-    assert ":root{" not in page.replace(" ", "")
-    assert 'addEventListener("message"' not in page
+    both = page + (WEB / "style.css").read_text()
+    assert ":root{" not in both.replace(" ", "")
+    assert 'addEventListener("message"' not in page + modules
 
 
 def test_the_view_never_hardcodes_a_theme_colour():
     """Theming comes from --pl-* tokens so the board repaints with the agent's theme."""
-    page = (ROOT / "view.py").read_text()
-    body = page.split("PAGE = r", 1)[1]
     import re
 
+    body = (ROOT / "web" / "style.css").read_text()
     # rgba() neutrals for grid lines/shadows are fine; a hex brand colour is not.
+    # Nor is a hex FALLBACK: --pl-color-status-{success,warning,error,info} all
+    # exist in the kit, so a fallback would only ever mask a token that moved.
     assert not re.search(r"#[0-9a-fA-F]{6}\b", body), "hardcoded hex colour in the view"
 
 
@@ -253,12 +260,27 @@ def test_review_tool_falls_back_to_home_on_a_bad_side(registry, bad):
     assert out["side"] == "home"
 
 
+# --- the view, now split into real files -----------------------------------
+#
+# These assertions used to grep one PAGE string. The view is now index.html plus
+# a stylesheet and ES modules, so they read whichever file owns the behaviour —
+# but each still pins the same defect it always did, found by driving the board.
+
+WEB = ROOT / "web"
+
+
+def _web(*names) -> str:
+    """Concatenate web assets. No name = everything the page ships."""
+    paths = [WEB / n for n in names] if names else sorted(WEB.rglob("*.[hcj][tsa]*"))
+    return "\n".join(p.read_text() for p in paths if p.is_file())
+
+
 # --- v2 regressions: every defect found in live use ------------------------
 
 
 def test_opening_the_view_does_not_mutate_the_board():
     """The first version POSTed both teams on load, stomping the agent's setup."""
-    page = (ROOT / "view.py").read_text()
+    page = _web("js/main.js")
     boot = page.split("async function boot()", 1)[1].split("\n}", 1)[0]
     assert 'api("/teams"' not in boot, "boot() must reflect the board, never write to it"
     assert "NEVER write to it" in page
@@ -266,33 +288,32 @@ def test_opening_the_view_does_not_mutate_the_board():
 
 def test_badge_type_scales_with_the_board_not_the_viewport():
     """`.85vw` resolved to ~7px in a rail panel and made every player unreadable."""
-    page = (ROOT / "view.py").read_text()
-    assert "vw)" not in page.split("PAGE = r", 1)[1], "viewport units make badges unreadable in a panel"
-    assert "--cell" in page and "ResizeObserver" in page
+    css = (ROOT / "web" / "style.css").read_text()
+    assert "vw)" not in css, "viewport units make badges unreadable in a panel"
+    assert "--cell" in css and "ResizeObserver" in _web("js/board.js")
 
 
 def test_the_board_has_coordinate_rulers():
-    page = (ROOT / "view.py").read_text()
+    page = _web()
     for probe in ("ruler-top", "ruler-left", '$("#coord")'):
         assert probe in page, f"missing {probe} — you should not have to count squares to find (7,13)"
 
 
 def test_removal_is_an_explicit_target_not_the_whole_document():
     """Dropping on the palette used to silently delete a player."""
-    page = (ROOT / "view.py").read_text()
+    page = _web("js/setup.js")
     assert 'trash.addEventListener("drop"' in page
     assert 'document.addEventListener("drop"' not in page
 
 
 def test_render_is_incremental_so_a_poll_cannot_tear_out_the_drag_target():
-    page = (ROOT / "view.py").read_text()
-    assert "NODES" in page
-    assert "if (dragging" in page, "the poller must stand down mid-drag"
+    assert "dataset.sig === sig" in _web("js/setup.js"), "render must skip nodes that did not change"
+    assert "state.dragging" in _web("js/main.js"), "the poller must stand down mid-drag"
 
 
 def test_undo_exists_and_posts_a_whole_board():
-    page = (ROOT / "view.py").read_text()
-    assert "undoStack" in page and 'api("/replace"' in page
+    page = _web("js/setup.js")
+    assert "state.undo" in page and 'api("/replace"' in page
 
 
 def test_replace_endpoint_round_trips_a_board(client):
@@ -315,8 +336,9 @@ def test_replace_rejects_an_off_pitch_board(client):
 
 
 def test_palette_rebuilds_when_the_agent_changes_teams():
-    page = (ROOT / "view.py").read_text()
-    poll = page.split("setInterval", 1)[1]
+    """The poller lives in main.js now, but the rebuild it triggers is setup's."""
+    assert "await setup.poll()" in _web("js/main.js")
+    poll = _web("js/setup.js").split("export async function poll()", 1)[1]
     assert "teamsChanged" in poll and "buildPalette()" in poll
 
 
@@ -556,3 +578,101 @@ def test_kb_docs_label_every_stat():
         for line in body.splitlines():
             if line.startswith("- Statline:"):
                 assert line.count(",") == 4, f"a statline lost a label: {line!r}"
+
+
+# --- the view is real files now --------------------------------------------
+
+
+def test_the_view_ships_as_real_files_not_one_python_string():
+    """The whole point of the restructure. A game UI does not fit in a string
+    literal, and a file you cannot diff is a file nobody refactors."""
+    assert not (ROOT / "view.py").exists(), "view.py is gone; the page lives in web/"
+    for name in ("index.html", "style.css", "js/main.js", "js/board.js", "js/game.js", "js/setup.js"):
+        assert (WEB / name).is_file(), f"missing {name}"
+
+
+def test_the_static_route_serves_the_modules(client):
+    for path, ctype in (
+        ("style.css", "text/css"),
+        ("js/main.js", "text/javascript"),
+        ("js/board.js", "text/javascript"),
+    ):
+        r = client.get(f"/plugins/bloodbowl/static/{path}")
+        assert r.status_code == 200, path
+        assert ctype in r.headers["content-type"]
+
+
+def test_the_static_route_refuses_to_escape_the_web_directory(client):
+    """It is PUBLIC, so it must not be able to hand out the plugin's source or
+    the roster data, however the path is spelled."""
+    for path in ("../api.py", "../../store.py", "../data/rosters.json", "../protoagent.plugin.yaml"):
+        r = client.get(f"/plugins/bloodbowl/static/{path}")
+        assert r.status_code == 404, f"{path} was served with {r.status_code}"
+
+
+def test_the_page_loads_its_assets_through_the_slug_aware_base(client):
+    """A root-absolute src 404s behind a fleet proxy that mounts the instance on
+    a sub-path — the bug that took a whole plugin down once before."""
+    page = client.get("/plugins/bloodbowl/view").text
+    assert 'location.pathname.split("/plugins/")' in page
+    assert 'src="/plugins/' not in page, "a root-absolute module src breaks under a proxy"
+    assert 'href="/plugins/' not in page
+
+
+def _decomment(text: str) -> str:
+    """Strip /* */ and // comments.
+
+    Needed because the files EXPLAIN the hardcoding they removed — a naive scan
+    trips over the comment describing the bug it is checking for.
+    """
+    import re
+
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    return re.sub(r"^\s*//.*$", " ", text, flags=re.M)
+
+
+def test_no_geometry_is_hardcoded_anywhere_in_the_view():
+    """THE DRY invariant. The old view read the real numbers in JS while its CSS
+    and SVG hardcoded 26 and 15, so changing the pitch would have drawn a board
+    that did not match the one being played on."""
+    import re
+
+    css = _decomment((WEB / "style.css").read_text())
+    assert "repeat(26" not in css and "repeat(15" not in css
+    assert "var(--cols)" in css and "var(--rows)" in css
+    assert "aspect-ratio: var(--cols) / var(--rows)" in css
+
+    board = _decomment((WEB / "js" / "board.js").read_text())
+    assert "GEO.length" in board and "GEO.width" in board
+    for f in sorted((WEB / "js").glob("*.js")):
+        body = _decomment(f.read_text())
+        found = re.findall(r"(?<![\w.\-])(?:26|15)(?![\w.\-])", body)
+        assert not found, f"{f.name} hardcodes the pitch dimension {found}"
+
+
+def test_the_geometry_is_published_as_css_custom_properties():
+    js = _web("js/board.js")
+    assert 'setProperty("--cols"' in js and 'setProperty("--rows"' in js
+
+
+def test_play_mode_asks_the_engine_what_is_legal_rather_than_working_it_out():
+    """The view must not re-derive the rules. Two implementations of a dodge
+    modifier agree right up until they don't, and then the board lies."""
+    js = _web("js/game.js")
+    assert "/game/legal" in js
+    for forbidden in ("dodge_modifier =", "function dodgeModifier", "MAX_RUSHES"):
+        assert forbidden not in js, f"game.js is computing rules itself: {forbidden}"
+
+
+def test_the_log_is_rendered_from_the_engines_rolls():
+    js = _web("js/game.js")
+    assert "/game/log" in js and "e.rolls" in js
+
+
+def test_the_two_modes_hand_the_board_over_cleanly():
+    """Both renderers appending to the same cells is how you get a player that
+    cannot be dragged and nobody can explain why."""
+    main = _web("js/main.js")
+    assert "setup.teardown()" in main and "game.teardown()" in main
+    for mod in ("js/setup.js", "js/game.js"):
+        assert "export function teardown()" in _web(mod), f"{mod} must be able to release the board"

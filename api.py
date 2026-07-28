@@ -9,20 +9,49 @@ one; everything it then reads or writes goes through the authed prefix.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from .pitch import Player, Scenario, find_team, geometry, player_from_roster, team_names
 from .store import load, load_previous, save
-from .view import PAGE
+
+WEB = Path(__file__).resolve().parent / "web"
+
+# Only these are servable. An allowlist of suffixes rather than a traversal check
+# alone: the static route is PUBLIC, so it should be incapable of serving a .py or
+# a .json out of the plugin directory even if a path check is ever weakened.
+_MEDIA = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".svg": "image/svg+xml",
+}
 
 
 def build_view_router(cfg: dict | None = None):
-    from fastapi import APIRouter
-    from fastapi.responses import HTMLResponse
+    from fastapi import APIRouter, HTTPException
+    from fastapi.responses import FileResponse, HTMLResponse
 
     r = APIRouter()
 
     @r.get("/view", response_class=HTMLResponse)
     async def _view() -> HTMLResponse:
-        return HTMLResponse(PAGE)
+        return HTMLResponse((WEB / "index.html").read_text(encoding="utf-8"))
+
+    @r.get("/static/{path:path}")
+    async def _static(path: str):
+        """Serve the page's own modules and stylesheet.
+
+        Public, like the page — an iframe navigation carries no bearer, and a
+        stylesheet the browser cannot fetch leaves an unreadable board. Everything
+        that reads or writes the BOARD still goes through the gated prefix.
+        """
+        target = (WEB / path).resolve()
+        if not target.is_file() or WEB not in target.parents:
+            raise HTTPException(status_code=404, detail="not found")
+        media = _MEDIA.get(target.suffix.lower())
+        if media is None:
+            raise HTTPException(status_code=404, detail="not found")
+        return FileResponse(target, media_type=media)
 
     return r
 
@@ -153,5 +182,92 @@ def build_data_router(cfg: dict | None = None):
         behind the view's in-session undo."""
         prev = load_previous()
         return {"scenario": prev.to_dict() if prev else None}
+
+    return r
+
+
+def build_game_router(cfg: dict | None = None):
+    """The match, over HTTP.
+
+    Every route here goes through ``engine.game``, which is the same code the
+    agent's tools call. The view and the coach therefore cannot end up playing by
+    different rules — the alternative is two implementations of a turnover that
+    agree right up until they don't.
+    """
+    from fastapi import APIRouter, HTTPException
+
+    from .engine.game import act, end_turn, legal_moves, new_match
+    from .store import clear_match, load_match, save_match
+
+    r = APIRouter()
+
+    def _need_match():
+        m = load_match()
+        if m is None:
+            raise HTTPException(status_code=404, detail="no match in progress")
+        return m
+
+    @r.get("/game")
+    async def _game() -> dict:
+        m = load_match()
+        if m is None:
+            return {"ok": False, "match": None}
+        return {"ok": True, "match": m.to_dict(include_log=False)}
+
+    @r.post("/game/new")
+    async def _new(body: dict | None = None) -> dict:
+        body = body or {}
+        sc = load()
+        if not sc.players:
+            raise HTTPException(status_code=400, detail="the board is empty — set a scenario up first")
+        m = new_match(
+            sc,
+            seed=int(body.get("seed") or 0),
+            kicking_to=("away" if body.get("kicking_to") == "away" else "home"),
+        )
+        save_match(m)
+        return {"ok": True, "match": m.to_dict(include_log=False)}
+
+    @r.get("/game/legal")
+    async def _legal(player: str) -> dict:
+        return legal_moves(_need_match(), player)
+
+    @r.post("/game/act")
+    async def _act(body: dict) -> dict:
+        m = _need_match()
+        report = act(
+            m,
+            str(body.get("action") or "move"),
+            {"player": str(body.get("player") or ""), "x": int(body.get("x") or 0), "y": int(body.get("y") or 0)},
+        )
+        save_match(m)
+        report["match"] = m.to_dict(include_log=False)
+        return report
+
+    @r.post("/game/end-turn")
+    async def _end_turn() -> dict:
+        m = _need_match()
+        out = end_turn(m)
+        save_match(m)
+        out["match"] = m.to_dict(include_log=False)
+        return out
+
+    @r.post("/game/abandon")
+    async def _abandon() -> dict:
+        return {"ok": True, "discarded": clear_match()}
+
+    @r.get("/game/log")
+    async def _log(last: int = 40) -> dict:
+        from .engine.events import describe
+
+        m = _need_match()
+        n = max(1, min(int(last), 200))
+        return {
+            "ok": True,
+            "log": [
+                {"kind": e.kind, "actor": e.actor, "text": describe(e), "rolls": [x.describe() for x in e.rolls]}
+                for e in m.events[-n:]
+            ],
+        }
 
     return r

@@ -256,12 +256,96 @@ def drive(base: str, *, do_checks: bool, live: bool) -> int:
             state = page.evaluate("""async () => (await fetch("/api/plugins/bloodbowl/state")).json()""")
             check("teams survived a page load", bool(state["home_team"]), f"home={state['home_team']!r}")
             page.close()
+
+            _play(browser, url, w=1400, h=950)
         browser.close()
 
     failed = [c for c in CHECKS if c[1] == "FAIL"]
     if do_checks:
         print(f"\n{len(CHECKS) - len(failed)} passed, {len(failed)} failed")
     return 1 if failed else 0
+
+
+def _play(browser, url: str, w: int, h: int) -> None:
+    """Play a turn in a real browser.
+
+    Server-side tests can prove the engine refuses an illegal move. They cannot
+    prove that a coach can SEE which squares cost a Dodge before committing to
+    one, and that is the entire reason play mode exists. So: start a match, pick a
+    player, and check the board actually says what the engine said.
+    """
+    page = browser.new_page(viewport={"width": w, "height": h})
+    page.goto(url, wait_until="networkidle")
+    page.wait_for_selector(".cell", timeout=10000)
+    theme = ROOT / "harness_theme.css"
+    if theme.exists():
+        page.add_style_tag(content=theme.read_text())
+    page.wait_for_timeout(400)
+    print("  -- play mode --")
+
+    page.locator("#modePlay").click()
+    page.wait_for_timeout(300)
+    check("play mode hides the setup palette", not page.locator("#trash").is_visible())
+
+    page.locator("#newMatch").click()
+    page.wait_for_timeout(800)
+    check("a match starts", page.locator(".pc").count() > 0, f"{page.locator('.pc').count()} players")
+    check("the clock renders", "H1" in page.locator("#clock").inner_text(), page.locator("#clock").inner_text())
+
+    # Pick a home player who is actually Marked. Clicking whichever happens to be
+    # first proves nothing about the highlighting: an unmarked player in open
+    # field legitimately has eight free squares and no roll to show.
+    marked = page.evaluate("""async () => {
+      const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
+      const on = m.players.filter(p => p.place === "pitch");
+      const foes = on.filter(p => p.side === "away");
+      const me = on.find(p => p.side === "home" && foes.some(
+        f => Math.abs(f.x - p.x) <= 1 && Math.abs(f.y - p.y) <= 1 && !(f.x === p.x && f.y === p.y)));
+      return me ? {x: me.x, y: me.y} : null;
+    }""")
+    check("the seeded board has a Marked home player to test with", marked is not None)
+    if marked is None:
+        page.close()
+        return
+    page.locator(f'.cell[data-x="{marked["x"]}"][data-y="{marked["y"]}"] .pc').click()
+    page.wait_for_timeout(600)
+    legal = page.locator(".cell.legal").count()
+    check("selecting a player highlights its legal squares", legal > 0, f"{legal} squares")
+    check(
+        "squares needing a roll look different from free ones",
+        page.locator(".cell.legal.needsroll").count() > 0,
+        "no square was marked as needing a Dodge or Rush",
+    )
+    check("the odds badge is readable", page.locator(".cell .odds").count() > 0)
+    sel = page.locator("#sel").inner_text()
+    check("the selected pane names the player", "MA" in sel, sel[:60])
+
+    target = page.locator(".cell.legal").first
+    target.click()
+    page.wait_for_timeout(900)
+    log = page.locator("#log").inner_text()
+    check("the move lands in the log", "moves to" in log or "Falls Over" in log, log[:90].replace("\n", " / "))
+    check("the log quotes the dice", "rolled" in log or "moves to" in log, log[:90].replace("\n", " / "))
+
+    # Re-select a Marked player and get the cursor off the board before shooting.
+    # The hover card follows the mouse and will happily sit on top of the very
+    # highlighting the shot exists to show.
+    again = page.evaluate("""async () => {
+      const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
+      const on = m.players.filter(p => p.place === "pitch" && !p.acted);
+      const foes = on.filter(p => p.side === "away");
+      const me = on.find(p => p.side === "home" && foes.some(
+        f => Math.abs(f.x - p.x) <= 1 && Math.abs(f.y - p.y) <= 1 && !(f.x === p.x && f.y === p.y)));
+      return me ? {x: me.x, y: me.y} : null;
+    }""")
+    if again:
+        page.locator(f'.cell[data-x="{again["x"]}"][data-y="{again["y"]}"] .pc').click()
+        page.wait_for_timeout(500)
+    page.mouse.move(4, 4)
+    page.wait_for_timeout(250)
+    page.screenshot(path=str(SHOTS / "play.png"), full_page=True)
+    print(f"  shot: {(SHOTS / 'play.png').relative_to(ROOT)}")
+    page.close()
 
 
 def main() -> int:

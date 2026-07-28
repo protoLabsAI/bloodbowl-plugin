@@ -1,0 +1,220 @@
+/* Blood Bowl pitch — styles.
+ *
+ * GEOMETRY IS NEVER WRITTEN DOWN HERE. The pitch is 26 x 15 today, but the board
+ * dimensions arrive from the engine at /meta and are published as --cols / --rows,
+ * and every grid, ratio and ruler is expressed in those. The previous version
+ * hardcoded `repeat(26,1fr)` and `viewBox="0 0 26 15"` alongside a JS that read
+ * the real numbers, so changing the pitch would have left the two silently
+ * disagreeing — a board drawn to one size and played on another.
+ *
+ * --cell is the measured pixel size of one square, published by a ResizeObserver,
+ * so type scales with the BOARD. Scaling off vw resolved to ~7px in a rail panel
+ * and made every player unreadable.
+ */
+
+/* [hidden] is only `display: none` in the user-agent sheet, so ANY display rule
+   of ours beats it. `.bar { display: flex }` on a hidden element left the whole
+   setup toolbar on screen in play mode. Assert it back. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  background: var(--pl-color-bg);
+  color: var(--pl-color-fg);
+  font-family: var(--pl-font-sans, system-ui);
+  font-size: 13px;
+}
+.wrap { padding: 10px 12px 16px; max-width: 1600px; margin: 0 auto; }
+.bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.bar .grow { flex: 1; }
+label {
+  color: var(--pl-color-fg-muted); font-size: 12px;
+  display: inline-flex; gap: 4px; align-items: center;
+}
+select, button {
+  font: inherit; color: var(--pl-color-fg); background: var(--pl-color-bg-raised);
+  border: 1px solid var(--pl-color-border); border-radius: 6px; padding: 4px 8px;
+}
+button { cursor: pointer; }
+button:hover:not(:disabled) { background: var(--pl-color-bg-hover); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--pl-color-accent); color: var(--pl-color-fg-on-accent); border-color: transparent; }
+:focus-visible { outline: 2px solid var(--pl-color-focus); outline-offset: 1px; }
+.mono { font-family: var(--pl-font-mono, ui-monospace, monospace); }
+.muted { color: var(--pl-color-fg-subtle); font-size: 11px; }
+#coord { min-width: 74px; }
+#err { margin-bottom: 8px; }
+
+.chip {
+  border: 1px solid var(--pl-color-border); border-radius: 999px;
+  padding: 2px 9px; font-size: 11px; background: var(--pl-color-bg-raised);
+}
+.chip.home { border-color: var(--pl-color-accent); color: var(--pl-color-accent-fg); }
+
+.modes { display: inline-flex; }
+.mode { border-radius: 0; }
+.mode:first-child { border-radius: 6px 0 0 6px; }
+.mode:last-child { border-radius: 0 6px 6px 0; border-left: none; }
+.mode.is-on { background: var(--pl-color-accent); color: var(--pl-color-fg-on-accent); border-color: transparent; }
+
+/* ---- board + rulers --------------------------------------------------- */
+.stage {
+  display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto 1fr;
+  gap: 2px; align-items: stretch;
+}
+.ruler {
+  display: grid; color: var(--pl-color-fg-subtle);
+  font-size: max(7px, calc(var(--cell, 26px) * .34)); line-height: 1;
+  font-family: var(--pl-font-mono, ui-monospace, monospace);
+}
+.ruler-top { grid-template-columns: repeat(var(--cols), 1fr); }
+.ruler-left { grid-template-rows: repeat(var(--rows), 1fr); }
+.ruler div { display: flex; align-items: center; justify-content: center; padding: 1px 0; }
+.ruler-left div { padding: 0 3px; }
+.ruler div.hot { color: var(--pl-color-accent-fg); font-weight: 700; }
+
+.board-outer {
+  position: relative; border: 1px solid var(--pl-color-border-strong);
+  border-radius: 6px; overflow: hidden; background: var(--pl-color-bg-inset);
+}
+.board {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), 1fr);
+  grid-template-rows: repeat(var(--rows), 1fr);
+  aspect-ratio: var(--cols) / var(--rows);
+  width: 100%;
+}
+.cell {
+  position: relative;
+  border-right: 1px solid rgba(150, 150, 150, .30);
+  border-bottom: 1px solid rgba(150, 150, 150, .30);
+}
+.cell.awayhalf { background: rgba(255, 255, 255, .055); }
+/* Each End Zone is tinted by WHOSE it is. Tinting both with the accent made both
+   ends read as home territory. */
+.cell.ez-home { background: color-mix(in oklab, var(--pl-color-accent) 22%, transparent); }
+.cell.ez-away { background: color-mix(in oklab, var(--pl-color-fg) 14%, transparent); }
+.cell.wide { box-shadow: inset 0 0 0 99px rgba(0, 0, 0, .22); }
+.cell.xhot, .cell.yhot { background: rgba(255, 255, 255, .07); }
+.cell.target { outline: 2px solid var(--pl-color-focus); outline-offset: -2px; z-index: 4; }
+.cell.armed { cursor: copy; }
+
+/* Legal-move highlighting in play mode. A square that needs a roll must not look
+   like a square that does not — the whole value of asking the engine is seeing
+   the difference before committing.
+   These are FILLED, not outlined. A 2px inset outline in status-green sat on a
+   dark green pitch and was invisible at a glance, which defeats the point: you
+   would still be counting squares to work out where you could go. */
+.cell.legal {
+  cursor: pointer;
+  background: color-mix(in oklab, var(--pl-color-status-success) 34%, transparent);
+  box-shadow: inset 0 0 0 2px var(--pl-color-status-success);
+}
+.cell.legal.needsroll {
+  background: color-mix(in oklab, var(--pl-color-status-warning) 38%, transparent);
+  box-shadow: inset 0 0 0 2px var(--pl-color-status-warning);
+}
+/* The crosshair must not repaint over a legal square and hide it. */
+.cell.legal.xhot, .cell.legal.yhot {
+  background: color-mix(in oklab, var(--pl-color-status-success) 46%, transparent);
+}
+.cell.legal.needsroll.xhot, .cell.legal.needsroll.yhot {
+  background: color-mix(in oklab, var(--pl-color-status-warning) 50%, transparent);
+}
+.cell .odds {
+  position: absolute; right: 1px; bottom: 0; z-index: 3; pointer-events: none;
+  font-size: max(6px, calc(var(--cell, 26px) * .30)); line-height: 1;
+  font-family: var(--pl-font-mono, ui-monospace, monospace);
+  color: var(--pl-color-fg); text-shadow: 0 0 3px var(--pl-color-bg);
+}
+
+.pc {
+  position: absolute; inset: 6%; border-radius: 4px; display: flex;
+  align-items: center; justify-content: center; font-weight: 700; line-height: 1;
+  cursor: grab; user-select: none;
+  font-size: calc(var(--cell, 26px) * .40);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+}
+.pc.home { background: var(--pl-color-accent); color: var(--pl-color-fg-on-accent); }
+.pc.away { background: var(--pl-color-fg); color: var(--pl-color-bg); }
+.pc.sel { outline: 2px solid var(--pl-color-focus); outline-offset: 2px; }
+.pc:active { cursor: grabbing; }
+
+/* A player on the ground has to read as down at a glance, not just in a tooltip. */
+.pc.prone { transform: rotate(-58deg); opacity: .72; border-radius: 2px; }
+.pc.stunned { transform: rotate(-58deg); opacity: .5; border-radius: 2px; filter: grayscale(.7); }
+.pc.acted { opacity: .55; }
+.pc.hasball::after {
+  content: ""; position: absolute; right: -3px; top: -3px;
+  width: 40%; height: 40%; min-width: 5px; min-height: 5px; border-radius: 50%;
+  background: var(--pl-color-status-warning);
+  border: 1px solid var(--pl-color-bg);
+}
+.ball {
+  position: absolute; inset: 30%; border-radius: 50%; z-index: 2;
+  background: var(--pl-color-status-warning);
+  border: 1px solid var(--pl-color-bg);
+}
+
+.overlay { position: absolute; inset: 0; pointer-events: none; }
+.ezlab {
+  position: absolute; top: 50%; font-size: 10px; letter-spacing: .08em;
+  color: var(--pl-color-fg-subtle); transform: translateY(-50%);
+  writing-mode: vertical-rl; pointer-events: none;
+}
+
+/* ---- palette + trash --------------------------------------------------- */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.pal h5, .pane h5 {
+  margin: 0 0 5px; font-size: 11px; color: var(--pl-color-fg-subtle);
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.pi {
+  display: flex; justify-content: space-between; gap: 8px; align-items: center;
+  border: 1px solid var(--pl-color-border); border-radius: 6px; padding: 4px 7px;
+  cursor: pointer; background: var(--pl-color-bg-raised); font-size: 12px; margin-bottom: 4px;
+}
+.pi:hover { border-color: var(--pl-color-border-strong); }
+.pi.armed { border-color: var(--pl-color-accent); background: var(--pl-color-bg-hover); }
+.pi .st { color: var(--pl-color-fg-subtle); font-size: 10px; white-space: nowrap; }
+#trash {
+  border: 1px dashed var(--pl-color-border-strong); border-radius: 6px;
+  padding: 6px 10px; color: var(--pl-color-fg-subtle); font-size: 11px;
+}
+#trash.over { border-color: var(--pl-color-status-error); color: var(--pl-color-status-error); }
+
+/* ---- play panes -------------------------------------------------------- */
+.playpanes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.pane {
+  border: 1px solid var(--pl-color-border); border-radius: 6px;
+  padding: 8px 10px; background: var(--pl-color-bg-raised);
+}
+.log { max-height: 240px; overflow-y: auto; font-size: 12px; }
+.log div { padding: 2px 0; border-bottom: 1px solid var(--pl-color-border); }
+.log div:last-child { border-bottom: none; }
+.log .roll { font-family: var(--pl-font-mono, ui-monospace, monospace); color: var(--pl-color-fg-muted); font-size: 11px; }
+.log .turnover { color: var(--pl-color-status-error); font-weight: 600; }
+.moves { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-top: 6px; max-width: 240px; }
+.moves div { text-align: center; border-radius: 4px; padding: 3px 0; font-size: 11px; background: var(--pl-color-bg-subtle); }
+.moves div.no { opacity: .35; }
+.moves div.roll { background: color-mix(in oklab, var(--pl-color-status-warning) 25%, transparent); }
+.unmodelled { color: var(--pl-color-status-warning); font-size: 11px; margin-top: 6px; }
+
+/* ---- hover stat card --------------------------------------------------- */
+#card {
+  position: fixed; z-index: 60; min-width: 196px; max-width: 270px; padding: 8px 10px;
+  border-radius: 8px; background: var(--pl-color-bg-raised);
+  border: 1px solid var(--pl-color-border-strong);
+  box-shadow: var(--pl-shadow-popover, 0 8px 28px rgba(0, 0, 0, .5)); display: none;
+}
+#card h4 { margin: 0 0 2px; font-size: 13px; }
+#card .sub { color: var(--pl-color-fg-subtle); font-size: 11px; margin-bottom: 6px; }
+#card .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; margin-bottom: 6px; }
+#card .stat { text-align: center; background: var(--pl-color-bg-subtle); border-radius: 4px; padding: 3px 0; }
+#card .stat b { display: block; font-size: 12px; }
+#card .stat span { font-size: 9px; color: var(--pl-color-fg-subtle); letter-spacing: .04em; }
+#card .sk { font-size: 11px; color: var(--pl-color-fg-muted); }
+
+@media (max-width: 720px) {
+  .cols, .playpanes { grid-template-columns: 1fr; }
+}

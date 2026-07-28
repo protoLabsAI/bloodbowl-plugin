@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blood Bowl Pitch</title>
+<script>
+  // The slug-derived base. Everything else is loaded relative to it, so the view
+  // works unchanged behind a fleet proxy that mounts the instance on a sub-path.
+  var BASE = location.pathname.split("/plugins/")[0];
+  var SELF = BASE + "/plugins/bloodbowl/static";
+  (function () {
+    for (var href of [BASE + "/_ds/plugin-kit.css", SELF + "/style.css"]) {
+      var l = document.createElement("link"); l.rel = "stylesheet"; l.href = href;
+      document.head.appendChild(l);
+    }
+  })();
+</script>
+</head><body><div class="wrap">
+
+<div id="err" class="pl-callout pl-callout--error" hidden></div>
+
+<div class="bar">
+  <div class="modes">
+    <button id="modeSetup" class="mode is-on">Setup</button>
+    <button id="modePlay" class="mode">Play</button>
+  </div>
+
+  <!-- setup mode -->
+  <span class="mode-setup">
+    <label>Home <select id="homeTeam"></select></label>
+    <label>Away <select id="awayTeam"></select></label>
+  </span>
+
+  <!-- play mode -->
+  <span class="mode-play" hidden>
+    <span id="clock" class="chip mono"></span>
+    <span id="score" class="chip mono"></span>
+    <span id="activeSide" class="chip"></span>
+  </span>
+
+  <span id="coord" class="mono muted"></span>
+  <span class="grow"></span>
+  <span id="counts" class="muted"></span>
+
+  <span class="mode-setup">
+    <button id="undo" disabled>Undo</button>
+    <button id="clearHome">Clear home</button>
+    <button id="clearAway">Clear away</button>
+    <button id="clearAll">Clear pitch</button>
+  </span>
+  <span class="mode-play" hidden>
+    <button id="endTurn">End turn</button>
+    <button id="newMatch">New match</button>
+    <button id="abandon">Abandon</button>
+  </span>
+</div>
+
+<div class="stage">
+  <div class="corner"></div>
+  <div class="ruler ruler-top" id="rtop"></div>
+  <div class="ruler ruler-left" id="rleft"></div>
+  <div class="board-outer">
+    <div class="board" id="board"></div>
+    <svg class="overlay" id="ov" preserveAspectRatio="none"></svg>
+    <div class="ezlab" style="left:2px">HOME END ZONE</div>
+    <div class="ezlab" style="right:2px">AWAY END ZONE</div>
+  </div>
+</div>
+
+<!-- setup mode -->
+<div class="cols mode-setup">
+  <div class="pal" id="palHome"></div>
+  <div class="pal" id="palAway"></div>
+</div>
+<div class="bar mode-setup" style="margin-top:8px">
+  <div id="trash">Drag a player here to remove them</div>
+  <span class="muted">Click a position then click a square, or drag. Click a player to select; Delete removes.</span>
+</div>
+
+<!-- play mode -->
+<div class="playpanes mode-play" hidden>
+  <div class="pane">
+    <h5>Selected</h5>
+    <div id="sel" class="muted">Click one of your players to see where they can go.</div>
+  </div>
+  <div class="pane">
+    <h5>Match log</h5>
+    <div id="log" class="log"></div>
+  </div>
+</div>
+
+</div>
+<div id="card"></div>
+
+<script>
+  // Injected rather than written as <script src>: the path has to be the
+  // slug-aware one, and a root-absolute src would 404 behind a fleet proxy.
+  (function () {
+    var s = document.createElement("script");
+    s.type = "module"; s.src = SELF + "/js/main.js";
+    document.body.appendChild(s);
+  })();
+</script>
+</body></html>
