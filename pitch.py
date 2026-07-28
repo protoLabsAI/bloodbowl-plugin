@@ -15,6 +15,7 @@ the width exactly.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -212,6 +213,63 @@ def find_team(name: str) -> dict | None:
         if want.startswith(n) or n.startswith(want) or want.rstrip("s") == n.rstrip("s"):
             return t
     return None
+
+
+def stars() -> list[dict]:
+    return rosters().get("stars", [])
+
+
+def find_star(name: str) -> dict | None:
+    """Look a Star Player up by name, forgivingly.
+
+    Names carry punctuation a coach will not type back exactly — "Morg 'n' Thorg",
+    "Ivan 'the Animal' Deathshroud" — so an exact match is tried first and then a
+    punctuation-stripped substring match.
+    """
+    if not name:
+        return None
+    want = name.strip().casefold()
+    all_stars = stars()
+    for s in all_stars:
+        if s["name"].casefold() == want:
+            return s
+
+    def bare(s: str) -> str:
+        return re.sub(r"[^a-z0-9 ]+", "", s.casefold()).strip()
+
+    wb = bare(want)
+    if not wb:
+        return None
+    for s in all_stars:
+        if bare(s["name"]) == wb:
+            return s
+    for s in all_stars:
+        if wb in bare(s["name"]) or any(wb == bare(m["name"]) for m in s.get("members", [])):
+            return s
+    return None
+
+
+def stars_for_team(team_name: str) -> list[dict]:
+    """The Stars a team may hire, cheapest first.
+
+    Read off the TEAM page's own star list, which is the side that prices them —
+    a star's page names the teams but the price lives with the team.
+    """
+    team = find_team(team_name)
+    if team is None:
+        return []
+    out = []
+    for entry in team.get("star_players", []):
+        s = find_star(entry["name"])
+        out.append(
+            {
+                "name": entry["name"],
+                "cost": entry.get("cost") or (s or {}).get("cost"),
+                "known": s is not None,
+            }
+        )
+    out.sort(key=lambda e: (int(re.sub(r"\D", "", e["cost"] or "0") or 0), e["name"]))
+    return out
 
 
 def find_position(team: dict, position: str) -> dict | None:

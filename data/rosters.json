@@ -110,7 +110,59 @@
           "cost": "110K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "60K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "60K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Boa Kon'ssstriktr",
+          "cost": "180K"
+        },
+        {
+          "name": "Estelle la Veneaux",
+          "cost": "190K"
+        },
+        {
+          "name": "Anqi Panqi",
+          "cost": "190K"
+        },
+        {
+          "name": "Karla von Kill",
+          "cost": "210K"
+        },
+        {
+          "name": "Zolcath the Zoat",
+          "cost": "220K"
+        },
+        {
+          "name": "Dribl and Drull",
+          "cost": "230K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Glotl Stop",
+          "cost": "260K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Lustrian Superleague"
+      ],
+      "special_rules": [],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Amazon/"
     },
     {
@@ -194,7 +246,70 @@
           "cost": "115K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "60K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "60K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Fungus the Loon",
+          "cost": "80K"
+        },
+        {
+          "name": "Bomber Dribblesnot",
+          "cost": "80K"
+        },
+        {
+          "name": "Nobbla Blackwart",
+          "cost": "120K"
+        },
+        {
+          "name": "Scrappa Sorehead",
+          "cost": "120K"
+        },
+        {
+          "name": "Rashnak Backstabber",
+          "cost": "130K"
+        },
+        {
+          "name": "The Black Gobbo",
+          "cost": "210K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Ripper Bolgrot",
+          "cost": "250K"
+        },
+        {
+          "name": "Varag Ghoul-Chewer",
+          "cost": "260K"
+        },
+        {
+          "name": "H'thark the Unstoppable",
+          "cost": "300K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Badlands Brawl"
+      ],
+      "special_rules": [
+        "Bribery and Corruption",
+        "Brawlin' Brutes"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Black_Orc/"
     },
     {
@@ -293,7 +408,75 @@
           "cost": "95K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "60K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Re-roll": "60K",
+        "Apothecary": "50K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Barik Farblast",
+          "cost": "80K"
+        },
+        {
+          "name": "Cindy Piewhistle",
+          "cost": "100K"
+        },
+        {
+          "name": "Puggy Baconbreath",
+          "cost": "130K"
+        },
+        {
+          "name": "Helmut Wulf",
+          "cost": "140K"
+        },
+        {
+          "name": "Grombrindal",
+          "cost": "170K"
+        },
+        {
+          "name": "Thorsson Stoutmead",
+          "cost": "170K"
+        },
+        {
+          "name": "Karla von Kill",
+          "cost": "210K"
+        },
+        {
+          "name": "Ivar Eriksson",
+          "cost": "215K"
+        },
+        {
+          "name": "The Mighty Zug",
+          "cost": "220K"
+        },
+        {
+          "name": "Skrorg Snowpelt",
+          "cost": "240K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Griff Oberwald",
+          "cost": "300K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Old World Classic"
+      ],
+      "special_rules": [],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Bretonnian/"
     },
     {
@@ -431,7 +614,41 @@
           "cost": "150K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "50K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "50K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Grashnak Blackhoof",
+          "cost": "240K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Lord Borak the Despoiler",
+          "cost": "270K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Chaos Clash"
+      ],
+      "special_rules": [
+        "Favoured of..."
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Chaos_Chosen/"
     },
     {
@@ -588,7 +805,41 @@
           "cost": "150K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "70K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "70K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Zzharg Madeye",
+          "cost": "130K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "H'thark the Unstoppable",
+          "cost": "300K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Badlands Brawl"
+      ],
+      "special_rules": [
+        "Favoured of Hashut"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Chaos_Dwarf/"
     },
     {
@@ -779,7 +1030,7 @@
           "AV": "10+",
           "skills": [
             "Bone Head",
-            "Loner ( 4+ 3+ )",
+            "Loner (3+)",
             "Mighty Blow",
             "Thick Skull",
             "Throw Team-mate"
@@ -848,7 +1099,45 @@
           "cost": "150K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "70K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "70K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Grashnak Blackhoof",
+          "cost": "240K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Lord Borak the Despoiler",
+          "cost": "270K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Chaos Clash"
+      ],
+      "special_rules": [
+        "Favoured of Khorne",
+        "Favoured of Nurgle",
+        "Favoured of Slaanesh",
+        "Favoured of Tzeentch",
+        "Favoured of Undivided"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Chaos_Renegades/"
     },
     {
@@ -973,7 +1262,63 @@
           "cost": "110K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "50K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Re-roll": "50K",
+        "Apothecary": "50K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Gloriel Summerbloom",
+          "cost": "150K"
+        },
+        {
+          "name": "Kiroth Krakeneye",
+          "cost": "160K"
+        },
+        {
+          "name": "Eldril Sidewinder",
+          "cost": "220K"
+        },
+        {
+          "name": "Zolcath the Zoat",
+          "cost": "220K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Jordell Freshbreeze",
+          "cost": "280K"
+        },
+        {
+          "name": "Roxanna Darknail",
+          "cost": "270K"
+        },
+        {
+          "name": "The Swift Twins",
+          "cost": "300K"
+        },
+        {
+          "name": "Jeremiah Kool",
+          "cost": "300K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Elven Kingdoms League"
+      ],
+      "special_rules": [],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Dark_Elf/"
     },
     {
@@ -1105,7 +1450,62 @@
           "cost": "170K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "60K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Re-roll": "60K",
+        "Apothecary": "50K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Barik Farblast",
+          "cost": "80K"
+        },
+        {
+          "name": "Skrull Halfheight",
+          "cost": "150K"
+        },
+        {
+          "name": "Grombrindal",
+          "cost": "170K"
+        },
+        {
+          "name": "Thorsson Stoutmead",
+          "cost": "170K"
+        },
+        {
+          "name": "Grim Ironjaw",
+          "cost": "190K"
+        },
+        {
+          "name": "The Mighty Zug",
+          "cost": "220K"
+        },
+        {
+          "name": "Skrorg Snowpelt",
+          "cost": "240K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Worlds Edge Superleague"
+      ],
+      "special_rules": [
+        "Brawlin' Brutes",
+        "Bribery and Corruption"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Dwarf/"
     },
     {
@@ -1203,7 +1603,63 @@
           "cost": "115K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "50K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Re-roll": "50K",
+        "Apothecary": "50K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Gloriel Summerbloom",
+          "cost": "150K"
+        },
+        {
+          "name": "Kiroth Krakeneye",
+          "cost": "160K"
+        },
+        {
+          "name": "Eldril Sidewinder",
+          "cost": "220K"
+        },
+        {
+          "name": "Zolcath the Zoat",
+          "cost": "220K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Roxanna Darknail",
+          "cost": "270K"
+        },
+        {
+          "name": "Jordell Freshbreeze",
+          "cost": "280K"
+        },
+        {
+          "name": "The Swift Twins",
+          "cost": "300K"
+        },
+        {
+          "name": "Jeremiah Kool",
+          "cost": "300K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Elven Kingdoms League"
+      ],
+      "special_rules": [],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Elven_Union/"
     },
     {
@@ -1337,7 +1793,31 @@
           "cost": "120K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "50K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Re-roll": "50K",
+        "Apothecary": "50K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne The Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Halfling Thimble Cup"
+      ],
+      "special_rules": [],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Gnome/"
     },
     {
@@ -1549,7 +2029,57 @@
           "cost": "115K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "60K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "60K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Bomber Dribblesnot",
+          "cost": "80K"
+        },
+        {
+          "name": "Fungus the Loon",
+          "cost": "80K"
+        },
+        {
+          "name": "Nobbla Blackwart",
+          "cost": "120K"
+        },
+        {
+          "name": "Scrappa Sorehead",
+          "cost": "120K"
+        },
+        {
+          "name": "The Black Gobbo",
+          "cost": "210K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Ripper Bolgrot",
+          "cost": "250K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Badlands Brawl"
+      ],
+      "special_rules": [
+        "Bribery and Corruption"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Goblin/"
     },
     {
@@ -1661,7 +2191,31 @@
           "cost": "120K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "60K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "60K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne The Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Halfling Thimble Cup"
+      ],
+      "special_rules": [],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Halfling/"
     },
     {
@@ -1758,7 +2312,63 @@
           "cost": "110K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "50K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "50K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Gloriel Summerbloom",
+          "cost": "150K"
+        },
+        {
+          "name": "Kiroth Krakeneye",
+          "cost": "160K"
+        },
+        {
+          "name": "Eldril Sidewinder",
+          "cost": "220K"
+        },
+        {
+          "name": "Zolcath the Zoat",
+          "cost": "220K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Roxanna Darknail",
+          "cost": "270K"
+        },
+        {
+          "name": "Jordell Freshbreeze",
+          "cost": "280K"
+        },
+        {
+          "name": "The Swift Twins",
+          "cost": "300K"
+        },
+        {
+          "name": "Jeremiah Kool",
+          "cost": "300K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Elven Kingdoms League"
+      ],
+      "special_rules": [],
       "source": "https://bloodbowlbase.ru/bb2025/teams/High_Elf/"
     },
     {
@@ -1901,13 +2511,86 @@
           ],
           "secondary": [
             "A",
-            "G",
-            "M"
+            "G"
           ],
           "cost": "140K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "50K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "50K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Barik Farblast",
+          "cost": "80K"
+        },
+        {
+          "name": "Cindy Piewhistle",
+          "cost": "100K"
+        },
+        {
+          "name": "Puggy Baconbreath",
+          "cost": "130K"
+        },
+        {
+          "name": "Helmut Wulf",
+          "cost": "140K"
+        },
+        {
+          "name": "Grombrindal",
+          "cost": "170K"
+        },
+        {
+          "name": "Thorsson Stoutmead",
+          "cost": "170K"
+        },
+        {
+          "name": "Josef Bugman",
+          "cost": "180K"
+        },
+        {
+          "name": "Karla von Kill",
+          "cost": "210K"
+        },
+        {
+          "name": "Ivar Eriksson",
+          "cost": "215K"
+        },
+        {
+          "name": "The Mighty Zug",
+          "cost": "220K"
+        },
+        {
+          "name": "Skrorg Snowpelt",
+          "cost": "240K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Griff Oberwald",
+          "cost": "300K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Old World Classic"
+      ],
+      "special_rules": [
+        "Team Captain"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Human/"
     },
     {
@@ -2026,13 +2709,84 @@
           ],
           "secondary": [
             "A",
-            "G",
-            "M"
+            "G"
           ],
           "cost": "140K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "60K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "60K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Barik Farblast",
+          "cost": "80K"
+        },
+        {
+          "name": "Cindy Piewhistle",
+          "cost": "100K"
+        },
+        {
+          "name": "Puggy Baconbreath",
+          "cost": "130K"
+        },
+        {
+          "name": "Helmut Wulf",
+          "cost": "140K"
+        },
+        {
+          "name": "Grombrindal",
+          "cost": "170K"
+        },
+        {
+          "name": "Thorsson Stoutmead",
+          "cost": "170K"
+        },
+        {
+          "name": "Josef Bugman",
+          "cost": "180K"
+        },
+        {
+          "name": "Karla von Kill",
+          "cost": "210K"
+        },
+        {
+          "name": "Ivar Eriksson",
+          "cost": "215K"
+        },
+        {
+          "name": "The Mighty Zug",
+          "cost": "220K"
+        },
+        {
+          "name": "Skrorg Snowpelt",
+          "cost": "240K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Griff Oberwald",
+          "cost": "300K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Old World Classic"
+      ],
+      "special_rules": [],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Imperial_Nobility/"
     },
     {
@@ -2139,7 +2893,50 @@
           "cost": "160K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "60K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "60K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Max Spleenripper",
+          "cost": "130K"
+        },
+        {
+          "name": "Scyla Anfingrimm",
+          "cost": "200K"
+        },
+        {
+          "name": "Grashnak Blackhoof",
+          "cost": "240K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Lord Borak the Despoiler",
+          "cost": "270K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Chaos Clash"
+      ],
+      "special_rules": [
+        "Favoured of Khorne",
+        "Brawlin' Brutes"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Khorne/"
     },
     {
@@ -2244,7 +3041,57 @@
           "cost": "140K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "70K",
+      "staff": {
+        "Re-roll": "70K",
+        "Apothecary": "50K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Boa Kon'ssstriktr",
+          "cost": "180K"
+        },
+        {
+          "name": "Estelle la Veneaux",
+          "cost": "190K"
+        },
+        {
+          "name": "Anqi Panqi",
+          "cost": "190K"
+        },
+        {
+          "name": "Karla von Kill",
+          "cost": "210K"
+        },
+        {
+          "name": "Zolcath the Zoat",
+          "cost": "220K"
+        },
+        {
+          "name": "Dribl and Drull",
+          "cost": "230K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Glotl Stop",
+          "cost": "260K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Lustrian Superleague"
+      ],
+      "special_rules": [],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Lizardmen/"
     },
     {
@@ -2376,7 +3223,52 @@
           "cost": "120K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "70K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Re-roll": "70K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Skrull Halfheight",
+          "cost": "150K"
+        },
+        {
+          "name": "Gretchen Wächter",
+          "cost": "180K"
+        },
+        {
+          "name": "Ivan 'the Animal' Deathshroud",
+          "cost": "210K"
+        },
+        {
+          "name": "Wilhelm Chaney",
+          "cost": "220K"
+        },
+        {
+          "name": "Captain Karina von Riesz",
+          "cost": "230K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Count Luthor Von Drakenborg",
+          "cost": "300K"
+        }
+      ],
+      "league": [
+        "Sylvanian Spotlight"
+      ],
+      "special_rules": [
+        "Masters of Undeath"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Necromantic_Horror/"
     },
     {
@@ -2527,7 +3419,33 @@
           "cost": "140K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "60K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "60K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Old World Classic"
+      ],
+      "special_rules": [
+        "Favoured of Khorne (Chaos Clash)"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Norse/"
     },
     {
@@ -2645,7 +3563,53 @@
           "cost": "140K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "60K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Re-roll": "60K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Guffle Pusmaw",
+          "cost": "150K"
+        },
+        {
+          "name": "Withergrasp Doubledrool",
+          "cost": "170K"
+        },
+        {
+          "name": "Bilerot Vomitflesh",
+          "cost": "180K"
+        },
+        {
+          "name": "Grashnak Blackhoof",
+          "cost": "240K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Lord Borak the Despoiler",
+          "cost": "270K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Chaos Clash"
+      ],
+      "special_rules": [
+        "Favoured of Nurgle",
+        "Brawlin' Brutes"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Nurgle/"
     },
     {
@@ -2730,7 +3694,34 @@
           "cost": "145K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "70K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "70K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Badlands Brawl"
+      ],
+      "special_rules": [
+        "Brawlin' Brutes",
+        "Low Cost Linemen"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Ogre/"
     },
     {
@@ -2757,7 +3748,7 @@
           "cost": "50K"
         },
         {
-          "qty": "0-5 0-3",
+          "qty": "0-3",
           "position": "Halfling Hopeful",
           "role": "Lineman, Halfling",
           "MA": "5",
@@ -2964,8 +3955,7 @@
           ],
           "secondary": [
             "A",
-            "G",
-            "M"
+            "G"
           ],
           "cost": "140K"
         },
@@ -2999,7 +3989,75 @@
           "cost": "120K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "70K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "70K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Barik Farblast",
+          "cost": "80K"
+        },
+        {
+          "name": "Cindy Piewhistle",
+          "cost": "100K"
+        },
+        {
+          "name": "Puggy Baconbreath",
+          "cost": "130K"
+        },
+        {
+          "name": "Helmut Wulf",
+          "cost": "140K"
+        },
+        {
+          "name": "Grombrindal",
+          "cost": "170K"
+        },
+        {
+          "name": "Thorsson Stoutmead",
+          "cost": "170K"
+        },
+        {
+          "name": "Karla von Kill",
+          "cost": "210K"
+        },
+        {
+          "name": "Ivar Eriksson",
+          "cost": "215K"
+        },
+        {
+          "name": "The Mighty Zug",
+          "cost": "220K"
+        },
+        {
+          "name": "Skrorg Snowpelt",
+          "cost": "240K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Griff Oberwald",
+          "cost": "300K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Old World Classic"
+      ],
+      "special_rules": [],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Old_World_Alliance/"
     },
     {
@@ -3033,7 +4091,7 @@
           "MA": "6",
           "ST": "2",
           "AG": "3+",
-          "PA": "3+ 4+",
+          "PA": "4+",
           "AV": "8+",
           "skills": [
             "Dodge",
@@ -3152,7 +4210,70 @@
           "cost": "115K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "60K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "60K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Fungus the Loon",
+          "cost": "80K"
+        },
+        {
+          "name": "Bomber Dribblesnot",
+          "cost": "80K"
+        },
+        {
+          "name": "Nobbla Blackwart",
+          "cost": "120K"
+        },
+        {
+          "name": "Scrappa Sorehead",
+          "cost": "120K"
+        },
+        {
+          "name": "Rashnak Backstabber",
+          "cost": "130K"
+        },
+        {
+          "name": "The Black Gobbo",
+          "cost": "210K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Ripper Bolgrot",
+          "cost": "250K"
+        },
+        {
+          "name": "Varag Ghoul-Chewer",
+          "cost": "260K"
+        },
+        {
+          "name": "H'thark the Unstoppable",
+          "cost": "300K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Badlands Brawl"
+      ],
+      "special_rules": [
+        "Brawlin' Brutes",
+        "Team Captain"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Orc/"
     },
     {
@@ -3278,7 +4399,52 @@
           "cost": "125K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "70K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Re-roll": "70K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Skrull Halfheight",
+          "cost": "150K"
+        },
+        {
+          "name": "Gretchen Wächter",
+          "cost": "260K"
+        },
+        {
+          "name": "Ivan 'the Animal' Deathshroud",
+          "cost": "210K"
+        },
+        {
+          "name": "Wilhelm Chaney",
+          "cost": "220K"
+        },
+        {
+          "name": "Captain Karina von Riesz",
+          "cost": "230K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Count Luthor Von Drakenborg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Sylvanian Spotlight"
+      ],
+      "special_rules": [
+        "Masters of Undeath"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Shambling_Undead/"
     },
     {
@@ -3406,7 +4572,71 @@
           "cost": "150K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "50K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "50K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Fungus the Loon",
+          "cost": "80K"
+        },
+        {
+          "name": "Bomber Dribblesnot",
+          "cost": "80K"
+        },
+        {
+          "name": "Nobbla Blackwart",
+          "cost": "120K"
+        },
+        {
+          "name": "Scrappa Sorehead",
+          "cost": "120K"
+        },
+        {
+          "name": "Skitter Stab-Stab",
+          "cost": "170K"
+        },
+        {
+          "name": "Glart Smashrip",
+          "cost": "175K"
+        },
+        {
+          "name": "Kreek Rustgouger",
+          "cost": "180K"
+        },
+        {
+          "name": "Hakflem Skuttlespike",
+          "cost": "200K"
+        },
+        {
+          "name": "The Black Gobbo",
+          "cost": "210K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Ripper Bolgrot",
+          "cost": "250K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Underworld Challenge"
+      ],
+      "special_rules": [],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Skaven/"
     },
     {
@@ -3571,7 +4801,75 @@
           "cost": "115K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "70K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "70K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Fungus the Loon",
+          "cost": "80K"
+        },
+        {
+          "name": "Bomber Dribblesnot",
+          "cost": "80K"
+        },
+        {
+          "name": "Nobbla Blackwart",
+          "cost": "120K"
+        },
+        {
+          "name": "Scrappa Sorehead",
+          "cost": "120K"
+        },
+        {
+          "name": "Skitter Stab-Stab",
+          "cost": "170K"
+        },
+        {
+          "name": "Glart Smashrip",
+          "cost": "175K"
+        },
+        {
+          "name": "Kreek Rustgouger",
+          "cost": "180K"
+        },
+        {
+          "name": "Hakflem Skuttlespike",
+          "cost": "200K"
+        },
+        {
+          "name": "The Black Gobbo",
+          "cost": "210K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Ripper Bolgrot",
+          "cost": "250K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Underworld Challenge"
+      ],
+      "special_rules": [
+        "Bribery and Corruption",
+        "Low Cost Linemen",
+        "Swarming"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Snotling/"
     },
     {
@@ -3675,7 +4973,52 @@
           "cost": "115K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "60K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Re-roll": "60K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Skrull Halfheight",
+          "cost": "150K"
+        },
+        {
+          "name": "Gretchen Wächter",
+          "cost": "260K"
+        },
+        {
+          "name": "Ivan 'the Animal' Deathshroud",
+          "cost": "210K"
+        },
+        {
+          "name": "Wilhelm Chaney",
+          "cost": "220K"
+        },
+        {
+          "name": "Captain Karina von Riesz",
+          "cost": "230K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Count Luthor Von Drakenborg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Sylvanian Spotlight"
+      ],
+      "special_rules": [
+        "Masters of Undeath"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Tomb_Kings/"
     },
     {
@@ -3890,7 +5233,73 @@
           "cost": "150K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "70K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "70K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Fungus the Loon",
+          "cost": "80K"
+        },
+        {
+          "name": "Bomber Dribblesnot",
+          "cost": "80K"
+        },
+        {
+          "name": "Nobbla Blackwart",
+          "cost": "120K"
+        },
+        {
+          "name": "Scrappa Sorehead",
+          "cost": "120K"
+        },
+        {
+          "name": "Skitter Stab-Stab",
+          "cost": "170K"
+        },
+        {
+          "name": "Glart Smashrip",
+          "cost": "175K"
+        },
+        {
+          "name": "Kreek Rustgouger",
+          "cost": "180K"
+        },
+        {
+          "name": "Hakflem Skuttlespike",
+          "cost": "200K"
+        },
+        {
+          "name": "The Black Gobbo",
+          "cost": "210K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Ripper Bolgrot",
+          "cost": "250K"
+        },
+        {
+          "name": "Morg 'N' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Underworld Challenge"
+      ],
+      "special_rules": [
+        "Bribery and Corruption"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Underworld_Denizens/"
     },
     {
@@ -4014,7 +5423,53 @@
           "cost": "150K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "60K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "60K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Skrull Halfheight",
+          "cost": "150K"
+        },
+        {
+          "name": "Gretchen Wächter",
+          "cost": "260K"
+        },
+        {
+          "name": "Ivan 'the Animal' Deathshroud",
+          "cost": "210K"
+        },
+        {
+          "name": "Wilhelm Chaney",
+          "cost": "220K"
+        },
+        {
+          "name": "Captain Karina von Riesz",
+          "cost": "230K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Count Luthor Von Drakenborg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Sylvanian Spotlight"
+      ],
+      "special_rules": [
+        "Masters of Undeath"
+      ],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Vampire/"
     },
     {
@@ -4139,8 +5594,2911 @@
           "cost": "120K"
         }
       ],
-      "staff": {},
+      "reroll_cost": "50K",
+      "staff": {
+        "Cheerleader": "10K",
+        "Assistant Coach": "10K",
+        "Apothecary": "50K",
+        "Re-roll": "50K"
+      },
+      "star_players": [
+        {
+          "name": "Akhorne the Squirrel",
+          "cost": "80K"
+        },
+        {
+          "name": "Grak and Crumbleberry",
+          "cost": "250K"
+        },
+        {
+          "name": "Jordell Freshbreeze",
+          "cost": "280K"
+        },
+        {
+          "name": "Morg 'n' Thorg",
+          "cost": "340K"
+        }
+      ],
+      "league": [
+        "Elven Kingdoms League"
+      ],
+      "special_rules": [],
       "source": "https://bloodbowlbase.ru/bb2025/teams/Wood_Elf/"
+    }
+  ],
+  "stars": [
+    {
+      "name": "Akhorne The Squirrel",
+      "cost": "80K",
+      "members": [
+        {
+          "name": "Akhorne The Squirrel",
+          "role": "Blitzer, Squirrel",
+          "stats": {
+            "MA": "7",
+            "ST": "1",
+            "AG": "2+",
+            "PA": "-",
+            "AV": "6+"
+          },
+          "cost": "80K",
+          "skills": [
+            "Claws",
+            "Dauntless",
+            "Dodge",
+            "Frenzy",
+            "Jump Up",
+            "Loner (4+)",
+            "No Ball",
+            "Sidestep",
+            "Stunty",
+            "Titchy"
+          ],
+          "special_rules": [
+            "Blind Rage"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Blind Rage": "Akhorne may choose to re-roll the D6 when rolling for the Dauntless Skill."
+      },
+      "plays_for": [
+        "Any team"
+      ],
+      "teams": [
+        "Amazon",
+        "Black Orc",
+        "Bretonnian",
+        "Chaos Chosen",
+        "Chaos Dwarf",
+        "Chaos Renegades",
+        "Dark Elf",
+        "Dwarf",
+        "Elven Union",
+        "Gnome",
+        "Goblin",
+        "Halfling",
+        "High Elf",
+        "Human",
+        "Imperial Nobility",
+        "Khorne",
+        "Lizardmen",
+        "Necromantic Horror",
+        "Norse",
+        "Nurgle",
+        "Ogre",
+        "Old World Alliance",
+        "Orc",
+        "Shambling Undead",
+        "Skaven",
+        "Snotling",
+        "Tomb Kings",
+        "Underworld Denizens",
+        "Vampire",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Akhorne_The_Squirrel/"
+    },
+    {
+      "name": "Anqi Panqi",
+      "cost": "190K",
+      "members": [
+        {
+          "name": "Anqi Panqi",
+          "role": "Blocker, Lizardman",
+          "stats": {
+            "MA": "7",
+            "ST": "4",
+            "AG": "5+",
+            "PA": "6+",
+            "AV": "10+"
+          },
+          "cost": "190K",
+          "skills": [
+            "Block",
+            "Grab",
+            "Loner (4+)",
+            "Stand Firm",
+            "Unsteady"
+          ],
+          "special_rules": [
+            "Savage Blow"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Savage Blow": "Once per game, when Anqi performs a Block Action against an opposition player he may choose to re-roll any number of the Block Dice."
+      },
+      "plays_for": [
+        "Lustrian Superleague"
+      ],
+      "teams": [
+        "Amazon",
+        "Lizardmen"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Anqi_Panqi/"
+    },
+    {
+      "name": "Barik Farblast",
+      "cost": "80K",
+      "members": [
+        {
+          "name": "Barik Farblast",
+          "role": "Dwarf, Thrower",
+          "stats": {
+            "MA": "6",
+            "ST": "3",
+            "AG": "4+",
+            "PA": "3+",
+            "AV": "9+"
+          },
+          "cost": "80K",
+          "skills": [
+            "Cannoneer",
+            "Hail Mary Pass",
+            "Loner (4+)",
+            "Pass",
+            "Secret Weapon",
+            "Sure Hands",
+            "Thick Skull"
+          ],
+          "special_rules": [
+            "Blast It!"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Blast It!": "Whenever Barik makes a Hail Mary Pass, he may re-roll any Scatter results for determining where the ball lands, and any team-mate attempting to catch the ball applies a +1 modifier to the roll."
+      },
+      "plays_for": [
+        "Old World Classic",
+        "Worlds Edge Superleague"
+      ],
+      "teams": [
+        "Bretonnian",
+        "Dwarf",
+        "Human",
+        "Imperial Nobility",
+        "Norse",
+        "Ogre",
+        "Old World Alliance"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Barik_Farblast/"
+    },
+    {
+      "name": "Bilerot Vomitflesh",
+      "cost": "180K",
+      "members": [
+        {
+          "name": "Bilerot Vomitflesh",
+          "role": "Blocker, Human",
+          "stats": {
+            "MA": "4",
+            "ST": "5",
+            "AG": "4+",
+            "PA": "6+",
+            "AV": "10+"
+          },
+          "cost": "180K",
+          "skills": [
+            "Dirty Player",
+            "Disturbing Presence",
+            "Foul Appearance",
+            "Lone Fouler",
+            "Loner (4+)",
+            "Regeneration",
+            "Unsteady"
+          ],
+          "special_rules": [
+            "Putrid Regurgitation"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Putrid Regurgitation": "Once per half, Bilerot may use the Projectile Vomit Special Action. This may still be used even if Bilerot has already performed a Block Action this Turn."
+      },
+      "plays_for": [
+        "Favoured of Nurgle"
+      ],
+      "teams": [
+        "Chaos Chosen",
+        "Chaos Renegades",
+        "Nurgle"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Bilerot_Vomitflesh/"
+    },
+    {
+      "name": "Boa Kon'ssstriktr",
+      "cost": "180K",
+      "members": [
+        {
+          "name": "Boa Kon'ssstriktr",
+          "role": "Runner, Snakeman",
+          "stats": {
+            "MA": "6",
+            "ST": "3",
+            "AG": "3+",
+            "PA": "4+",
+            "AV": "9+"
+          },
+          "cost": "180K",
+          "skills": [
+            "Dodge",
+            "Fend",
+            "Hypnotic Gaze",
+            "Loner (4+)",
+            "Prehensile Tail",
+            "Safe Pair of Hands",
+            "Sidestep"
+          ],
+          "special_rules": [
+            "Look Into My Eyes"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Look Into My Eyes": "Once per game, if Boa begins his activation Marking an opposition player in possession of the ball, he may roll a D6. On a 1, nothing happens. On a 2+, the opposition player loses possession of the ball, Boa immediately gains possession of the ball, and Boa's activation immediately ends."
+      },
+      "plays_for": [
+        "Lustrian Superleague"
+      ],
+      "teams": [
+        "Amazon",
+        "Lizardmen"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Boa_Kon%27ssstriktr/"
+    },
+    {
+      "name": "Bomber Dribblesnot",
+      "cost": "80K",
+      "members": [
+        {
+          "name": "Bomber Dribblesnot",
+          "role": "Goblin, Special",
+          "stats": {
+            "MA": "6",
+            "ST": "2",
+            "AG": "3+",
+            "PA": "3+",
+            "AV": "8+"
+          },
+          "cost": "80K",
+          "skills": [
+            "Accurate",
+            "Bombardier",
+            "Dodge",
+            "Loner (4+)",
+            "Right Stuff",
+            "Secret Weapon",
+            "Stunty"
+          ],
+          "special_rules": [
+            "Kaboom! Once per game, if an opposition player catches a bomb thrown by Bomber, you can choose to have it explode rather than the opposition player immediately attempting to throw it again."
+          ]
+        }
+      ],
+      "rule_text": {},
+      "plays_for": [
+        "Badlands Brawl",
+        "Underworld Challenge"
+      ],
+      "teams": [
+        "Black Orc",
+        "Chaos Dwarf",
+        "Goblin",
+        "Ogre",
+        "Orc",
+        "Skaven",
+        "Snotling",
+        "Underworld Denizens"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Bomber_Dribblesnot/"
+    },
+    {
+      "name": "Captain Karina von Riesz",
+      "cost": "230K",
+      "members": [
+        {
+          "name": "Captain Karina von Riesz",
+          "role": "Runner, Vampire",
+          "stats": {
+            "MA": "7",
+            "ST": "4",
+            "AG": "2+",
+            "PA": "3+",
+            "AV": "9+"
+          },
+          "cost": "230K",
+          "skills": [
+            "Bloodlust (2+)",
+            "Dodge",
+            "Hypnotic Gaze",
+            "Jump Up",
+            "Loner (4+)",
+            "Regeneration"
+          ],
+          "special_rules": [
+            "Tasty Morsel"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Tasty Morsel": "Once per game, when Karina fails a Bloodlust roll, she may choose to bite an opposition player with a ST of 3 or lower as if they were a Thrall Lineman team-mate. Karina may not bite Star Players with this special rule."
+      },
+      "plays_for": [
+        "Sylvanian Spotlight"
+      ],
+      "teams": [
+        "Necromantic Horror",
+        "Tomb Kings",
+        "Shambling Undead",
+        "Vampire"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Captain_Karina_von_Riesz/"
+    },
+    {
+      "name": "Cindy Piewhistle",
+      "cost": "100K",
+      "members": [
+        {
+          "name": "Cindy Piewhistle",
+          "role": "Halfling, Special",
+          "stats": {
+            "MA": "5",
+            "ST": "2",
+            "AG": "3+",
+            "PA": "3+",
+            "AV": "7+"
+          },
+          "cost": "100K",
+          "skills": [
+            "Accurate",
+            "Bombardier",
+            "Dodge",
+            "Loner (4+)",
+            "Secret Weapon",
+            "Stunty"
+          ],
+          "special_rules": [
+            "All You Can Eat"
+          ]
+        }
+      ],
+      "rule_text": {
+        "All You Can Eat": "Once per game, Cindy may perform two Throw Bomb Special Actions rather than one; though she must commit to doing so before making the first Action. If she does, immediately after performing the second Throw Bomb Special Action, roll a D6. On a 1-3, Cindy is immediately Sent-off."
+      },
+      "plays_for": [
+        "Halfling Thimble Cup",
+        "Old World Classic"
+      ],
+      "teams": [
+        "Bretonnian",
+        "Gnome",
+        "Halfling",
+        "Human",
+        "Imperial Nobility",
+        "Norse",
+        "Old World Alliance"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Cindy_Piewhistle/"
+    },
+    {
+      "name": "Count Luthor von Drakenborg",
+      "cost": "300K",
+      "members": [
+        {
+          "name": "Count Luthor von Drakenborg",
+          "role": "Blocker, Vampire",
+          "stats": {
+            "MA": "6",
+            "ST": "5",
+            "AG": "2+",
+            "PA": "3+",
+            "AV": "10+"
+          },
+          "cost": "300K",
+          "skills": [
+            "Block",
+            "Hypnotic Gaze",
+            "Loner (4+)",
+            "Regeneration",
+            "Sidestep"
+          ],
+          "special_rules": [
+            "Star of the Show"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Star of the Show": "Once per game, when Count Luthor scores a Touchdown, his controlling coach gains one Team Re-roll until the end of the following Drive. If this Team Re-roll has not been used by the end of the next Drive, it is lost."
+      },
+      "plays_for": [
+        "Sylvanian Spotlight"
+      ],
+      "teams": [
+        "Necromantic Horror",
+        "Tomb Kings",
+        "Shambling Undead",
+        "Vampire"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Count_Luthor_von_Drakenborg/"
+    },
+    {
+      "name": "Deeproot Strongbranch",
+      "cost": "280K",
+      "members": [
+        {
+          "name": "Deeproot Strongbranch",
+          "role": "Big Guy, Treeman",
+          "stats": {
+            "MA": "2",
+            "ST": "7",
+            "AG": "5+",
+            "PA": "4+",
+            "AV": "11+"
+          },
+          "cost": "280K",
+          "skills": [
+            "Block",
+            "Bullseye",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Stand Firm",
+            "Strong Arm",
+            "Thick Skull",
+            "Throw Team-mate",
+            "Timmm-ber!"
+          ],
+          "special_rules": [
+            "Reliable"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Reliable": "If Deeproot makes a Fumbled Throw when performing a Throw Team-mate Action, the player that was being thrown will Bounce as normal but will automatically land safely."
+      },
+      "plays_for": [
+        "Woodland League"
+      ],
+      "teams": [
+        "Gnome",
+        "Halfling",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Deeproot_Strongbranch/"
+    },
+    {
+      "name": "Dribl and Drull",
+      "cost": "230K",
+      "members": [
+        {
+          "name": "Dribl and Drull",
+          "role": "Skink, Special",
+          "stats": {
+            "MA": "8",
+            "ST": "2",
+            "AG": "3+",
+            "PA": "4+",
+            "AV": "8+"
+          },
+          "cost": null,
+          "skills": [
+            "Dirty Player",
+            "Dodge",
+            "Loner (4+)",
+            "Quick Foul",
+            "Sidestep",
+            "Sneaky Git",
+            "Stunty"
+          ],
+          "special_rules": [
+            "A Sneaky Pair"
+          ]
+        },
+        {
+          "name": "Dribl and Drull",
+          "role": "Skink, Special",
+          "stats": {
+            "MA": "8",
+            "ST": "2",
+            "AG": "3+",
+            "PA": "4+",
+            "AV": "8+"
+          },
+          "cost": null,
+          "skills": [
+            "Dirty Player",
+            "Dodge",
+            "Loner (4+)",
+            "Quick Foul",
+            "Sidestep",
+            "Sneaky Git",
+            "Stunty"
+          ],
+          "special_rules": [
+            "A Sneaky Pair"
+          ]
+        }
+      ],
+      "rule_text": {
+        "A Sneaky Pair": "Dribl & Drull must be hired as a pair. Additionally, whenever Dribl or Drull perform either a Foul Action or a Stab Special Action against an opposition player Marked by both Dribl & Drull, they may apply a +1 modifier to the roll."
+      },
+      "plays_for": [
+        "Lustrian Superleague"
+      ],
+      "teams": [
+        "Amazon",
+        "Lizardmen"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Dribl_and_Drull/"
+    },
+    {
+      "name": "Eldril Sidewinder",
+      "cost": "220K",
+      "members": [
+        {
+          "name": "Eldril Sidewinder",
+          "role": "Catcher, Elf",
+          "stats": {
+            "MA": "8",
+            "ST": "3",
+            "AG": "2+",
+            "PA": "3+",
+            "AV": "8+"
+          },
+          "cost": "220K",
+          "skills": [
+            "Catch",
+            "Dodge",
+            "Hypnotic Gaze",
+            "Loner (4+)",
+            "Nerves of Steel",
+            "On the Ball"
+          ],
+          "special_rules": [
+            "Mesmerising Dance"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Mesmerising Dance": "Once per half, Eldril may re-roll the dice when performing a Hypnotic Gaze Special Action."
+      },
+      "plays_for": [
+        "Elven Kingdoms League"
+      ],
+      "teams": [
+        "Dark Elf",
+        "Elven Union",
+        "High Elf",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Eldril_Sidewinder/"
+    },
+    {
+      "name": "Estelle la Veneaux",
+      "cost": "190K",
+      "members": [
+        {
+          "name": "Estelle la Veneaux",
+          "role": "Human, Lineman",
+          "stats": {
+            "MA": "6",
+            "ST": "3",
+            "AG": "3+",
+            "PA": "4+",
+            "AV": "8+"
+          },
+          "cost": "190K",
+          "skills": [
+            "Disturbing Presence",
+            "Dodge",
+            "Guard",
+            "Loner (4+)",
+            "Sidestep"
+          ],
+          "special_rules": [
+            "Baleful Hex"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Baleful Hex": "Once per game, at the beginning of Estelle's activation, she may select an opposition player within 5 squares and roll a D6. On a 2+, the selected player becomes Distracted and cannot be activated during their team's next Turn."
+      },
+      "plays_for": [
+        "Lustrian Superleague"
+      ],
+      "teams": [
+        "Amazon",
+        "Lizardmen"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Estelle_la_Veneaux/"
+    },
+    {
+      "name": "Fungus the Loon",
+      "cost": "80K",
+      "members": [
+        {
+          "name": "Fungus the Loon",
+          "role": "Goblin, Special",
+          "stats": {
+            "MA": "4",
+            "ST": "7",
+            "AG": "3+",
+            "PA": "-",
+            "AV": "8+"
+          },
+          "cost": "80K",
+          "skills": [
+            "Ball & Chain",
+            "Loner (4+)",
+            "Mighty Blow",
+            "No Ball",
+            "Secret Weapon",
+            "Stunty"
+          ],
+          "special_rules": [
+            "Whirling Dervish"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Whirling Dervish": "Once per Activation, Fungus may re-roll the D6 when determining which direction he moves in."
+      },
+      "plays_for": [
+        "Badlands Brawl",
+        "Underworld Challenge"
+      ],
+      "teams": [
+        "Black Orc",
+        "Chaos Dwarf",
+        "Goblin",
+        "Ogre",
+        "Orc",
+        "Skaven",
+        "Snotling",
+        "Underworld Denizens"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Fungus_the_Loon/"
+    },
+    {
+      "name": "Glart Smashrip",
+      "cost": "175K",
+      "members": [
+        {
+          "name": "Glart Smashrip",
+          "role": "Blocker, Skaven",
+          "stats": {
+            "MA": "5",
+            "ST": "4",
+            "AG": "4+",
+            "PA": "6+",
+            "AV": "9+"
+          },
+          "cost": "175K",
+          "skills": [
+            "Block",
+            "Claws",
+            "Grab",
+            "Juggernaut",
+            "Loner (4+)",
+            "Stand Firm"
+          ],
+          "special_rules": [
+            "Frenzied Rush"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Frenzied Rush": "Once per half, when Glart declares a Blitz Action he may gain the Frenzy Skill until the end of his activation. Glart may not use the Grab Skill during a Turn in which he uses this special rule."
+      },
+      "plays_for": [
+        "Underworld Challenge"
+      ],
+      "teams": [
+        "Goblin",
+        "Skaven",
+        "Snotling",
+        "Underworld Denizens"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Glart_Smashrip/"
+    },
+    {
+      "name": "Gloriel Summerbloom",
+      "cost": "150K",
+      "members": [
+        {
+          "name": "Gloriel Summerbloom",
+          "role": "Elf, Thrower",
+          "stats": {
+            "MA": "7",
+            "ST": "2",
+            "AG": "2+",
+            "PA": "2+",
+            "AV": "8+"
+          },
+          "cost": "150K",
+          "skills": [
+            "Accurate",
+            "Dodge",
+            "Loner (3+)",
+            "Pass",
+            "Sidestep",
+            "Sure Hands"
+          ],
+          "special_rules": [
+            "Shot to Nothing"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Shot to Nothing": "Once per game, when Gloriel is activated she may use this special rule. If she does, Gloriel gains the Hail Mary Pass Skill until the end of her activation."
+      },
+      "plays_for": [
+        "Elven Kingdoms League"
+      ],
+      "teams": [
+        "Dark Elf",
+        "Elven Union",
+        "High Elf",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Gloriel_Summerbloom/"
+    },
+    {
+      "name": "Glotl Stop",
+      "cost": "260K",
+      "members": [
+        {
+          "name": "Glotl Stop",
+          "role": "Big Guy, Lizardman",
+          "stats": {
+            "MA": "6",
+            "ST": "6",
+            "AG": "5+",
+            "PA": "6+",
+            "AV": "10+"
+          },
+          "cost": "260K",
+          "skills": [
+            "Animal Savagery",
+            "Frenzy",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Prehensile Tail",
+            "Stand Firm",
+            "Thick Skull"
+          ],
+          "special_rules": [
+            "Primal Savagery"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Primal Savagery": "Once per game, when Glotl fails an Animal Savagery roll, it may lash out at an opposition player rather than a team-mate."
+      },
+      "plays_for": [
+        "Lustrian Superleague"
+      ],
+      "teams": [
+        "Amazon",
+        "Lizardmen"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Glotl_Stop/"
+    },
+    {
+      "name": "Grak and Crumbleberry",
+      "cost": "250K",
+      "members": [
+        {
+          "name": "Grak",
+          "role": "Big Guy, Ogre",
+          "stats": {
+            "MA": "5",
+            "ST": "5",
+            "AG": "4+",
+            "PA": "4+",
+            "AV": "10+"
+          },
+          "cost": null,
+          "skills": [
+            "Bone Head",
+            "Kick Team-mate",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Thick Skull"
+          ],
+          "special_rules": [
+            "I'll Carry You"
+          ]
+        },
+        {
+          "name": "Crumbleberry",
+          "role": "Halfling, Lineman",
+          "stats": {
+            "MA": "5",
+            "ST": "2",
+            "AG": "3+",
+            "PA": "5+",
+            "AV": "7+"
+          },
+          "cost": null,
+          "skills": [
+            "Dodge",
+            "Lethal Flight",
+            "Loner (4+)",
+            "Right Stuff",
+            "Stunty",
+            "Sure Hands"
+          ],
+          "special_rules": [
+            "I'll Carry You"
+          ]
+        }
+      ],
+      "rule_text": {
+        "I'll Carry You": "Grak & Crumbleberry must be hired as a pair. Additionally, while Crumbleberry is being carried by Grak, Grak gains the Break Tackle and Dodge Skills."
+      },
+      "plays_for": [
+        "Any Team"
+      ],
+      "teams": [
+        "Amazon",
+        "Black Orc",
+        "Bretonnian",
+        "Chaos Chosen",
+        "Chaos Dwarf",
+        "Chaos Renegades",
+        "Dark Elf",
+        "Dwarf",
+        "Elven Union",
+        "Gnome",
+        "Goblin",
+        "Halfling",
+        "High Elf",
+        "Human",
+        "Imperial Nobility",
+        "Khorne",
+        "Lizardmen",
+        "Necromantic Horror",
+        "Norse",
+        "Nurgle",
+        "Ogre",
+        "Old World Alliance",
+        "Orc",
+        "Skaven",
+        "Snotling",
+        "Tomb Kings",
+        "Shambling Undead",
+        "Underworld Denizens",
+        "Vampire",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Grak_and_Crumbleberry/"
+    },
+    {
+      "name": "Grashnak Blackhoof",
+      "cost": "240K",
+      "members": [
+        {
+          "name": "Grashnak Blackhoof",
+          "role": "Big Guy, Minotaur",
+          "stats": {
+            "MA": "6",
+            "ST": "6",
+            "AG": "4+",
+            "PA": "6+",
+            "AV": "9+"
+          },
+          "cost": "240K",
+          "skills": [
+            "Frenzy",
+            "Horns",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Thick Skull",
+            "Unchannelled Fury"
+          ],
+          "special_rules": [
+            "Gored by the Bull"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Gored by the Bull": "Once per game, when Grashnak performs a Block Action as part of a Blitz Action, he may roll one additional Block Dice against the opposition player regardless of their ST, to a maximum of three Block Dice. If Grashnak performs a second Block Action due to the Frenzy Skill, the second Block Action will also benefit from this rule."
+      },
+      "plays_for": [
+        "Chaos Clash"
+      ],
+      "teams": [
+        "Chaos Chosen",
+        "Chaos Dwarf",
+        "Chaos Renegades",
+        "Khorne",
+        "Norse",
+        "Nurgle"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Grashnak_Blackhoof/"
+    },
+    {
+      "name": "Gretchen Wächter",
+      "cost": "180K",
+      "members": [
+        {
+          "name": "Gretchen Wächter",
+          "role": "Special, Undead, Wraith",
+          "stats": {
+            "MA": "7",
+            "ST": "3",
+            "AG": "2+",
+            "PA": "-",
+            "AV": "9+"
+          },
+          "cost": "180K",
+          "skills": [
+            "Disturbing Presence",
+            "Dodge",
+            "Foul Appearance",
+            "Jump Up",
+            "Loner (4+)",
+            "No Ball",
+            "Regeneration",
+            "Shadowing",
+            "Sidestep"
+          ],
+          "special_rules": [
+            "Incorporeal"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Incorporeal": "Once per game, when Gretchen is activated she may use this special rule. Until the end of her activation, Gretchen does not have to make Dodge rolls for leaving a square within an opposition player's Tackle Zone."
+      },
+      "plays_for": [
+        "Sylvanian Spotlight"
+      ],
+      "teams": [
+        "Necromantic Horror",
+        "Tomb Kings",
+        "Shambling Undead",
+        "Vampire"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Gretchen_W%C3%A4chter/"
+    },
+    {
+      "name": "Griff Oberwald",
+      "cost": "300K",
+      "members": [
+        {
+          "name": "Griff Oberwald",
+          "role": "Blitzer, Human",
+          "stats": {
+            "MA": "7",
+            "ST": "4",
+            "AG": "2+",
+            "PA": "3+",
+            "AV": "9+"
+          },
+          "cost": "300K",
+          "skills": [
+            "Block",
+            "Dodge",
+            "Fend",
+            "Loner (3+)",
+            "Sprint",
+            "Sure Feet"
+          ],
+          "special_rules": [
+            "Consummate Professional"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Consummate Professional": "Once per game, Griff may apply a +1 modifier to an Agility Test he has made. This modifier may be applied after the roll has been made."
+      },
+      "plays_for": [
+        "Old World Classic"
+      ],
+      "teams": [
+        "Bretonnian",
+        "Human",
+        "Imperial Nobility",
+        "Norse",
+        "Old World Alliance"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Griff_Oberwald/"
+    },
+    {
+      "name": "Grim Ironjaw",
+      "cost": "190K",
+      "members": [
+        {
+          "name": "Grim Ironjaw",
+          "role": "Dwarf, Special",
+          "stats": {
+            "MA": "5",
+            "ST": "4",
+            "AG": "3+",
+            "PA": "6+",
+            "AV": "9+"
+          },
+          "cost": "190K",
+          "skills": [
+            "Block",
+            "Dauntless",
+            "Frenzy",
+            "Hatred (Big Guy)",
+            "Loner (4+)",
+            "Multiple Block",
+            "Thick Skull"
+          ],
+          "special_rules": [
+            "Slayer"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Slayer": "Once per game, when an opposition Big Guy is Knocked Down as a result of a Block Action performed by Grim, you may apply an additional +1 modifier to either the Armour Roll or the Injury Roll. This modifier may be applied after the roll has been made."
+      },
+      "plays_for": [
+        "Worlds Edge Superleague"
+      ],
+      "teams": [
+        "Dwarf",
+        "Ogre"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Grim_Ironjaw/"
+    },
+    {
+      "name": "Grombrindal",
+      "cost": "170K",
+      "members": [
+        {
+          "name": "Grombrindal",
+          "role": "Blocker, Dwarf",
+          "stats": {
+            "MA": "5",
+            "ST": "3",
+            "AG": "3+",
+            "PA": "4+",
+            "AV": "10+"
+          },
+          "cost": "170K",
+          "skills": [
+            "Block",
+            "Break Tackle",
+            "Dauntless",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Stand Firm",
+            "Sure Feet",
+            "Thick Skull"
+          ],
+          "special_rules": [
+            "Wisdom of the White Dwarf"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Wisdom of the White Dwarf": "Once per game, when Grombrindal is activated he may select one team-mate within 2 squares. The selected team-mate gains one of the following Skills until the end of turn: Break Tackle , Dauntless , Mighty Blow , Sure Feet ."
+      },
+      "plays_for": [
+        "Halfling Thimble Cup",
+        "Old World Classic",
+        "Worlds Edge Superleague"
+      ],
+      "teams": [
+        "Bretonnian",
+        "Dwarf",
+        "Gnome",
+        "Halfling",
+        "Human",
+        "Imperial Nobility",
+        "Norse",
+        "Ogre",
+        "Old World Alliance"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Grombrindal/"
+    },
+    {
+      "name": "Guffle Pusmaw",
+      "cost": "150K",
+      "members": [
+        {
+          "name": "Guffle Pusmaw",
+          "role": "Blocker, Human",
+          "stats": {
+            "MA": "5",
+            "ST": "4",
+            "AG": "4+",
+            "PA": "6+",
+            "AV": "10+"
+          },
+          "cost": "150K",
+          "skills": [
+            "Foul Appearance",
+            "Loner (4+)",
+            "Monstrous Mouth",
+            "Nerves of Steel",
+            "On the Ball",
+            "Plague Ridden"
+          ],
+          "special_rules": [
+            "Quick Bite"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Quick Bite": "Once per game, if Guffle is Marking an opposition player who catches the ball, he may immediately make an Armour Roll against that player. If the target's Armour is broken, Guffle immediately gains possession of the ball. No Turnover is caused as a result of using this special rule."
+      },
+      "plays_for": [
+        "Favoured of Nurgle"
+      ],
+      "teams": [
+        "Chaos Chosen",
+        "Chaos Renegades",
+        "Nurgle"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Guffle_Pusmaw/"
+    },
+    {
+      "name": "H'thark the Unstoppable",
+      "cost": "300K",
+      "members": [
+        {
+          "name": "H'thark the Unstoppable",
+          "role": "Blitzer, Dwarf",
+          "stats": {
+            "MA": "6",
+            "ST": "6",
+            "AG": "4+",
+            "PA": "6+",
+            "AV": "10+"
+          },
+          "cost": "300K",
+          "skills": [
+            "Block",
+            "Break Tackle",
+            "Defensive",
+            "Juggernaut",
+            "Loner (4+)",
+            "Sprint",
+            "Sure Feet",
+            "Thick Skull",
+            "Unsteady"
+          ],
+          "special_rules": [
+            "Unstoppable Momentum"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Unstoppable Momentum": "Whenever H'thark performs a Block Action as part of a Blitz Action, he may re-roll a single Block Dice."
+      },
+      "plays_for": [
+        "Badlands Brawl",
+        "Favoured of Hashut"
+      ],
+      "teams": [
+        "Black Orc",
+        "Chaos Chosen",
+        "Chaos Dwarf",
+        "Goblin",
+        "Ogre",
+        "Orc"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/H%27thark_the_Unstoppable/"
+    },
+    {
+      "name": "Hakflem Skuttlespike",
+      "cost": "200K",
+      "members": [
+        {
+          "name": "Hakflem Skuttlespike",
+          "role": "Runner, Skaven",
+          "stats": {
+            "MA": "8",
+            "ST": "3",
+            "AG": "2+",
+            "PA": "3+",
+            "AV": "8+"
+          },
+          "cost": "200K",
+          "skills": [
+            "Dodge",
+            "Extra Arms",
+            "Loner (4+)",
+            "Prehensile Tail",
+            "Two Heads"
+          ],
+          "special_rules": [
+            "Treacherous"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Treacherous": "Once per game, if Hakflem is adjacent to a team-mate who is in possession of the ball when he is activated, then Hakflem can choose to gain possession of the ball. If he does, then the team-mate will immediately be Knocked Down. This will not cause a Turnover even if the team-mate suffers a Casualty."
+      },
+      "plays_for": [
+        "Underworld Challenge"
+      ],
+      "teams": [
+        "Goblin",
+        "Skaven",
+        "Snotling",
+        "Underworld Denizens"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Hakflem_Skuttlespike/"
+    },
+    {
+      "name": "Helmut Wulf",
+      "cost": "140K",
+      "members": [
+        {
+          "name": "Helmut Wulf",
+          "role": "Human, Special",
+          "stats": {
+            "MA": "6",
+            "ST": "3",
+            "AG": "3+",
+            "PA": "-",
+            "AV": "9+"
+          },
+          "cost": "140K",
+          "skills": [
+            "Chainsaw",
+            "Loner (4+)",
+            "No Ball",
+            "Pro",
+            "Secret Weapon",
+            "Stand Firm"
+          ],
+          "special_rules": [
+            "Old Pro"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Old Pro": "Once per game, Helmut may use his Pro Skill to re-roll a single dice rolled as part of an Armour Roll."
+      },
+      "plays_for": [
+        "Old World Classic"
+      ],
+      "teams": [
+        "Bretonnian",
+        "Human",
+        "Imperial Nobility",
+        "Norse",
+        "Old World Alliance"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Helmut_Wulf/"
+    },
+    {
+      "name": "Ivan 'the Animal' Deathshroud",
+      "cost": "210K",
+      "members": [
+        {
+          "name": "Ivan 'the Animal' Deathshroud",
+          "role": "Blitzer, Human, Skeleton, Undead",
+          "stats": {
+            "MA": "6",
+            "ST": "4",
+            "AG": "4+",
+            "PA": "5+",
+            "AV": "9+"
+          },
+          "cost": "210K",
+          "skills": [
+            "Block",
+            "Disturbing Presence",
+            "Hatred (Dwarf)",
+            "Juggernaut",
+            "Loner (4+)",
+            "Regeneration",
+            "Strip Ball",
+            "Tackle"
+          ],
+          "special_rules": [
+            "Dwarven Scourge"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Dwarven Scourge": "Once per game, when an opposition player is Knocked Down as a result of a Block Action performed by Ivan, you may apply an additional +1 modifier to the Armour Roll or Injury roll. If this is against a Dwarf player this may instead be a +2 modifier."
+      },
+      "plays_for": [
+        "Sylvanian Spotlight"
+      ],
+      "teams": [
+        "Necromantic Horror",
+        "Tomb Kings",
+        "Shambling Undead",
+        "Vampire"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Ivan_%27the_Animal%27_Deathshroud/"
+    },
+    {
+      "name": "Ivar Eriksson",
+      "cost": "215K",
+      "members": [
+        {
+          "name": "Ivar Eriksson",
+          "role": "Blitzer, Human",
+          "stats": {
+            "MA": "6",
+            "ST": "4",
+            "AG": "3+",
+            "PA": "4+",
+            "AV": "9+"
+          },
+          "cost": "215K",
+          "skills": [
+            "Block",
+            "Guard",
+            "Loner (4+)",
+            "Tackle"
+          ],
+          "special_rules": [
+            "Raiding Party"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Raiding Party": "Once per Drive, when Ivar begins his activation he may select one Open team-mate within 5 squares. The selected player may immediately move 1 square, though they must end this move Marking an opposition player."
+      },
+      "plays_for": [
+        "Old World Classic"
+      ],
+      "teams": [
+        "Bretonnian",
+        "Human",
+        "Imperial Nobility",
+        "Norse",
+        "Old World Alliance"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Ivar_Eriksson/"
+    },
+    {
+      "name": "Jeremiah Kool",
+      "cost": "300K",
+      "members": [
+        {
+          "name": "Jeremiah Kool",
+          "role": "Elf, Runner",
+          "stats": {
+            "MA": "8",
+            "ST": "3",
+            "AG": "1+",
+            "PA": "2+",
+            "AV": "9+"
+          },
+          "cost": "300K",
+          "skills": [
+            "Block",
+            "Dodge",
+            "Diving Catch",
+            "Dump-off",
+            "Loner (4+)",
+            "Nerves of Steel",
+            "On the Ball",
+            "Pass",
+            "Sidestep"
+          ],
+          "special_rules": [
+            "The Flashing Blade"
+          ]
+        }
+      ],
+      "rule_text": {
+        "The Flashing Blade": "Once per game, at the start of his activation, Jeremiah may declare a Stab Special Action against an opposition player he is Marking. After performing the Stab Special Action, Jeremiah may then perform a Move Action before his activation ends."
+      },
+      "plays_for": [
+        "Elven Kingdoms League"
+      ],
+      "teams": [],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Jeremiah_Kool/"
+    },
+    {
+      "name": "Jordell Freshbreeze",
+      "cost": "280K",
+      "members": [
+        {
+          "name": "Jordell Freshbreeze",
+          "role": "Blitzer, Elf",
+          "stats": {
+            "MA": "8",
+            "ST": "3",
+            "AG": "1+",
+            "PA": "3+",
+            "AV": "8+"
+          },
+          "cost": "280K",
+          "skills": [
+            "Block",
+            "Diving Catch",
+            "Dodge",
+            "Leap",
+            "Loner (4+)",
+            "Sidestep",
+            "Steady Footing"
+          ],
+          "special_rules": [
+            "Swift as the Breeze"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Swift as the Breeze": "Once per game, Jordell can choose to pass a single Dodge, Leap or Rush Test on a 2+, regardless of any modifiers."
+      },
+      "plays_for": [
+        "Elven Kingdoms League",
+        "Woodland League"
+      ],
+      "teams": [
+        "Dark Elf",
+        "Elven Union",
+        "Gnome",
+        "Halfling",
+        "High Elf",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Jordell_Freshbreeze/"
+    },
+    {
+      "name": "Josef Bugman",
+      "cost": "180K",
+      "members": [
+        {
+          "name": "Josef Bugman",
+          "role": "Blocker, Dwarf",
+          "stats": {
+            "MA": "5",
+            "ST": "3",
+            "AG": "3+",
+            "PA": "4+",
+            "AV": "9+"
+          },
+          "cost": "180K",
+          "skills": [
+            "Block",
+            "Drunkard",
+            "Fend",
+            "Loner (3+)",
+            "Tackle",
+            "Taunt",
+            "Thick Skull"
+          ],
+          "special_rules": [
+            "Dwarfen Grit"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Dwarfen Grit": "Once per game, when Josef's armour is broken as the result of an Armour Roll, you may choose to have the Armour Roll re-rolled."
+      },
+      "plays_for": [
+        "Old World Classic",
+        "Worlds Edge Superleague"
+      ],
+      "teams": [
+        "Bretonnian",
+        "Dwarf",
+        "Human",
+        "Imperial Nobility",
+        "Norse",
+        "Ogre",
+        "Old World Alliance"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Josef_Bugman/"
+    },
+    {
+      "name": "Karla von Kill",
+      "cost": "210K",
+      "members": [
+        {
+          "name": "Karla von Kill",
+          "role": "Blitzer, Human",
+          "stats": {
+            "MA": "6",
+            "ST": "4",
+            "AG": "3+",
+            "PA": "3+",
+            "AV": "9+"
+          },
+          "cost": "210K",
+          "skills": [
+            "Block",
+            "Dauntless",
+            "Dodge",
+            "Jump Up",
+            "Loner (4+)"
+          ],
+          "special_rules": [
+            "Indomitable"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Indomitable": "Once per game, when Karla successfully rolls to use her Dauntless Skill, she may increase her ST characteristic to double that of the target of the Block Action."
+      },
+      "plays_for": [
+        "Lustrian Superleague",
+        "Old World Classic"
+      ],
+      "teams": [
+        "Amazon",
+        "Bretonnian",
+        "Human",
+        "Imperial Nobility",
+        "Lizardmen",
+        "Norse",
+        "Old World Alliance"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Karla_von_Kill/"
+    },
+    {
+      "name": "Kiroth Krakeneye",
+      "cost": "160K",
+      "members": [
+        {
+          "name": "Kiroth Krakeneye",
+          "role": "Elf, Runner",
+          "stats": {
+            "MA": "7",
+            "ST": "3",
+            "AG": "2+",
+            "PA": "3+",
+            "AV": "8+"
+          },
+          "cost": "160K",
+          "skills": [
+            "Disturbing Presence",
+            "Foul Appearance",
+            "Loner (4+)",
+            "On the Ball",
+            "Tackle",
+            "Tentacles"
+          ],
+          "special_rules": [
+            "Black Ink"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Black Ink": "Once per game, at the start of any of his activations, Kiroth can select an opposition player he is Marking. The selected player becomes Distracted until they are next activated."
+      },
+      "plays_for": [
+        "Elven Kingdoms League"
+      ],
+      "teams": [
+        "Dark Elf",
+        "Elven Union",
+        "High Elf",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Kiroth_Krakeneye/"
+    },
+    {
+      "name": "Kreek Rustgouger",
+      "cost": "180K",
+      "members": [
+        {
+          "name": "Kreek Rustgouger",
+          "role": "Big Guy, Skaven, Special",
+          "stats": {
+            "MA": "4",
+            "ST": "7",
+            "AG": "4+",
+            "PA": "-",
+            "AV": "10+"
+          },
+          "cost": "180K",
+          "skills": [
+            "Ball & Chain",
+            "Loner (4+)",
+            "Mighty Blow",
+            "No Ball",
+            "Prehensile Tail",
+            "Secret Weapon"
+          ],
+          "special_rules": [
+            "I'll Be Back!"
+          ]
+        }
+      ],
+      "rule_text": {
+        "I'll Be Back!": "The first time in a game that Kreek would be Sent-off as per the Secret Weapon Trait, he is not Sent-off and may instead continue as part of the game. Kreek's coach may not Argue the Call when Kreek uses this special rule."
+      },
+      "plays_for": [
+        "Underworld Challenge"
+      ],
+      "teams": [
+        "Goblin",
+        "Skaven",
+        "Snotling",
+        "Underworld Denizens"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Kreek_Rustgouger/"
+    },
+    {
+      "name": "Lord Borak the Despoiler",
+      "cost": "270K",
+      "members": [
+        {
+          "name": "Lord Borak the Despoiler",
+          "role": "Blocker, Human",
+          "stats": {
+            "MA": "5",
+            "ST": "5",
+            "AG": "3+",
+            "PA": "5+",
+            "AV": "10+"
+          },
+          "cost": "270K",
+          "skills": [
+            "Block",
+            "Dirty Player",
+            "Leader",
+            "Loner (3+)",
+            "Mighty Blow",
+            "Put the Boot In",
+            "Sneaky Git"
+          ],
+          "special_rules": [
+            "Lord of Chaos"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Lord of Chaos": "Once per game, when Lord Borak performs a Block Action he may re-roll a single Block Dice."
+      },
+      "plays_for": [
+        "Chaos Clash"
+      ],
+      "teams": [
+        "Chaos Chosen",
+        "Chaos Dwarf",
+        "Chaos Renegades",
+        "Khorne",
+        "Norse",
+        "Nurgle"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Lord_Borak_the_Despoiler/"
+    },
+    {
+      "name": "Maple Highgrove",
+      "cost": "210K",
+      "members": [
+        {
+          "name": "Maple Highgrove",
+          "role": "Big Guy, Treeman",
+          "stats": {
+            "MA": "3",
+            "ST": "5",
+            "AG": "5+",
+            "PA": "5+",
+            "AV": "11+"
+          },
+          "cost": "210K",
+          "skills": [
+            "Brawler",
+            "Grab",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Stand Firm",
+            "Tentacles",
+            "Thick Skull"
+          ],
+          "special_rules": [
+            "Vicious Vines"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Vicious Vines": "Once per half, when Maple declares a Block Action he may do so against an opposition player who is 2 squares away following all the normal rules for performing a Block Action, though he may not follow-up."
+      },
+      "plays_for": [
+        "Woodland League"
+      ],
+      "teams": [
+        "Gnome",
+        "Halfling",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Maple_Highgrove/"
+    },
+    {
+      "name": "Max Spleenripper",
+      "cost": "130K",
+      "members": [
+        {
+          "name": "Max Spleenripper",
+          "role": "Human, Special",
+          "stats": {
+            "MA": "5",
+            "ST": "4",
+            "AG": "4+",
+            "PA": "-",
+            "AV": "9+"
+          },
+          "cost": "130K",
+          "skills": [
+            "Chainsaw",
+            "Loner (4+)",
+            "No Ball",
+            "Secret Weapon"
+          ],
+          "special_rules": [
+            "Maximum Carnage"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Maximum Carnage": "Once per game, after Max performs a Chainsaw Attack Special Action he may immediately perform another Chainsaw Attack Special Action that targets a different opposition player."
+      },
+      "plays_for": [
+        "Favoured of Khorne"
+      ],
+      "teams": [
+        "Chaos Chosen",
+        "Chaos Renegades",
+        "Khorne",
+        "Norse"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Max_Spleenripper/"
+    },
+    {
+      "name": "Morg 'n' Thorg",
+      "cost": "340K",
+      "members": [
+        {
+          "name": "Morg 'n' Thorg",
+          "role": "Big Guy, Ogre",
+          "stats": {
+            "MA": "6",
+            "ST": "6",
+            "AG": "3+",
+            "PA": "4+",
+            "AV": "11+"
+          },
+          "cost": "340K",
+          "skills": [
+            "Block",
+            "Bullseye",
+            "Hatred (Undead)",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Thick Skull",
+            "Throw Team-mate"
+          ],
+          "special_rules": [
+            "The Ballista"
+          ]
+        }
+      ],
+      "rule_text": {
+        "The Ballista": "Once per game, when Morg performs a Throw Team-mate Action, he may re-roll the Passing Ability Test."
+      },
+      "plays_for": [
+        "Any team except those from Sylvanian Spotlight"
+      ],
+      "teams": [
+        "Amazon",
+        "Black Orc",
+        "Bretonnian",
+        "Chaos Chosen",
+        "Chaos Dwarf",
+        "Chaos Renegades",
+        "Dark Elf",
+        "Dwarf",
+        "Elven Union",
+        "Goblin",
+        "Halfling",
+        "High Elf",
+        "Human",
+        "Imperial Nobility",
+        "Khorne",
+        "Lizardmen",
+        "Norse",
+        "Nurgle",
+        "Ogre",
+        "Old World Alliance",
+        "Orc",
+        "Skaven",
+        "Snotling",
+        "Underworld Denizens",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Morg_%27n%27_Thorg/"
+    },
+    {
+      "name": "Nobbla Blackwart",
+      "cost": "120K",
+      "members": [
+        {
+          "name": "Nobbla Blackwart",
+          "role": "Goblin, Special",
+          "stats": {
+            "MA": "6",
+            "ST": "2",
+            "AG": "3+",
+            "PA": "-",
+            "AV": "8+"
+          },
+          "cost": "120K",
+          "skills": [
+            "Block",
+            "Chainsaw",
+            "Dodge",
+            "Loner (4+)",
+            "No Ball",
+            "Saboteur",
+            "Secret Weapon",
+            "Stunty"
+          ],
+          "special_rules": [
+            "Kick 'em While They're Down!"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Kick 'em While They're Down!": "Once per game, Nobbla may use the Chainsaw Attack Special Action against a Prone or Stunned opposition player. This does not count as a Foul Action and so Nobbla cannot be Sent-off when using this special rule."
+      },
+      "plays_for": [
+        "Badlands Brawl",
+        "Underworld Challenge"
+      ],
+      "teams": [
+        "Black Orc",
+        "Chaos Dwarf",
+        "Goblin",
+        "Ogre",
+        "Orc",
+        "Skaven",
+        "Snotling",
+        "Underworld Denizens"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Nobbla_Blackwart/"
+    },
+    {
+      "name": "Puggy Baconbreath",
+      "cost": "130K",
+      "members": [
+        {
+          "name": "Puggy Baconbreath",
+          "role": "Blitzer, Halfling",
+          "stats": {
+            "MA": "5",
+            "ST": "3",
+            "AG": "3+",
+            "PA": "3+",
+            "AV": "8+"
+          },
+          "cost": "130K",
+          "skills": [
+            "Block",
+            "Dodge",
+            "Loner (3+)",
+            "Nerves of Steel",
+            "Right Stuff",
+            "Stunty"
+          ],
+          "special_rules": [
+            "Halfling Luck"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Halfling Luck": "Once per game, Puggy may re-roll a single dice that was rolled either as a single dice roll, a multiple dice roll, or a dice pool, though this cannot be a dice that was rolled as part of an Armour Roll, Injury Roll or Casualty Roll."
+      },
+      "plays_for": [
+        "Halfling Thimble Cup",
+        "Old World Classic"
+      ],
+      "teams": [
+        "Bretonnian",
+        "Gnome",
+        "Halfling",
+        "Human",
+        "Imperial Nobility",
+        "Norse",
+        "Old World Alliance"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Puggy_Baconbreath/"
+    },
+    {
+      "name": "Rashnak Backstabber",
+      "cost": "130K",
+      "members": [
+        {
+          "name": "Rashnak Backstabber",
+          "role": "Goblin, Special",
+          "stats": {
+            "MA": "7",
+            "ST": "3",
+            "AG": "3+",
+            "PA": "5+",
+            "AV": "8+"
+          },
+          "cost": "130K",
+          "skills": [
+            "Loner (4+)",
+            "Shadowing",
+            "Sidestep",
+            "Sneaky Git",
+            "Stab"
+          ],
+          "special_rules": [
+            "Toxin Connoisseur"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Toxin Connoisseur": "Once per game, when Rashnak successfully breaks an opposition player's armour as a result of a Stab Special Action, you may apply an additional +1 modifier to the Injury Roll. This modifier may be applied after the roll has been made."
+      },
+      "plays_for": [
+        "Badlands Brawl"
+      ],
+      "teams": [
+        "Black Orc",
+        "Chaos Dwarf",
+        "Goblin",
+        "Ogre",
+        "Orc"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Rashnak_Backstabber/"
+    },
+    {
+      "name": "Ripper Bolgrot",
+      "cost": "250K",
+      "members": [
+        {
+          "name": "Ripper Bolgrot",
+          "role": "Big Guy, Troll",
+          "stats": {
+            "MA": "5",
+            "ST": "6",
+            "AG": "5+",
+            "PA": "4+",
+            "AV": "10+"
+          },
+          "cost": "250K",
+          "skills": [
+            "Bullseye",
+            "Grab",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Regeneration",
+            "Throw Team-mate"
+          ],
+          "special_rules": [
+            "Thinking Man's Troll"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Thinking Man's Troll": "Once per half, Ripper may re-roll a single dice that was rolled either as a single dice roll, a multiple dice roll, or a dice pool, though this cannot be a dice that was rolled as part of an Armour Roll, Injury Roll or Casualty Roll."
+      },
+      "plays_for": [
+        "Badlands Brawl",
+        "Underworld Challenge"
+      ],
+      "teams": [
+        "Black Orc",
+        "Chaos Dwarf",
+        "Goblin",
+        "Ogre",
+        "Orc",
+        "Skaven",
+        "Snotling",
+        "Underworld Denizens"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Ripper_Bolgrot/"
+    },
+    {
+      "name": "Rodney Roachbait",
+      "cost": "70K",
+      "members": [
+        {
+          "name": "Rodney Roachbait",
+          "role": "Gnome, Special",
+          "stats": {
+            "MA": "6",
+            "ST": "2",
+            "AG": "3+",
+            "PA": "4+",
+            "AV": "7+"
+          },
+          "cost": "70K",
+          "skills": [
+            "Catch",
+            "Diving Catch",
+            "Jump Up",
+            "Loner (4+)",
+            "On the Ball",
+            "Sidestep",
+            "Stunty",
+            "Wrestle"
+          ],
+          "special_rules": [
+            "Catch of the Day"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Catch of the Day": "Once per half, if Rodney is Standing and begins his activation within 3 squares of a ball which is on the ground he may roll a D6. On a 1-2, nothing happens. On a 3+, Rodney immediately gains possession of the ball."
+      },
+      "plays_for": [
+        "Woodland League"
+      ],
+      "teams": [
+        "Gnome",
+        "Halfling",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Rodney_Roachbait/"
+    },
+    {
+      "name": "Rowana Forestfoot",
+      "cost": "160K",
+      "members": [
+        {
+          "name": "Rowana Forestfoot",
+          "role": "Blocker, Gnome",
+          "stats": {
+            "MA": "6",
+            "ST": "3",
+            "AG": "3+",
+            "PA": "4+",
+            "AV": "8+"
+          },
+          "cost": "160K",
+          "skills": [
+            "Dodge",
+            "Dump-off",
+            "Guard",
+            "Horns",
+            "Jump Up",
+            "Leap",
+            "Loner (4+)"
+          ],
+          "special_rules": [
+            "Bounding Leap"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Bounding Leap": "Once per game, after declaring that she will Leap but before rolling any dice, Rowana may choose to use this special rule. If she does, Rowana suffers no negative modifiers for the Agility Test to Leap and may choose to re-roll the result."
+      },
+      "plays_for": [
+        "Woodland League"
+      ],
+      "teams": [
+        "Gnome",
+        "Halfling",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Rowana_Forestfoot/"
+    },
+    {
+      "name": "Roxanna Darknail",
+      "cost": "270K",
+      "members": [
+        {
+          "name": "Roxanna Darknail",
+          "role": "Elf, Special",
+          "stats": {
+            "MA": "8",
+            "ST": "3",
+            "AG": "1+",
+            "PA": "3+",
+            "AV": "8+"
+          },
+          "cost": "270K",
+          "skills": [
+            "Dodge",
+            "Frenzy",
+            "Jump Up",
+            "Juggernaut",
+            "Leap",
+            "Loner (4+)"
+          ],
+          "special_rules": [
+            "Slashing Nails"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Slashing Nails": "Once per half, when Roxanna declares a Blitz Action, she gains the Claws Skill until the end of her activation."
+      },
+      "plays_for": [
+        "Elven Kingdoms League"
+      ],
+      "teams": [
+        "Dark Elf",
+        "Elven Union",
+        "High Elf",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Roxanna_Darknail/"
+    },
+    {
+      "name": "Rumbelow Sheepskin",
+      "cost": "170K",
+      "members": [
+        {
+          "name": "Rumbelow Sheepskin",
+          "role": "Blitzer, Halfling",
+          "stats": {
+            "MA": "6",
+            "ST": "3",
+            "AG": "3+",
+            "PA": "5+",
+            "AV": "8+"
+          },
+          "cost": "170K",
+          "skills": [
+            "Block",
+            "Horns",
+            "Juggernaut",
+            "Loner (4+)",
+            "Tackle",
+            "Thick Skull"
+          ],
+          "special_rules": [
+            "Ram"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Ram": "Once per game, when an opposition player is Knocked Down as a result of a Block Action performed by Rumbelow, you may apply an additional +1 modifier to either the Armour Roll or the Injury Roll. This modifier may be applied after the roll has been made."
+      },
+      "plays_for": [
+        "Halfling Thimble Cup"
+      ],
+      "teams": [
+        "Gnome",
+        "Halfling"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Rumbelow_Sheepskin/"
+    },
+    {
+      "name": "Scrappa Sorehead",
+      "cost": "120K",
+      "members": [
+        {
+          "name": "Scrappa Sorehead",
+          "role": "Goblin, Special",
+          "stats": {
+            "MA": "7",
+            "ST": "2",
+            "AG": "3+",
+            "PA": "4+",
+            "AV": "8+"
+          },
+          "cost": "120K",
+          "skills": [
+            "Dirty Player",
+            "Dodge",
+            "Loner (4+)",
+            "Pogo",
+            "Right Stuff",
+            "Sprint",
+            "Stunty",
+            "Sure Feet"
+          ],
+          "special_rules": [
+            "Yoink!"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Yoink!": "Once per game, when Scrappa attempts to Intercept a Pass Action he may roll a D6. On a 2+, Scrappa doesn't need to Intercept; instead, he will automatically Intercept the Pass Action and gains control of the ball."
+      },
+      "plays_for": [
+        "Badlands Brawl",
+        "Underworld Challenge"
+      ],
+      "teams": [
+        "Black Orc",
+        "Chaos Dwarf",
+        "Goblin",
+        "Ogre",
+        "Orc",
+        "Skaven",
+        "Snotling",
+        "Underworld Denizens"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Scrappa_Sorehead/"
+    },
+    {
+      "name": "Scyla Anfingrimm",
+      "cost": "200K",
+      "members": [
+        {
+          "name": "Scyla Anfingrimm",
+          "role": "Big Guy, Spawn",
+          "stats": {
+            "MA": "5",
+            "ST": "5",
+            "AG": "4+",
+            "PA": "6+",
+            "AV": "10+"
+          },
+          "cost": "200K",
+          "skills": [
+            "Claws",
+            "Frenzy",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Prehensile Tail",
+            "Thick Skull",
+            "Unchannelled Fury"
+          ],
+          "special_rules": [
+            "Fury of the Blood God"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Fury of the Blood God": "Once per game, if Scyla rolls a 1 for his Unchannelled Fury roll after declaring a Block Action then, instead of applying the usual effects of Unchannelled Fury, Scyla may perform two Block Actions instead. The first Block Action must be fully resolved, including the use of the Frenzy Skill, before the second one is performed."
+      },
+      "plays_for": [
+        "Favoured of Khorne"
+      ],
+      "teams": [
+        "Chaos Chosen",
+        "Chaos Renegades",
+        "Khorne",
+        "Norse"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Scyla_Anfingrimm/"
+    },
+    {
+      "name": "Skitter Stab-Stab",
+      "cost": "170K",
+      "members": [
+        {
+          "name": "Skitter Stab-Stab",
+          "role": "Runner, Skaven",
+          "stats": {
+            "MA": "9",
+            "ST": "2",
+            "AG": "2+",
+            "PA": "4+",
+            "AV": "8+"
+          },
+          "cost": "170K",
+          "skills": [
+            "Dodge",
+            "Loner (4+)",
+            "Prehensile Tail",
+            "Shadowing",
+            "Stab"
+          ],
+          "special_rules": [
+            "Master Assassin"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Master Assassin": "Once per game, when Skitter performs a Stab Special Action, he may choose to re-roll the Armour Roll."
+      },
+      "plays_for": [
+        "Underworld Challenge"
+      ],
+      "teams": [
+        "Goblin",
+        "Skaven",
+        "Snotling",
+        "Underworld Denizens"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Skitter_Stab-stab/"
+    },
+    {
+      "name": "Skrorg Snowpelt",
+      "cost": "240K",
+      "members": [
+        {
+          "name": "Skrorg Snowpelt",
+          "role": "Big Guy, Yhetee",
+          "stats": {
+            "MA": "5",
+            "ST": "5",
+            "AG": "4+",
+            "PA": "6+",
+            "AV": "9+"
+          },
+          "cost": "240K",
+          "skills": [
+            "Block",
+            "Claws",
+            "Disturbing Presence",
+            "Juggernaut",
+            "Loner (4+)",
+            "Mighty Blow"
+          ],
+          "special_rules": [
+            "Pump Up the Crowd"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Pump Up the Crowd": "Once per game, when Skrorg causes an opposition player to be removed as a Casualty as the result of a Block Action, Skorgr's controlling coach gains one Team Re-roll until the end of the current Drive. If the Re-roll has not been used by the end of the Drive, it is lost."
+      },
+      "plays_for": [
+        "Old World Classic",
+        "Worlds Edge Superleague"
+      ],
+      "teams": [
+        "Bretonnian",
+        "Dwarf",
+        "Halfling",
+        "Human",
+        "Imperial Nobility",
+        "Norse",
+        "Ogre",
+        "Old World Alliance"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Skrorg_Snowpelt/"
+    },
+    {
+      "name": "Skrull Halfheight",
+      "cost": "150K",
+      "members": [
+        {
+          "name": "Skrull Halfheight",
+          "role": "Dwarf, Skeleton, Thrower, Undead",
+          "stats": {
+            "MA": "6",
+            "ST": "3",
+            "AG": "4+",
+            "PA": "3+",
+            "AV": "9+"
+          },
+          "cost": "150K",
+          "skills": [
+            "Accurate",
+            "Loner (4+)",
+            "Nerves of Steel",
+            "Pass",
+            "Regeneration",
+            "Sure Hands",
+            "Thick Skull"
+          ],
+          "special_rules": [
+            "Strong Passing Game"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Strong Passing Game": "Once per game, when Skrull performs a Pass Action he may modify the result of the Passing Ability Test by the value of his ST characteristic, to a maximum of 6."
+      },
+      "plays_for": [
+        "Sylvanian Spotlight",
+        "Worlds Edge Superleague"
+      ],
+      "teams": [
+        "Dwarf",
+        "Necromantic Horror",
+        "Ogre",
+        "Shambling Undead",
+        "Tomb Kings",
+        "Vampire"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Skrull_Halfheight/"
+    },
+    {
+      "name": "Swiftvine Glimmershard",
+      "cost": "110K",
+      "members": [
+        {
+          "name": "Swiftvine Glimmershard",
+          "role": "Special, Spite",
+          "stats": {
+            "MA": "7",
+            "ST": "2",
+            "AG": "3+",
+            "PA": "5+",
+            "AV": "7+"
+          },
+          "cost": "110K",
+          "skills": [
+            "Disturbing Presence",
+            "Fend",
+            "Loner (4+)",
+            "Sidestep",
+            "Stab",
+            "Stunty"
+          ],
+          "special_rules": [
+            "Furious Outburst"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Furious Outburst": "Once per half, so long as she is Standing at the start of her activation, Swiftvine can place herself adjacent to a Standing opposition player within 3 squares of her and immediately make a Stab Special Action against them. She may then place herself in an unoccupied square within 3 squares of her new position. Her activation then immediately ends. This counts as the team's Blitz Action for the turn."
+      },
+      "plays_for": [
+        "Woodland League"
+      ],
+      "teams": [
+        "Gnome",
+        "Halfling",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Swiftvine_Glimmershard/"
+    },
+    {
+      "name": "The Black Gobbo",
+      "cost": "210K",
+      "members": [
+        {
+          "name": "The Black Gobbo",
+          "role": "Goblin, Special",
+          "stats": {
+            "MA": "6",
+            "ST": "2",
+            "AG": "3+",
+            "PA": "3+",
+            "AV": "8+"
+          },
+          "cost": "210K",
+          "skills": [
+            "Bombardier",
+            "Disturbing Presence",
+            "Dodge",
+            "Loner (3+)",
+            "Sidestep",
+            "Sneaky Git",
+            "Stab"
+          ],
+          "special_rules": [
+            "Sneakiest of the Lot"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Sneakiest of the Lot": "If your team includes the Black Gobbo, then you may declare two Foul Actions per Turn rather than the usual one. However, one of these Foul Actions must be declared by the Black Gobbo himself."
+      },
+      "plays_for": [
+        "Badlands Brawl",
+        "Underworld Challenge"
+      ],
+      "teams": [
+        "Black Orc",
+        "Chaos Dwarf",
+        "Goblin",
+        "Ogre",
+        "Orc",
+        "Skaven",
+        "Snotling",
+        "Underworld Denizens"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/The_Black_Gobbo/"
+    },
+    {
+      "name": "The Mighty Zug",
+      "cost": "220K",
+      "members": [
+        {
+          "name": "The Mighty Zug",
+          "role": "Blocker, Human",
+          "stats": {
+            "MA": "5",
+            "ST": "5",
+            "AG": "4+",
+            "PA": "6+",
+            "AV": "10+"
+          },
+          "cost": "220K",
+          "skills": [
+            "Block",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Unsteady"
+          ],
+          "special_rules": [
+            "Crushing Blow"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Crushing Blow": "Once per game, when an opposition player is Knocked Down as the result of a Block Action performed by Zug, you may apply an additional +1 modifier to the Armour Roll. This modifier may be applied after the Armour Roll has been made."
+      },
+      "plays_for": [
+        "Old World Classic",
+        "Worlds Edge Superleague"
+      ],
+      "teams": [
+        "Amazon",
+        "Bretonnian",
+        "Human",
+        "Imperial Nobility",
+        "Lizardmen",
+        "Norse",
+        "Old World Alliance"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/The_Mighty_Zug/"
+    },
+    {
+      "name": "The Swift Twins",
+      "cost": "300K",
+      "members": [
+        {
+          "name": "Lucien Swift",
+          "role": "Blitzer, Elf",
+          "stats": {
+            "MA": "7",
+            "ST": "3",
+            "AG": "2+",
+            "PA": "3+",
+            "AV": "9+"
+          },
+          "cost": null,
+          "skills": [
+            "Block",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Tackle"
+          ],
+          "special_rules": [
+            "Working In Tandem"
+          ]
+        },
+        {
+          "name": "Valen Swift",
+          "role": "Elf, Thrower",
+          "stats": {
+            "MA": "7",
+            "ST": "3",
+            "AG": "2+",
+            "PA": "2+",
+            "AV": "9+"
+          },
+          "cost": null,
+          "skills": [
+            "Accurate",
+            "Loner (4+)",
+            "Nerves of Steel",
+            "Pass",
+            "Safe Pass",
+            "Sure Hands"
+          ],
+          "special_rules": [
+            "Working In Tandem"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Working In Tandem": "The Swift Twins must be hired as a pair. Additionally, if Valen performs a Pass Action that targets a square containing Lucien, then Valen suffers no modifiers to the PA test for the range of the Pass Action."
+      },
+      "plays_for": [
+        "Elven Kingdoms League"
+      ],
+      "teams": [
+        "Dark Elf",
+        "Elven Union",
+        "High Elf",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/The_Swift_Twins/"
+    },
+    {
+      "name": "Thorsson Stoutmead",
+      "cost": "170K",
+      "members": [
+        {
+          "name": "Thorsson Stoutmead",
+          "role": "Human, Lineman",
+          "stats": {
+            "MA": "6",
+            "ST": "3",
+            "AG": "4+",
+            "PA": "3+",
+            "AV": "8+"
+          },
+          "cost": "170K",
+          "skills": [
+            "Block",
+            "Drunkard",
+            "Loner (4+)",
+            "Thick Skull"
+          ],
+          "special_rules": [
+            "Beer Barrel Bash"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Beer Barrel Bash": "Once per Drive, at the start of his activation, Thorsson may select an opposition player within three squares and roll a D6. On a 3+, the selected player is immediately Knocked Down. On a 2, nothing happens. On a 1, Thorsson Falls Over. After using this special rule, Thorsson's activation immediately ends."
+      },
+      "plays_for": [
+        "Old World Classic",
+        "Worlds Edge Superleague"
+      ],
+      "teams": [
+        "Bretonnian",
+        "Dwarf",
+        "Human",
+        "Imperial Nobility",
+        "Norse",
+        "Ogre",
+        "Old World Alliance"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Thorsson_Stoutmead/"
+    },
+    {
+      "name": "Varag Ghoul-Chewer",
+      "cost": "260K",
+      "members": [
+        {
+          "name": "Varag Ghoul-Chewer",
+          "role": "Blocker, Orc",
+          "stats": {
+            "MA": "6",
+            "ST": "5",
+            "AG": "3+",
+            "PA": "5+",
+            "AV": "10+"
+          },
+          "cost": "260K",
+          "skills": [
+            "Block",
+            "Hatred (Undead)",
+            "Jump Up",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Thick Skull",
+            "Unsteady"
+          ],
+          "special_rules": [
+            "Krump and Smash"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Krump and Smash": "Once per game, when an opposition player is Knocked Down as a result of a Block Action performed by Varag, he may re-roll the Armour Roll."
+      },
+      "plays_for": [
+        "Badlands Brawl"
+      ],
+      "teams": [
+        "Black Orc",
+        "Chaos Dwarf",
+        "Goblin",
+        "Ogre",
+        "Orc"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Varag_Ghoul-Chewer/"
+    },
+    {
+      "name": "Wilhelm Chaney",
+      "cost": "220K",
+      "members": [
+        {
+          "name": "Wilhelm Chaney",
+          "role": "Blitzer, Undead, Werewolf",
+          "stats": {
+            "MA": "8",
+            "ST": "4",
+            "AG": "3+",
+            "PA": "4+",
+            "AV": "9+"
+          },
+          "cost": "220K",
+          "skills": [
+            "Catch",
+            "Claws",
+            "Frenzy",
+            "Loner (4+)",
+            "Regeneration",
+            "Wrestle"
+          ],
+          "special_rules": [
+            "Savage Mauling"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Savage Mauling": "Once per game, when Wilhelm makes an Injury Roll against an opposition player, he may choose to re-roll the result."
+      },
+      "plays_for": [
+        "Sylvanian Spotlight"
+      ],
+      "teams": [
+        "Necromantic Horror",
+        "Tomb Kings",
+        "Shambling Undead",
+        "Vampire"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Wilhelm_Chaney/"
+    },
+    {
+      "name": "Willow Rosebark",
+      "cost": "160K",
+      "members": [
+        {
+          "name": "Willow Rosebark",
+          "role": "Blitzer, Dryad",
+          "stats": {
+            "MA": "6",
+            "ST": "4",
+            "AG": "3+",
+            "PA": "5+",
+            "AV": "9+"
+          },
+          "cost": "160K",
+          "skills": [
+            "Dauntless",
+            "Loner (4+)",
+            "Sidestep",
+            "Thick Skull"
+          ],
+          "special_rules": [
+            "Woodland Fury"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Woodland Fury": "Once per game, when Willow performs a Block Action that would result in her being Knocked Down, she can choose to re-roll a single Block Dice."
+      },
+      "plays_for": [
+        "Woodland League"
+      ],
+      "teams": [
+        "Gnome",
+        "Halfling",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Willow_Rosebark/"
+    },
+    {
+      "name": "Withergrasp Doubledrool",
+      "cost": "170K",
+      "members": [
+        {
+          "name": "Withergrasp Doubledrool",
+          "role": "Beastman, Blocker",
+          "stats": {
+            "MA": "6",
+            "ST": "3",
+            "AG": "3+",
+            "PA": "4+",
+            "AV": "9+"
+          },
+          "cost": "170K",
+          "skills": [
+            "Foul Appearance",
+            "Loner (4+)",
+            "Prehensile Tail",
+            "Tackle",
+            "Tentacles",
+            "Two Heads",
+            "Wrestle"
+          ],
+          "special_rules": [
+            "Watch Out!"
+          ]
+        }
+      ],
+      "rule_text": {
+        "Watch Out!": "The first time each Drive that Withergrasp is the target of a Block Action performed by an opposition player, he counts as having the Dodge Skill."
+      },
+      "plays_for": [
+        "Favoured of Nurgle"
+      ],
+      "teams": [
+        "Chaos Chosen",
+        "Chaos Renegades",
+        "Nurgle"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Withergrasp_Doubledrool/"
+    },
+    {
+      "name": "Zolcath the Zoat",
+      "cost": "220K",
+      "members": [
+        {
+          "name": "Zolcath the Zoat",
+          "role": "Big Guy, Zoat",
+          "stats": {
+            "MA": "5",
+            "ST": "5",
+            "AG": "4+",
+            "PA": "5+",
+            "AV": "10+"
+          },
+          "cost": "220K",
+          "skills": [
+            "Disturbing Presence",
+            "Juggernaut",
+            "Loner (4+)",
+            "Mighty Blow",
+            "Prehensile Tail",
+            "Regeneration",
+            "Sure Feet"
+          ],
+          "special_rules": [
+            "\"Excuse me, are you a Zoat?\""
+          ]
+        }
+      ],
+      "rule_text": {
+        "\"Excuse me, are you a Zoat?\"": "Once per game, when Zolcath is activated he may select an opposition player within 3 squares. The selected player immediately becomes Distracted."
+      },
+      "plays_for": [
+        "Elven Kingdoms League",
+        "Lustrian Superleague"
+      ],
+      "teams": [
+        "Amazon",
+        "Dark Elf",
+        "Elven Union",
+        "High Elf",
+        "Lizardmen",
+        "Wood Elf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Zolcath_the_Zoat/"
+    },
+    {
+      "name": "Zzharg Madeye",
+      "cost": "130K",
+      "members": [
+        {
+          "name": "Zzharg Madeye",
+          "role": "Dwarf, Special",
+          "stats": {
+            "MA": "4",
+            "ST": "4",
+            "AG": "4+",
+            "PA": "3+",
+            "AV": "10+"
+          },
+          "cost": "130K",
+          "skills": [
+            "Cannoneer",
+            "Hail Mary Pass",
+            "Loner (4+)",
+            "Nerves of Steel",
+            "Secret Weapon",
+            "Thick Skull"
+          ],
+          "special_rules": [
+            "\"Blastin' Solves Everything\""
+          ]
+        }
+      ],
+      "rule_text": {
+        "\"Blastin' Solves Everything\"": "Once per half, at the start of his activation, Zzharg may select a Standing opposition player within 3 squares and roll a D6. On a 3+, the selected player is hit. On a 2, the opposing coach selects a player (from either team, but not Zzharg) within 3 squares of the originally selected player to be hit instead. On a 1, Zzharg is hit instead. Make an Armour Roll for whichever player is hit. Zzharg's activation then immediately ends."
+      },
+      "plays_for": [
+        "Favoured of Hashut"
+      ],
+      "teams": [
+        "Chaos Chosen",
+        "Chaos Dwarf"
+      ],
+      "source": "https://bloodbowlbase.ru/bb2025/starplayers/Zzharg_Madeye/"
     }
   ]
 }

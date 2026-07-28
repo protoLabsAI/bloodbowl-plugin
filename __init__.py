@@ -40,7 +40,16 @@ def register(registry) -> None:
 
 
 def _tools(cfg: dict):
-    from .pitch import Player, find_team, geometry, player_from_roster, team_names
+    from .pitch import (
+        Player,
+        find_star,
+        find_team,
+        geometry,
+        player_from_roster,
+        stars,
+        stars_for_team,
+        team_names,
+    )
     from .store import load, save
 
     @tool
@@ -66,6 +75,56 @@ def _tools(cfg: dict):
         if t is None:
             return json.dumps({"ok": False, "error": f"unknown team {team!r}", "known": team_names()})
         return json.dumps({"ok": True, "team": t})
+
+    @tool
+    def bb_team_costs(team: str) -> str:
+        """What a team pays for staff and, crucially, a Team Re-roll — plus its
+        league and special rules.
+
+        Re-roll price varies by team and drives most drafting decisions, so read it
+        here rather than recalling it.
+        """
+        t = find_team(team)
+        if t is None:
+            return json.dumps({"ok": False, "error": f"unknown team {team!r}", "known": team_names()})
+        return json.dumps(
+            {
+                "ok": True,
+                "team": t["name"],
+                "tier": t.get("tier"),
+                "reroll_cost": t.get("reroll_cost"),
+                "staff": t.get("staff", {}),
+                "league": t.get("league", []),
+                "special_rules": t.get("special_rules", []),
+            }
+        )
+
+    @tool
+    def bb_list_stars(team: str = "") -> str:
+        """Star Players. With a team name, only the Stars that team may hire, priced
+        for that team and cheapest first; with no team, every Star in the data.
+        """
+        if team:
+            t = find_team(team)
+            if t is None:
+                return json.dumps({"ok": False, "error": f"unknown team {team!r}", "known": team_names()})
+            hire = stars_for_team(t["name"])
+            return json.dumps({"ok": True, "team": t["name"], "count": len(hire), "stars": hire})
+        every = [{"name": s["name"], "cost": s["cost"], "teams": len(s.get("teams", []))} for s in stars()]
+        return json.dumps({"ok": True, "count": len(every), "stars": every})
+
+    @tool
+    def bb_get_star(name: str) -> str:
+        """One Star Player in full: cost, statline, skills, their own special rule
+        and its exact text, and which teams may hire them.
+
+        A pair (Grak and Crumbleberry, the Swift Twins) comes back with one entry
+        per member under ``members`` and a single price for the pair.
+        """
+        s = find_star(name)
+        if s is None:
+            return json.dumps({"ok": False, "error": f"unknown star {name!r}", "known": [x["name"] for x in stars()]})
+        return json.dumps({"ok": True, "star": s})
 
     @tool
     def bb_pitch_show() -> str:
@@ -186,6 +245,9 @@ def _tools(cfg: dict):
     return [
         bb_list_teams,
         bb_get_roster,
+        bb_team_costs,
+        bb_list_stars,
+        bb_get_star,
         bb_pitch_show,
         bb_pitch_setup,
         bb_pitch_place,
