@@ -12,7 +12,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from .pitch import Player, Scenario, find_team, geometry, player_from_roster, team_names
-from .store import load, load_previous, save
+
+# `store` is deliberately NOT imported here — the routers resolve it per request.
+# See build_game_router for why.
 
 WEB = Path(__file__).resolve().parent / "web"
 
@@ -61,17 +63,23 @@ def build_data_router(cfg: dict | None = None):
 
     r = APIRouter()
 
+    # See build_game_router: resolved per request so a reload is not half-applied.
+    def _store():
+        from . import store
+
+        return store
+
     def _ok(sc: Scenario) -> dict:
-        save(sc)
+        _store().save(sc)
         return sc.to_dict()
 
     @r.get("/meta")
     async def _meta() -> dict:
-        return {"geometry": geometry(), "teams": team_names(), "scenario": load().to_dict()}
+        return {"geometry": geometry(), "teams": team_names(), "scenario": _store().load().to_dict()}
 
     @r.get("/state")
     async def _state() -> dict:
-        return load().to_dict()
+        return _store().load().to_dict()
 
     @r.get("/roster")
     async def _roster(team: str) -> dict:
@@ -82,7 +90,7 @@ def build_data_router(cfg: dict | None = None):
 
     @r.post("/teams")
     async def _teams(body: dict) -> dict:
-        sc = load()
+        sc = _store().load()
         for key in ("home_team", "away_team"):
             if key in body and body[key]:
                 if find_team(body[key]) is None:
@@ -92,7 +100,7 @@ def build_data_router(cfg: dict | None = None):
 
     @r.post("/place")
     async def _place(body: dict) -> dict:
-        sc = load()
+        sc = _store().load()
         try:
             x, y = int(body["x"]), int(body["y"])
         except (KeyError, TypeError, ValueError):
@@ -115,7 +123,7 @@ def build_data_router(cfg: dict | None = None):
 
     @r.post("/move")
     async def _move(body: dict) -> dict:
-        sc = load()
+        sc = _store().load()
         try:
             fx, fy = int(body["from"]["x"]), int(body["from"]["y"])
             tx, ty = int(body["to"]["x"]), int(body["to"]["y"])
@@ -135,7 +143,7 @@ def build_data_router(cfg: dict | None = None):
 
     @r.post("/remove")
     async def _remove(body: dict) -> dict:
-        sc = load()
+        sc = _store().load()
         try:
             x, y = int(body["x"]), int(body["y"])
         except (KeyError, TypeError, ValueError):
@@ -145,7 +153,7 @@ def build_data_router(cfg: dict | None = None):
 
     @r.post("/clear")
     async def _clear(body: dict | None = None) -> dict:
-        sc = load()
+        sc = _store().load()
         side = (body or {}).get("side")
         sc.clear(side if side in ("home", "away") else None)
         return _ok(sc)
@@ -194,7 +202,7 @@ def build_data_router(cfg: dict | None = None):
             preset,
             side=side if side in ("home", "away") else "",
             mirror=bool((body or {}).get("mirror")),
-            current=load(),
+            current=_store().load(),
         )
         return _ok(sc)
 
@@ -202,7 +210,9 @@ def build_data_router(cfg: dict | None = None):
     async def _preset_save(body: dict) -> dict:
         from .presets import save as save_preset
 
-        preset, err = save_preset(str((body or {}).get("name") or ""), load(), note=str((body or {}).get("note") or ""))
+        preset, err = save_preset(
+            str((body or {}).get("name") or ""), _store().load(), note=str((body or {}).get("note") or "")
+        )
         if preset is None:
             raise HTTPException(status_code=400, detail=err)
         return {"ok": True, "saved": preset.name}
@@ -220,7 +230,7 @@ def build_data_router(cfg: dict | None = None):
     async def _previous() -> dict:
         """The board as it was before the last write — the restart-proof safety net
         behind the view's in-session undo."""
-        prev = load_previous()
+        prev = _store().load_previous()
         return {"scenario": prev.to_dict() if prev else None}
 
     return r
@@ -236,41 +246,56 @@ def build_game_router(cfg: dict | None = None):
     """
     from fastapi import APIRouter, HTTPException
 
-    from .engine.game import act, end_turn, legal_moves, new_match, state_report
-    from .store import clear_match, load_match, save_match
-
     r = APIRouter()
 
+    # Imported per REQUEST, not per router-build, and that is not fussiness.
+    # The host cannot swap a mounted router, so a router that binds `act` at
+    # build time keeps calling the ORIGINAL function object for the life of the
+    # process — while a lazy import elsewhere (store.py resolves `Match` inside a
+    # function) picks the reloaded one up. The plugin then runs NEW state with OLD
+    # rules, which is worse than not reloading at all: the symptoms are a match
+    # payload carrying fields the engine does not honour. Looking the module up on
+    # each call costs a dict lookup and makes `POST /enabled` mean what it says.
+    def engine():
+        from .engine import game
+
+        return game
+
+    def _store():
+        from . import store
+
+        return store
+
     def _need_match():
-        m = load_match()
+        m = _store().load_match()
         if m is None:
             raise HTTPException(status_code=404, detail="no match in progress")
         return m
 
     @r.get("/game")
     async def _game() -> dict:
-        m = load_match()
+        m = _store().load_match()
         if m is None:
             return {"ok": False, "match": None}
-        return {"ok": True, **state_report(m)}
+        return {"ok": True, **engine().state_report(m)}
 
     @r.post("/game/new")
     async def _new(body: dict | None = None) -> dict:
         body = body or {}
-        sc = load()
+        sc = _store().load()
         if not sc.players:
             raise HTTPException(status_code=400, detail="the board is empty — set a scenario up first")
-        m = new_match(
+        m = engine().new_match(
             sc,
             seed=int(body.get("seed") or 0),
             kicking_to=("away" if body.get("kicking_to") == "away" else "home"),
         )
-        save_match(m)
+        _store().save_match(m)
         return {"ok": True, "match": m.to_dict(include_log=False)}
 
     @r.get("/game/legal")
     async def _legal(player: str) -> dict:
-        return legal_moves(_need_match(), player)
+        return engine().legal_moves(_need_match(), player)
 
     @r.post("/game/act")
     async def _act(body: dict) -> dict:
@@ -283,8 +308,8 @@ def build_game_router(cfg: dict | None = None):
         cmd = {k: v for k, v in body.items() if k != "action"}
         cmd["player"] = str(cmd.get("player") or "")
         before = len(m.events)
-        report = act(m, str(body.get("action") or "move"), cmd)
-        save_match(m)
+        report = engine().act(m, str(body.get("action") or "move"), cmd)
+        _store().save_match(m)
         report["match"] = m.to_dict(include_log=False)
         report["log"] = [e.text for e in m.events[before:] if e.text]
         return report
@@ -292,21 +317,19 @@ def build_game_router(cfg: dict | None = None):
     @r.post("/game/end-turn")
     async def _end_turn() -> dict:
         m = _need_match()
-        out = end_turn(m)
-        save_match(m)
+        out = engine().end_turn(m)
+        _store().save_match(m)
         out["match"] = m.to_dict(include_log=False)
         return out
 
     @r.post("/game/kickoff")
     async def _kickoff(body: dict | None = None) -> dict:
-        from .engine.game import start_drive
-
         m = _need_match()
         want = str((body or {}).get("receiving") or "")
         side = want if want in ("home", "away") else m.opponent(m.clock.active)
         before = len(m.events)
-        start_drive(m, receiving=side)
-        save_match(m)
+        engine().start_drive(m, receiving=side)
+        _store().save_match(m)
         return {
             "ok": True,
             "drive": m.drive,
@@ -317,7 +340,7 @@ def build_game_router(cfg: dict | None = None):
 
     @r.post("/game/abandon")
     async def _abandon() -> dict:
-        return {"ok": True, "discarded": clear_match()}
+        return {"ok": True, "discarded": _store().clear_match()}
 
     @r.get("/game/log")
     async def _log(last: int = 40) -> dict:
