@@ -60,7 +60,13 @@ class PlayerState:
     action: str = ""
     # S3 status: a Standing player that has lost its Tackle Zone. Separate from
     # `down` because such a player is still standing for every other purpose.
+    # "…they will remain Distracted UNTIL THEY ARE NEXT ACTIVATED" — so a new turn
+    # does not clear it; the player's own next activation does.
     distracted: bool = False
+    # Take Root: "cannot perform Move Actions, may not Follow-up after performing
+    # a Block Action, cannot be Pushed Back, and may not leave their current square
+    # for any reason". Cleared at the end of a Drive or by hitting the ground.
+    rooted: bool = False
     # Skills that are "Once per Turn" rather than once per activation — the Dodge
     # Skill's re-roll and Break Tackle's modifier. Set through a recorded event
     # (see `skill_spent`), never assigned: they are state, and state that only the
@@ -117,6 +123,7 @@ class PlayerState:
             "dodge_reroll_used": self.dodge_reroll_used,
             "break_tackle_used": self.break_tackle_used,
             "distracted": self.distracted,
+            "rooted": self.rooted,
             "movement": self.movement(),
         }
         d.update(
@@ -253,6 +260,15 @@ class Match:
                     p.action = ""
                     p.dodge_reroll_used = p.break_tackle_used = False
 
+        elif kind == "player_status":
+            # Distracted and Rooted, the two standing-but-impaired states.
+            p = self.by_id(event.actor)
+            if p is not None:
+                if "distracted" in d:
+                    p.distracted = bool(d["distracted"])
+                if "rooted" in d:
+                    p.rooted = bool(d["rooted"])
+
         elif kind == "player_left_pitch":
             # Pushed into the Crowd. They land in the Reserves Box unless the
             # Injury Roll that follows moves them somewhere worse — "If the player
@@ -356,6 +372,9 @@ class Match:
                 # Falling Over ends the activation: "their activation immediately
                 # ends", whichever roll put them on the floor.
                 p.acted = p.done = True
+                # "A Rooted player will immediately stop being Rooted … if they
+                # are ever Knocked Down or Placed Prone."
+                p.rooted = False
 
         elif kind in ("player_pushed", "player_followed_up"):
             # A shove and a follow-up relocate a player identically; only the
@@ -411,6 +430,9 @@ class Match:
                 p.place = "pitch"
                 p.ma_used, p.acted, p.done, p.dodge_reroll_used = 0, False, False, False
                 p.action, p.break_tackle_used = "", False
+                # "…stop being Rooted at the end of a Drive", and a Distracted
+                # player is set up afresh with everyone else.
+                p.rooted = p.distracted = False
             # A Knocked-out player misses the drive; a Casualty misses the match;
             # a Sent-off player is gone for good and must never be set up again.
             for p in self.players:
@@ -519,6 +541,8 @@ class Match:
                     action=str(raw.get("action") or ""),
                     dodge_reroll_used=bool(raw.get("dodge_reroll_used")),
                     break_tackle_used=bool(raw.get("break_tackle_used")),
+                    distracted=bool(raw.get("distracted")),
+                    rooted=bool(raw.get("rooted")),
                 )
             )
 

@@ -340,10 +340,10 @@ def test_prehensile_tail_is_an_opponents_skill_that_modifies_our_roll():
 def test_unmodelled_skills_are_reported_rather_than_ignored():
     """A Troll's Always Hungry is not implemented. The engine says so instead of
     quietly playing as though the player did not have it."""
-    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry", "Really Stupid", "Jump Up", "Mighty Blow"]))
+    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry", "Regeneration", "Jump Up", "Mighty Blow"]))
     out = _move(m, "h00", 7, 14, _dice([]))
     assert "Always Hungry" in out.unmodelled
-    assert "Really Stupid" in out.unmodelled
+    assert "Regeneration" in out.unmodelled  # was Really Stupid until that became modelled
     # Both of these ARE modelled, and the list must shrink as skills land — this
     # test caught Mighty Blow moving from unmodelled to modelled when Blocking
     # was added, which is exactly the drift it is here to notice.
@@ -362,16 +362,16 @@ def test_an_unmodelled_skill_is_announced_once_per_match_not_once_per_step():
     """
     from bloodbowl.engine.game import act
 
-    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry", "Really Stupid"]))
+    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry", "Regeneration"]))
     first = act(m, "move", {"player": "h00", "x": 7, "y": 14})
-    assert first["unmodelled_skills"] == ["Always Hungry", "Really Stupid"]
+    assert first["unmodelled_skills"] == ["Always Hungry", "Regeneration"]
 
     again = act(m, "move", {"player": "h00", "x": 7, "y": 15})
     assert again["unmodelled_skills"] == []
     # …but the raw list is untouched, so nothing has become invisible.
     from bloodbowl.engine.skills import unmodelled_skills
 
-    assert unmodelled_skills(m.by_id("h00")) == ["Always Hungry", "Really Stupid"]
+    assert unmodelled_skills(m.by_id("h00")) == ["Always Hungry", "Regeneration"]
 
 
 def test_the_first_mention_lands_in_the_log_not_only_in_the_reply():
@@ -412,10 +412,10 @@ def test_the_standing_summary_names_every_unmodelled_skill_and_its_holders():
     m = _match(
         ("home", 7, 13, 6, "3+", ["Always Hungry", "Block"]),
         ("home", 8, 13, 6, "3+", ["Always Hungry"]),
-        ("away", 7, 14, 6, "3+", ["Really Stupid"]),
+        ("away", 7, 14, 6, "3+", ["Regeneration"]),
     )
     summary = unmodelled_on_pitch(m)
-    assert {row["skill"] for row in summary} == {"Always Hungry", "Really Stupid"}
+    assert {row["skill"] for row in summary} == {"Always Hungry", "Regeneration"}
     hungry = next(row for row in summary if row["skill"] == "Always Hungry")
     assert hungry["players"] == ["h00", "h01"] and hungry["count"] == 2
     # Block IS modelled, so it must not appear.
@@ -430,7 +430,7 @@ def test_the_standing_summary_is_derived_so_it_drops_a_player_who_leaves():
     from bloodbowl.engine.events import Event
     from bloodbowl.engine.skills import unmodelled_on_pitch
 
-    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry"]), ("away", 7, 14, 6, "3+", ["Really Stupid"]))
+    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry"]), ("away", 7, 14, 6, "3+", ["Regeneration"]))
     assert len(unmodelled_on_pitch(m)) == 2
     m.apply(Event(kind="player_condition", actor=m.players[1].id, detail={"outcome": "casualty"}))
     assert [row["skill"] for row in unmodelled_on_pitch(m)] == ["Always Hungry"]
@@ -2900,3 +2900,183 @@ def test_claws_break_armour_on_a_natural_eight_whatever_the_armour_value():
     m2.by_id("a01").player.AV = "11+"
     out2 = _block(m2, "h00", "a01", _dice([3, 4], [["pow"]]), follow_up=False)
     assert not next(r for e in out2.events for r in e.rolls if r.kind == "Armour").passed
+
+
+# --- skills batch four: the activation gates -------------------------------
+#
+# Five Traits share one shape: "Whenever this player is activated, after declaring
+# their Action they must roll a D6", and on a failure something goes wrong.
+
+
+def _act(m, action, cmd, dice):
+    from bloodbowl.engine.game import act
+
+    return act(m, action, cmd, dice)
+
+
+def test_bone_head_distracts_the_player_and_the_action_never_happens():
+    """ "On a 2+, the player may perform the declared Action as normal. On a 1, the
+    player becomes Distracted." A failed gate stops the Action — it does not
+    happen and then get undone."""
+    m = _match(("home", 7, 13, 6, "3+", ["Bone Head"]))
+    out = _act(m, "move", {"player": "h00", "x": 7, "y": 14}, _dice([1]))
+    p = m.by_id("h00")
+    assert out["ok"] is False
+    assert p.distracted is True
+    assert (p.x, p.y) == (7, 13), "the Move happened anyway"
+    assert p.done is True, "becoming Distracted ends the activation"
+
+    passed = _match(("home", 7, 13, 6, "3+", ["Bone Head"]))
+    assert _act(passed, "move", {"player": "h00", "x": 7, "y": 14}, _dice([2]))["ok"]
+    assert (passed.by_id("h00").x, passed.by_id("h00").y) == (7, 14)
+
+
+def test_a_distracted_player_has_no_tackle_zone_and_no_active_skills():
+    """S3: "A player that is Distracted does not have a Tackle Zone … Whilst a
+    player is Distracted, they cannot use ACTIVE Skills or Traits."
+
+    Active-versus-Passive comes from the shipped catalogue, so this one rule
+    covers all 108 — including the 81 the engine does not model.
+    """
+    from bloodbowl.engine.rules import has_tackle_zone
+    from bloodbowl.engine.skills import can_use
+
+    m = _match(("home", 7, 13, 6, "3+", ["Bone Head", "Dodge", "Thick Skull"]))
+    p = m.by_id("h00")
+    assert has_tackle_zone(p) and can_use(p, "Dodge")
+
+    _act(m, "move", {"player": "h00", "x": 7, "y": 14}, _dice([1]))
+    assert not has_tackle_zone(p), "a Distracted player still Marks people"
+    assert not can_use(p, "Dodge"), "Dodge is an ACTIVE skill"
+    assert can_use(p, "Thick Skull"), "Thick Skull is PASSIVE and still applies"
+
+
+def test_distracted_lasts_until_the_player_is_next_activated_not_until_the_turn_ends():
+    """ "they will remain Distracted UNTIL THEY ARE NEXT ACTIVATED (unless otherwise
+    specified)" — so a new turn does not clear it, which is the half a paraphrase
+    drops."""
+    from bloodbowl.engine.game import end_turn
+
+    m = _match(("home", 7, 13, 6, "3+", ["Bone Head"]), ("away", 2, 20, 6))
+    _act(m, "move", {"player": "h00", "x": 7, "y": 14}, _dice([1]))
+    assert m.by_id("h00").distracted
+
+    end_turn(m)
+    end_turn(m)  # back round to home
+    assert m.by_id("h00").distracted, "a new turn must not clear Distracted"
+
+    _act(m, "move", {"player": "h00", "x": 7, "y": 14}, _dice([4]))
+    assert not m.by_id("h00").distracted, "activating again clears it"
+
+
+def test_really_stupid_is_not_helped_by_another_really_stupid_player():
+    """ "+2 … if they have any Standing team-mates who are not Distracted, AND DO
+    NOT HAVE THE REALLY STUPID TRAIT, adjacent to them." The exclusion is the
+    clause that gets dropped, and two Trolls propping each other up is exactly
+    what it forbids."""
+    from bloodbowl.engine.skills import activation_gates
+
+    alone = _match(("home", 7, 13, 6, "3+", ["Really Stupid"]))
+    assert activation_gates(alone, alone.by_id("h00"), "move")[0]["modifier"] == 0
+
+    propped = _match(("home", 7, 13, 6, "3+", ["Really Stupid"]), ("home", 7, 14, 6, "3+", ["Really Stupid"]))
+    assert activation_gates(propped, propped.by_id("h00"), "move")[0]["modifier"] == 0, "two of them do not help"
+
+    helped = _match(("home", 7, 13, 6, "3+", ["Really Stupid"]), ("home", 7, 14, 6))
+    assert activation_gates(helped, helped.by_id("h00"), "move")[0]["modifier"] == 2
+
+
+@pytest.mark.parametrize("action,want", [("block", 2), ("blitz", 2), ("move", 0)])
+def test_three_gates_give_plus_two_for_declaring_violence(action, want):
+    """Animal Savagery and Unchannelled Fury: "+2 … if they have declared a Block
+    Action or a Blitz Action"."""
+    from bloodbowl.engine.skills import activation_gates
+
+    for trait in ("Animal Savagery", "Unchannelled Fury"):
+        m = _match(("home", 7, 13, 6, "3+", [trait]))
+        assert activation_gates(m, m.by_id("h00"), action)[0]["modifier"] == want, trait
+
+
+def test_animal_savagery_lashes_out_at_a_team_mate():
+    """ "Choose one Standing team-mate adjacent to this player; the chosen player is
+    immediately Knocked Down. This will NOT cause a Turnover unless the player was
+    holding the ball." """
+    m = _match(("home", 7, 13, 6, "3+", ["Animal Savagery"]), ("home", 7, 14, 6))
+    out = _act(m, "move", {"player": "h00", "x": 6, "y": 13}, _dice([1, 2, 2]))
+    assert m.by_id("h01").down != "standing", "the team-mate should be on the floor"
+    assert out["turnover"] is False, "no turnover unless they had the ball"
+
+    # …with the ball, it IS a turnover.
+    # …with the ball it IS a turnover. More dice, because going down drops the
+    # ball and a dropped ball BOUNCES before anything else resolves.
+    withball = _match(("home", 7, 13, 6, "3+", ["Animal Savagery"]), ("home", 7, 14, 6))
+    withball.apply(_ball_at(7, 14, carrier="h01"))
+    out2 = _act(withball, "move", {"player": "h00", "x": 6, "y": 13}, _dice([1, 3, 2, 2, 4, 4, 4]))
+    assert out2["turnover"] is True
+
+
+def test_animal_savagery_with_nobody_to_hit_is_just_distracted():
+    """ "If this player rolls a 1-3 and there are no Standing team-mates adjacent to
+    them, then they are Distracted." """
+    m = _match(("home", 7, 13, 6, "3+", ["Animal Savagery"]))
+    _act(m, "move", {"player": "h00", "x": 7, "y": 14}, _dice([1]))
+    assert m.by_id("h00").distracted is True
+
+
+def test_take_root_roots_them_to_the_spot():
+    """ "Whilst Rooted, a player cannot perform Move Actions, may not Follow-up
+    after performing a Block Action, cannot be Pushed Back, and may not leave their
+    current square for any reason." """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 6, "3+", ["Take Root"]), ("away", 7, 14, 6))
+    _act(m, "move", {"player": "h00", "x": 6, "y": 12}, _dice([1]))
+    assert m.by_id("h00").rooted is True
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 13)
+
+    later = actions.get("move")["validate"](m, {"player": "h00", "x": 6, "y": 12})
+    assert not later.ok and "Rooted" in later.reason
+
+    # …and they cannot be shoved, either.
+    m.apply(_ball_at(1, 1))
+    from bloodbowl.engine.game import end_turn
+
+    end_turn(m)
+    out = _block(m, "a01", "h00", _dice([], [["push_back"]]), follow_up=True)
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 13), "a Rooted player was Pushed Back"
+    assert any("Rooted" in (e.text or "") for e in out.events)
+
+
+def test_being_knocked_down_pulls_a_rooted_player_up_by_the_roots():
+    """ "A Rooted player will immediately stop being Rooted at the end of a Drive,
+    or if they are ever Knocked Down or Placed Prone." """
+    from bloodbowl.engine.injury import knock_down
+
+    m = _match(("home", 7, 13, 6, "3+", ["Take Root"]))
+    _act(m, "move", {"player": "h00", "x": 7, "y": 14}, _dice([1]))
+    assert m.by_id("h00").rooted
+    knock_down(m, m.by_id("h00"), _dice([2, 2]))
+    assert m.by_id("h00").rooted is False
+
+
+def test_unchannelled_fury_just_ends_the_activation():
+    """ "this player rages incoherently but nothing really happens. Their activation
+    immediately ends." No Distracted, no damage — the turn simply moves on."""
+    m = _match(("home", 7, 13, 6, "3+", ["Unchannelled Fury"]))
+    out = _act(m, "move", {"player": "h00", "x": 7, "y": 14}, _dice([2]))
+    p = m.by_id("h00")
+    assert out["ok"] is False and out["turnover"] is False
+    assert p.done is True and p.distracted is False and (p.x, p.y) == (7, 13)
+
+
+def test_drunkard_makes_the_rush_harder():
+    """ "This player applies a -1 modifier to test whenever they attempt to Rush." """
+    # MA 1, so the SECOND square needs a Rush — the first is free, which is what
+    # the previous version of this test forgot.
+    m = _match(("home", 7, 13, 1, "3+", ["Drunkard"]))
+    assert _move(m, "h00", 7, 14, _dice([])).ok
+    out = _move(m, "h00", 7, 15, _dice([4]))
+    rush = next((r for e in out.events for r in e.rolls if r.kind == "Rush"), None)
+    assert rush is not None and rush.modifier == -1, rush
+    assert rush.passed, "4 - 1 = 3 still beats a 2+"

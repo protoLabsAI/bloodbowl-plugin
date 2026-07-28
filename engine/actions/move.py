@@ -63,6 +63,11 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, f"it is {match.clock.active}'s turn, and that player is {p.side}")
     if p.down == "stunned":
         return Legality(False, "a Stunned player cannot act; they recover to Prone at the end of the turn")
+    if p.rooted:
+        # Take Root: "Whilst Rooted, a player cannot perform Move Actions … and may
+        # not leave their current square for any reason, with the exception of
+        # being Knocked Out or suffering a Casualty."
+        return Legality(False, f"{p.name()} is Rooted and cannot leave their square")
     if p.done:
         # A Block Action, a Pass, a Hand-off and a Secure the Ball each END the
         # activation, and none of them includes movement afterwards: "may not
@@ -175,7 +180,8 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
 
     # 2. Rush FIRST when a square needs both rolls — the S3 ordering.
     if needs_rush:
-        r = roll_target(dice, "Rush", 2)
+        rush = roll_modifier(match, p, "rush")
+        r = roll_target(dice, "Rush", 2, rush.value, note=" ".join(rush.notes))
         if not r.passed:
             rec.emit(
                 Event(
