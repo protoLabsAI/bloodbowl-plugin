@@ -717,3 +717,31 @@ def test_a_refused_action_is_reported_rather_than_silently_dropped(client):
     client.post(f"{base}/game/new", json={"seed": 1})
     r = client.post(f"{base}/game/act", json={"action": "block", "player": "h00", "target": "nobody"}).json()
     assert r["ok"] is False and "no target" in r["text"]
+
+
+def test_the_readme_and_handoff_describe_what_actually_ships(registry):
+    """Docs drift silently and a handoff is exactly when that costs someone a day.
+    The README listed seven tools for a long while after there were twenty-four."""
+    import bloodbowl
+
+    bloodbowl.register(registry)
+    names = {t.name for t in registry.tools}
+    readme = (ROOT / "README.md").read_text()
+    handoff = (ROOT / "docs" / "HANDOFF.md").read_text()
+
+    missing = sorted(n for n in names if n not in readme)
+    assert not missing, f"tools the README never mentions: {missing}"
+    assert (ROOT / "docs" / "HANDOFF.md").is_file()
+    for probe in ("engine adjudicates", "Look them up", "unmodelled"):
+        assert probe in handoff, f"the handoff lost its section on {probe!r}"
+
+
+def test_the_version_moved_past_the_first_release():
+    """Nine merged PRs turned a board into a rules engine; 0.1.0 was a lie.
+
+    Parsed by hand rather than with `packaging`, which is not in
+    requirements-dev.txt — it is installed here transitively, so importing it
+    would pass locally and fail CI.
+    """
+    parts = tuple(int(n) for n in str(MANIFEST["version"]).split("."))
+    assert parts >= (0, 5, 0), MANIFEST["version"]
