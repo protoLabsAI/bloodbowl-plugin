@@ -19,6 +19,16 @@ config:
 views:
   - { id: pitch, label: "Pitch", icon: LayoutGrid, path: /plugins/bloodbowl/view }
 
+# The host auto-exempts a DECLARED VIEW's own path from the auth gate, because the
+# console iframes it with a plain navigation that cannot carry a bearer. It does
+# not exempt the page's siblings — and since the view became real files rather
+# than one inline string, the stylesheet and the ES modules are siblings. Without
+# this the page loads 200 and every asset 401s: an unstyled, dead board on any
+# token-gated deployment. Only the static tree is listed; all data stays gated
+# under /api/plugins/bloodbowl/.
+public_paths:
+  - /plugins/bloodbowl/static/
+
 capabilities:
   network: []
   filesystem: scoped
