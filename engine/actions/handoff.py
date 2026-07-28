@@ -64,12 +64,10 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     )
     rec.absorb(catch(match, t, dice))
 
-    p.acted = True
     rec.emit(
         Event(
-            kind="note",
+            kind="activation_ended",
             actor=p.id,
-            detail={"acted": True},
             text=f"{p.name()}'s Hand-off Action is over.",
         )
     )

@@ -122,6 +122,14 @@ the two can never disagree.
 > Setting `match.ball.carrier` directly and saving *looks* fine and then silently
 > vanishes. To set up a drill, emit events.
 
+`Match.from_dict` seeds each player from the cached row **before** folding, which
+makes this invariant easy to break without noticing: a field the fold does not
+restore is quietly supplied by the cache on the one path anyone exercises. Block,
+Hand-off, Secure and Pass all assigned `p.acted` directly and emitted a note
+saying so — a note nothing read — so `fold()` alone left players free to act
+twice while `from_dict` looked perfect. If you add state to `PlayerState`, add the
+event that restores it and test it through `fold()`, not `from_dict`.
+
 **Determinism and replay are two mechanisms.** The seed is for *regeneration*; the
 log is for *re-watching*. A seed alone cannot survive a rules change — add one
 skill that rolls an extra die and every later draw from the shared stream shifts.

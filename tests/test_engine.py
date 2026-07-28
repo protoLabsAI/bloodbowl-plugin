@@ -53,6 +53,62 @@ def _block(m, pid, target, dice, **cmd):
 # --- determinism and replay -----------------------------------------------
 
 
+def _ball_at(x, y, carrier=""):
+    from bloodbowl.engine.events import Event
+
+    return Event(kind="ball_moved", detail={"x": x, "y": y, "carrier": carrier})
+
+
+def _acting_board(action):
+    """A board on which ``action`` is legal for h00, and its dice.
+
+    One factory rather than one fixture per action, because the test below has to
+    build the SAME board twice — once to act on and once to fold onto — and the
+    two drifting apart would make the fold look wrong for the wrong reason.
+    """
+    if action == "secure":
+        # The ball loose, and no Standing opponent within 2 squares of it.
+        m = _match(("home", 7, 13), ("away", 7, 20), ("home", 8, 13))
+        m.apply(_ball_at(7, 13))
+        return m, {}, [6], []
+    # A team-mate at (8,13) to hand off to and an opponent at (7,14) to block.
+    m = _match(("home", 7, 13), ("away", 7, 14), ("home", 8, 13))
+    m.by_id("h00").player.ST = "3"
+    m.by_id("h00").player.PA = "3+"
+    m.apply(_ball_at(7, 13, carrier="h00"))
+    return m, *{
+        "block": ({"target": "a01"}, [6, 6], [["push_back"]]),
+        "handoff": ({"target": "h02"}, [6], []),
+        "pass": ({"x": 7, "y": 18}, [6, 6, 6], []),
+    }[action]
+
+
+@pytest.mark.parametrize("action", ["block", "handoff", "secure", "pass"])
+def test_an_action_being_over_survives_the_fold(action):
+    """`fold(events)` must rebuild the position EXACTLY, and "this player has
+    already acted" is part of the position.
+
+    Every action used to assign ``p.acted`` directly and then emit a note saying
+    it had — a note nothing read. The live object was right and the fold was
+    wrong, so a replayed match had players free to act a second time. It stayed
+    invisible because ``Match.from_dict`` seeds the players from the cached row
+    BEFORE folding, so the one path anybody exercised papered over it. Folding
+    from scratch is the only way to see it.
+    """
+    from bloodbowl.engine import actions
+    from bloodbowl.engine.state import fold
+
+    actions.load_all()
+    m, cmd, script, block = _acting_board(action)
+    out = actions.get(action)["resolve"](m, {"player": "h00", **cmd}, _dice(script, block))
+    assert out.events, f"{action} was refused, so this test proves nothing: {out.text}"
+    assert m.by_id("h00").acted, "the action did not end the activation at all"
+
+    fresh, _cmd, _s, _b = _acting_board(action)
+    rebuilt = fold(fresh, list(m.events))
+    assert rebuilt.by_id("h00").acted, f"{action} left the folded player free to act again"
+
+
 def test_the_fold_rebuilds_a_position_exactly():
     """Re-watching is fold(events) — no dice, no rules, so it cannot drift."""
     from bloodbowl.engine.state import Match, fold

@@ -223,6 +223,15 @@ class Match:
                 p.down = "standing"
                 p.ma_used = int(d.get("ma_used", p.ma_used))
 
+        elif kind == "activation_ended":
+            # An Action that is over. Recorded rather than set on the player,
+            # because `acted` is state and ALL state here comes from the log —
+            # the actions used to assign it directly and emit a note saying so,
+            # which meant a folded match had everyone free to act again.
+            p = self.by_id(event.actor)
+            if p is not None:
+                p.acted = True
+
         elif kind in ("player_fell", "player_placed_prone"):
             p = self.by_id(event.actor)
             if p is not None:
