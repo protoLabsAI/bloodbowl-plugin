@@ -26,8 +26,10 @@ every roll individually attributable in the log.
 from __future__ import annotations
 
 from ...pitch import in_bounds
+from ..ball import check_touchdown, pick_up
 from ..dice import roll_target
 from ..events import Event
+from ..injury import knock_down
 from ..rules import (
     MAX_RUSHES,
     STAND_UP_COST,
@@ -175,15 +177,11 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                     text=f"{p.player.position} Rushes into ({x},{y})…",
                 )
             )
-            rec.emit(
-                Event(
-                    kind="player_fell",
-                    actor=p.id,
-                    detail={"down": "prone"},
-                    rolls=[r],
-                    text=f"…trips and Falls Over. {r.describe()}",
-                )
-            )
+            # Falling Over is a knockdown like any other: S3 says a player who
+            # "is Knocked Down or Falls Over" becomes Prone AND risks injury. This
+            # path used to just set them Prone, so tripping on a Rush was free.
+            rec.emit(Event(kind="note", actor=p.id, rolls=[r], text=f"…trips. {r.describe()}"))
+            rec.absorb(knock_down(match, p, dice, cause="tripped Rushing"))
             return Outcome(
                 ok=False,
                 events=rec.events,
@@ -232,15 +230,8 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                     text=f"{p.player.position} Dodges toward ({x},{y})…",
                 )
             )
-            rec.emit(
-                Event(
-                    kind="player_fell",
-                    actor=p.id,
-                    detail={"down": "prone"},
-                    rolls=dodge_rolls,
-                    text=f"…and Falls Over. {r.describe()}",
-                )
-            )
+            rec.emit(Event(kind="note", actor=p.id, rolls=dodge_rolls, text=f"…and slips. {r.describe()}"))
+            rec.absorb(knock_down(match, p, dice, cause="Falls Over"))
             return Outcome(
                 ok=False,
                 events=rec.events,
@@ -258,6 +249,26 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             text=f"{p.player.position} moves to ({x},{y}).",
         )
     )
+
+    # 4. The ball, if it is lying here. S3: the pick-up roll comes AFTER the rolls
+    # that got you into the square (Rush, Dodge) and before anything else — which
+    # is why this sits at the bottom rather than beside them.
+    if match.ball.in_play and not match.ball.carrier and (match.ball.x, match.ball.y) == (x, y):
+        events, turned_over = pick_up(match, p, dice)
+        rec.absorb(events)
+        if turned_over:
+            return Outcome(
+                ok=False,
+                events=rec.events,
+                turnover=True,
+                text=f"{p.player.position} failed to pick the ball up — turnover.",
+                unmodelled=unmodelled,
+            )
+
+    # Scoring can happen on a plain Move, and is checked wherever position or
+    # possession changes rather than only here.
+    rec.absorb(check_touchdown(match, p))
+
     return Outcome(
         ok=True,
         events=rec.events,

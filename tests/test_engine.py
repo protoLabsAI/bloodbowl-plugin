@@ -172,7 +172,7 @@ def test_a_failed_dodge_still_moves_the_player_then_falls_over():
     """S3: "The player is moved into the square they attempted to Dodge into and
     then Falls Over." Where they land matters — the ball scatters from there."""
     m = _match(("home", 7, 13), ("away", 7, 14))
-    out = _move(m, "h00", 6, 12, _dice([2]))
+    out = _move(m, "h00", 6, 12, _dice([2, 1, 1]))  # dodge fails, then armour holds
     assert not out.ok and out.turnover
     p = m.by_id("h00")
     assert (p.x, p.y) == (6, 12), "a failed Dodge does not leave the player where they started"
@@ -181,7 +181,7 @@ def test_a_failed_dodge_still_moves_the_player_then_falls_over():
 
 def test_a_natural_one_fails_a_dodge_however_good_the_odds():
     m = _match(("home", 7, 13, 6, "2+"), ("away", 7, 14))
-    out = _move(m, "h00", 6, 12, _dice([1]))
+    out = _move(m, "h00", 6, 12, _dice([1, 1, 1]))
     assert not out.ok and out.turnover
 
 
@@ -197,7 +197,7 @@ def test_rushing_starts_when_the_move_allowance_runs_out():
 def test_a_failed_rush_falls_over_in_the_target_square_and_is_a_turnover():
     m = _match(("home", 7, 13, 1))
     _move(m, "h00", 7, 14, _dice([]))
-    out = _move(m, "h00", 7, 15, _dice([1]))
+    out = _move(m, "h00", 7, 15, _dice([1, 1, 1]))  # rush fails, then armour holds
     assert not out.ok and out.turnover
     p = m.by_id("h00")
     assert (p.x, p.y) == (7, 15) and p.down == "prone"
@@ -221,9 +221,10 @@ def test_rush_is_rolled_before_dodge_when_a_square_needs_both():
     m = _match(("home", 7, 13, 1), ("away", 7, 14))
     _move(m, "h00", 6, 12, _dice([5]))  # spend the single square, dodging away
     m.by_id("h00").down = "standing"
-    out = _move(m, "h00", 6, 11, _dice([1]))  # Rush fails; no Dodge die scripted
+    out = _move(m, "h00", 6, 11, _dice([1, 1, 1]))  # Rush fails, then the armour roll
     kinds = [r.kind for e in out.events for r in e.rolls]
-    assert kinds == ["Rush"], f"a failed Rush must end it before the Dodge: {kinds}"
+    assert "Dodge" not in kinds, f"a failed Rush must end it before the Dodge: {kinds}"
+    assert kinds[0] == "Rush"
 
 
 # --- standing up -----------------------------------------------------------
@@ -274,7 +275,7 @@ def test_prehensile_tail_is_an_opponents_skill_that_modifies_our_roll():
     """The hook is asked of the players Marking the destination, not of the
     player rolling — which is why it is a separate hook."""
     m = _match(("home", 7, 13), ("away", 7, 14), ("away", 7, 11, 6, "3+", ["Prehensile Tail"]))
-    out = _move(m, "h00", 7, 12, _dice([3]))  # AG 3+, -1 marker, -1 tail = fails
+    out = _move(m, "h00", 7, 12, _dice([3, 1, 1]))  # AG 3+, -1 marker, -1 tail = fails
     assert not out.ok
     dodge = next(r for e in out.events for r in e.rolls if r.kind == "Dodge")
     assert dodge.modifier == -2
@@ -846,3 +847,216 @@ def test_a_team_mate_marked_by_the_blocker_alone_still_assists():
     blocker, target = m.by_id("h00"), m.by_id("a00")
     # a01 Marks the blocker and is Marked only BY the blocker, so it assists.
     assert assist_count(m, "away", blocker, exclude={target.id}) == 1
+
+
+# --- the ball --------------------------------------------------------------
+
+
+def _with_ball(m, x, y, carrier=""):
+    from bloodbowl.engine.state import Ball
+
+    m.ball = Ball(x=x, y=y, carrier=carrier, in_play=True)
+    return m
+
+
+def test_a_bounce_is_one_square_in_a_d8_direction():
+    """S3: "When the rules tell you to Bounce the ball, it will Scatter (1) from
+    its current location.\""""
+    from bloodbowl.engine.ball import DIRECTIONS, bounce
+
+    m = _with_ball(_match(("home", 1, 1)), 7, 13)
+    bounce(m, _dice([5]))
+    dx, dy = DIRECTIONS[5]
+    assert (m.ball.x, m.ball.y) == (7 + dx, 13 + dy)
+
+
+def test_the_direction_table_is_a_bijection_onto_the_eight_neighbours():
+    """The template is a diagram, so the ROTATION is conventional — but every
+    direction must be reachable exactly once or the bounce is biased."""
+    from bloodbowl.engine.ball import DIRECTIONS
+
+    assert sorted(DIRECTIONS) == list(range(1, 9))
+    assert len(set(DIRECTIONS.values())) == 8
+    assert (0, 0) not in DIRECTIONS.values()
+
+
+def test_moving_onto_a_loose_ball_attempts_a_pick_up():
+    m = _with_ball(_match(("home", 7, 13)), 7, 14)
+    out = _move(m, "h00", 7, 14, _dice([4]))  # AG 3+, unmarked
+    assert out.ok
+    assert m.ball.carrier == "h00"
+
+
+def test_a_failed_pick_up_is_a_turnover_and_the_ball_bounces():
+    """S3: "If the test is failed, the player fails to pick up the ball and a
+    Turnover is caused - the ball will then Bounce from the player's square.\""""
+    m = _with_ball(_match(("home", 7, 13)), 7, 14)
+    out = _move(m, "h00", 7, 14, _dice([1, 5]))  # pick-up fails, then the bounce
+    assert out.turnover and not out.ok
+    assert m.ball.carrier == ""
+    assert (m.ball.x, m.ball.y) != (7, 14), "the ball must have bounced away"
+
+
+def test_the_pick_up_is_modified_by_each_marking_opponent():
+    """S3: "Apply a -1 modifier to this roll for each opposition player that is
+    Marking the player attempting to pick up the ball.\""""
+    m = _with_ball(_match(("home", 7, 13), ("away", 6, 15), ("away", 8, 15)), 7, 14)
+    _move(m, "h00", 7, 14, _dice([4, 5]))  # 4 would pass unmodified; -2 fails it
+    pick = next(r for e in m.events for r in e.rolls if r.kind == "Pick up")
+    assert pick.modifier == -2 and not pick.passed
+
+
+def test_a_player_pushed_onto_the_ball_does_not_pick_it_up_and_it_bounces():
+    """S3: "If a player is ever involuntarily moved into a square containing the
+    ball... they may not attempt to pick it up and it will Bounce; however, no
+    Turnover will be caused." A push is not an activation."""
+    m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3))
+    _with_ball(m, 7, 15)
+    out = _block(m, "h00", "a00", _bdice(["push_back"], script=[5]))
+    a = m.by_id("a00")
+    assert (a.x, a.y) == (7, 15), "pushed onto the ball's square"
+    assert m.ball.carrier == "", "no pick-up attempt from a push"
+    assert not out.turnover, "and no turnover either"
+
+
+def test_a_knocked_down_carrier_drops_the_ball():
+    m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3, av="12+"))
+    _with_ball(m, 7, 14, carrier="a00")
+    _block(m, "h00", "a00", _bdice(["pow"], script=[5, 1, 1]))
+    assert m.ball.carrier == "", "going down means losing the ball"
+    assert m.ball.in_play
+
+
+def test_a_failed_dodge_also_drops_the_ball():
+    """Every route to the floor loses the ball, not just a Block."""
+    m = _match(("home", 7, 13), ("away", 7, 14))
+    _with_ball(m, 7, 13, carrier="h00")
+    _move(m, "h00", 6, 12, _dice([1, 1, 1, 5]))  # dodge fails, armour holds, bounce
+    assert m.ball.carrier == ""
+
+
+# --- catching --------------------------------------------------------------
+
+
+def test_a_hand_off_needs_a_catch_and_can_be_dropped():
+    m = _match(("home", 7, 13), ("home", 7, 14))
+    _with_ball(m, 7, 13, carrier="h00")
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    out = actions.get("handoff")["resolve"](m, {"player": "h00", "target": "h01"}, _dice([5]))
+    assert out.ok and m.ball.carrier == "h01"
+
+    m2 = _match(("home", 7, 13), ("home", 7, 14))
+    _with_ball(m2, 7, 13, carrier="h00")
+    out2 = actions.get("handoff")["resolve"](m2, {"player": "h00", "target": "h01"}, _dice([1, 5]))
+    assert not out2.ok and out2.turnover, "a dropped hand-off is a turnover"
+    assert m2.ball.carrier == ""
+
+
+def test_a_prone_player_automatically_fails_to_catch():
+    """S3: "If a Prone or Stunned player, or a player that is Distracted, is
+    required to Catch a ball, they will automatically fail.\""""
+    from bloodbowl.engine.ball import catch
+
+    m = _with_ball(_match(("home", 7, 13)), 7, 13)
+    m.by_id("h00").down = "prone"
+    catch(m, m.by_id("h00"), _dice([5]))  # only the bounce die is needed
+    assert m.ball.carrier == ""
+
+
+def test_a_catch_is_modified_by_each_marking_opponent():
+    from bloodbowl.engine.ball import catch
+
+    m = _with_ball(_match(("home", 7, 13), ("away", 7, 14), ("away", 6, 14)), 7, 13)
+    catch(m, m.by_id("h00"), _dice([4, 5]))
+    r = next(r for e in m.events for r in e.rolls if r.kind == "Catch")
+    assert r.modifier == -2
+
+
+# --- Secure the Ball (new in S3) -------------------------------------------
+
+
+def test_secure_the_ball_is_a_flat_two_up_when_nobody_is_near():
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _with_ball(_match(("home", 7, 13, 6, "6+")), 7, 14)  # dreadful AG, still 2+
+    out = actions.get("secure")["resolve"](m, {"player": "h00"}, _dice([2]))
+    assert out.ok and m.ball.carrier == "h00"
+    r = next(r for e in m.events for r in e.rolls if r.kind == "Secure the Ball")
+    assert r.target == 2 and r.modifier == 0, "Tackle Zones cannot reach a secured ball"
+
+
+def test_secure_the_ball_is_refused_with_an_opponent_within_two_of_the_ball():
+    """The clearance is measured from the BALL, not from the player."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _with_ball(_match(("home", 7, 13), ("away", 7, 16)), 7, 14)
+    legal = actions.get("secure")["validate"](m, {"player": "h00"})
+    assert legal.ok is False and "within 2" in legal.reason
+
+
+def test_secure_the_ball_ends_the_activation():
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _with_ball(_match(("home", 7, 13)), 7, 14)
+    actions.get("secure")["resolve"](m, {"player": "h00"}, _dice([5]))
+    assert m.by_id("h00").acted is True
+
+
+def test_a_failed_secure_is_still_a_turnover():
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _with_ball(_match(("home", 7, 13)), 7, 14)
+    out = actions.get("secure")["resolve"](m, {"player": "h00"}, _dice([1, 5]))
+    assert out.turnover and m.ball.carrier == ""
+
+
+# --- scoring ---------------------------------------------------------------
+
+
+def test_carrying_the_ball_into_the_opposing_end_zone_scores():
+    from bloodbowl.pitch import LENGTH
+
+    m = _match(("home", 7, LENGTH - 1))
+    _with_ball(m, 7, LENGTH - 1, carrier="h00")
+    out = _move(m, "h00", 7, LENGTH, _dice([]))
+    assert out.ok
+    assert m.score["home"] == 1
+    assert any(e.kind == "touchdown" for e in m.events)
+
+
+def test_a_player_pushed_into_the_end_zone_with_the_ball_scores():
+    """S3 allows a Touchdown from "a player holding the ball being Pushed or Chain
+    Pushed into the opposition End Zone" — it can happen on the OPPONENT's turn."""
+    from bloodbowl.pitch import LENGTH
+
+    m = _match_st(_st("away", 7, LENGTH - 2, 3), _st("home", 7, LENGTH - 1, 3), active="away")
+    _with_ball(m, 7, LENGTH - 1, carrier="h00")
+    _block(m, "a00", "h00", _bdice(["push_back"]))
+    assert m.score["home"] == 1, "the home player was shoved over their own line, and it counts"
+
+
+def test_a_player_knocked_down_in_the_end_zone_does_not_score():
+    """S3: "should a player with the ball be Placed Prone, Fall Over, or be Knocked
+    Down as they move into the opposition End Zone, then no Touchdown will be
+    scored - the player must be Standing.\""""
+    from bloodbowl.pitch import LENGTH
+
+    m = _match_st(_st("away", 7, LENGTH - 2, 3), _st("home", 7, LENGTH - 1, 3, av="12+"), active="away")
+    _with_ball(m, 7, LENGTH - 1, carrier="h00")
+    _block(m, "a00", "h00", _bdice(["pow"], script=[1, 1, 5]))
+    assert m.score["home"] == 0, "knocked down on the line is not a Touchdown"
+
+
+def test_a_touchdown_takes_the_ball_out_of_play():
+    from bloodbowl.pitch import LENGTH
+
+    m = _match(("home", 7, LENGTH - 1))
+    _with_ball(m, 7, LENGTH - 1, carrier="h00")
+    _move(m, "h00", 7, LENGTH, _dice([]))
+    assert m.ball.in_play is False and m.ball.carrier == ""

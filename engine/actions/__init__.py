@@ -79,8 +79,20 @@ class Recorder:
         return event
 
     def extend(self, events) -> None:
+        """Apply and record each event. For facts not yet applied."""
         for e in events:
             self.emit(e)
+
+    def absorb(self, events) -> None:
+        """Record events a HELPER has already applied.
+
+        The ball and injury helpers apply as they go, because each step depends on
+        the last — a bounce has to land before anyone can try to catch it. Using
+        ``extend`` on those would apply them a second time, moving the ball twice
+        and scoring twice. Two verbs, so which one a call site wants is a decision
+        rather than an accident.
+        """
+        self.events.extend(events)
 
 
 def register(name: str, validate: Callable, resolve: Callable) -> None:
@@ -102,4 +114,4 @@ def load_all() -> None:
     depend on what happens to be on disk, and an action that silently fails to
     import would look like an action that does not exist.
     """
-    from . import block, move  # noqa: F401
+    from . import block, handoff, move, secure  # noqa: F401

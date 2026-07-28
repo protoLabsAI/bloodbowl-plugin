@@ -433,6 +433,21 @@ def _play(browser, url: str, w: int, h: int) -> None:
             after[:110].replace("\n", " / "),
         )
 
+    # The ball. A loose ball that renders under a player badge is indistinguishable
+    # from no ball at all, which is the failure worth checking here.
+    check(
+        "a loose ball is drawn on the pitch",
+        page.locator(".ball").count() == 1,
+        f"{page.locator('.ball').count()} ball elements",
+    )
+    ballsq = page.evaluate("""async () => {
+      const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
+      return m.ball && m.ball.in_play ? {x: m.ball.x, y: m.ball.y} : null;
+    }""")
+    if ballsq:
+        occupied = page.locator(f'.cell[data-x="{ballsq["x"]}"][data-y="{ballsq["y"]}"] .pc').count()
+        check("the loose ball is not hidden under a player", occupied == 0, f"{occupied} badge(s) on its square")
+
     # Re-select a Marked player and get the cursor off the board before shooting.
     # The hover card follows the mouse and will happily sit on top of the very
     # highlighting the shot exists to show.

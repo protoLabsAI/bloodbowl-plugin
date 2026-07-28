@@ -39,6 +39,8 @@ KINDS = (
     "ball_moved",
     "ball_picked_up",
     "ball_dropped",
+    "ball_out_of_bounds",
+    "touchdown",
     "turnover",
     "turn_ended",
     "note",

@@ -39,7 +39,7 @@ export function teardown() {
   if (ball) ball.remove();
   state.selected = null;
   state.legal = null;
-  clearMarks("legal", "needsroll", "blockable");
+  clearMarks("legal", "needsroll", "blockable", "securable", "handoffable");
 }
 
 export function render() {
@@ -77,8 +77,11 @@ export function render() {
     node.addEventListener("mouseleave", hideCard);
     node.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      const block = (state.legal && state.legal.blocks || []).find((b) => b.target === p.id);
+      const acts = (state.legal && state.legal.ball_actions) || [];
+      const block = ((state.legal && state.legal.blocks) || []).find((b) => b.target === p.id);
       if (block) return throwBlock(block);
+      const hand = acts.find((b) => b.action === "handoff" && b.target === p.id);
+      if (hand) return ballAction("handoff", { target: hand.target });
       select(p);
     });
     at(p.x, p.y).appendChild(node);
@@ -114,7 +117,7 @@ async function select(p) {
     // Not an error — you are allowed to look at the opposition. Just no move list.
     state.selected = p.id;
     state.legal = null;
-    clearMarks("legal", "needsroll", "blockable");
+    clearMarks("legal", "needsroll", "blockable", "securable", "handoffable");
     describeSelection(p, null);
     render();
     return;
@@ -133,7 +136,7 @@ async function select(p) {
 }
 
 function paintLegal() {
-  clearMarks("legal", "needsroll", "blockable");
+  clearMarks("legal", "needsroll", "blockable", "securable", "handoffable");
   if (!state.legal || !state.legal.ok) return;
 
   // Blockable opponents, labelled with the dice and — the part that decides
@@ -144,6 +147,17 @@ function paintLegal() {
     const o = document.createElement("span");
     o.className = "odds";
     o.textContent = `${b.dice}D${b.chooser === "attacker" ? "" : "!"}`;
+    cell.appendChild(o);
+  }
+
+  // Ball actions the engine says are available. Secure the Ball especially:
+  // it is new in S3 and nobody will think to try it unless it is offered.
+  for (const b of state.legal.ball_actions || []) {
+    const cell = at(b.x, b.y);
+    cell.classList.add(b.action === "secure" ? "securable" : "handoffable");
+    const o = document.createElement("span");
+    o.className = "odds";
+    o.textContent = b.action === "secure" ? "2+" : "H";
     cell.appendChild(o);
   }
 
@@ -209,8 +223,37 @@ function describeSelection(p, legal) {
         )
         .join("");
   }
+  if (legal && legal.ok && (legal.ball_actions || []).length) {
+    html +=
+      `<div class="muted" style="margin-top:6px">Ball</div>` +
+      (legal.ball_actions || [])
+        .map((b) =>
+          b.action === "secure"
+            ? `<div class="blockrow">Secure the Ball — <b>2+</b>, ends the activation</div>`
+            : `<div class="blockrow">Hand-off to a team-mate at (${b.x},${b.y})</div>`,
+        )
+        .join("");
+  }
   if (p.skills && p.skills.length) html += `<div class="sk muted">${p.skills.map(esc).join(" · ")}</div>`;
   host.innerHTML = html;
+}
+
+async function ballAction(action, extra) {
+  try {
+    const report = await api("/game/act", json({ action, player: state.selected, ...extra }));
+    state.match = report.match;
+    ok();
+  } catch (e) {
+    fail(e);
+  }
+  // Both of these end the activation or change possession, so the previous
+  // move list is stale either way.
+  state.selected = null;
+  state.legal = null;
+  clearMarks("legal", "needsroll", "blockable", "securable", "handoffable");
+  describeSelection(null, null);
+  render();
+  await renderLog();
 }
 
 async function throwBlock(block) {
@@ -225,7 +268,7 @@ async function throwBlock(block) {
     if (report.turnover || !chooses) {
       state.selected = null;
       state.legal = null;
-      clearMarks("legal", "needsroll", "blockable");
+      clearMarks("legal", "needsroll", "blockable", "securable", "handoffable");
       describeSelection(null, null);
     } else {
       state.legal = await api(`/game/legal?player=${encodeURIComponent(state.selected)}`);
@@ -240,6 +283,10 @@ async function throwBlock(block) {
 
 export async function onCellClick(x, y) {
   if (!state.selected || !state.legal) return;
+  const secure = ((state.legal && state.legal.ball_actions) || []).find(
+    (b) => b.action === "secure" && b.x === x && b.y === y,
+  );
+  if (secure) return ballAction("secure", {});
   const square = state.legal.squares.find((s) => s.x === x && s.y === y);
   if (!square || !square.legal) return;
   try {
@@ -257,7 +304,7 @@ export async function onCellClick(x, y) {
     if (report.turnover || !still || still.down !== "standing") {
       state.selected = null;
       state.legal = null;
-      clearMarks("legal", "needsroll", "blockable");
+      clearMarks("legal", "needsroll", "blockable", "securable", "handoffable");
       describeSelection(null, null);
     } else {
       state.legal = await api(`/game/legal?player=${encodeURIComponent(state.selected)}`);
@@ -311,7 +358,7 @@ export function wire(onChanged) {
       state.match = r.match;
       state.selected = null;
       state.legal = null;
-      clearMarks("legal", "needsroll", "blockable");
+      clearMarks("legal", "needsroll", "blockable", "securable", "handoffable");
       describeSelection(null, null);
       ok();
     } catch (e) {
