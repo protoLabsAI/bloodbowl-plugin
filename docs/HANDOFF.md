@@ -82,6 +82,10 @@ older edition — or a language model — would say:
 | Most Actions are **once per TEAM per turn** | once per player |
 | Move and Block are explicitly **not** capped | capped like the rest |
 | A Foul may only target a **Prone or Stunned** player | anyone adjacent |
+| **"Declares" and "performs" are different triggers** | interchangeable wording |
+| **Placed Prone risks no harm** — no Armour Roll at all | it's a knock-down |
+| A Crowd push makes **no Armour Roll**, and Stunned = the Reserves Box | armour then stunned on the pitch |
+| Dauntless **matches** the stronger player, never exceeds | beats them |
 | Foul assists modify the **Armour Roll**, not Strength | Strength, as in a Block |
 | A **natural double on either roll** sends the fouler off | only on a break |
 | A successful Argue the Call **still causes a Turnover** | it undoes everything |
@@ -357,10 +361,10 @@ block, blitz, foul, hand-off, Secure the Ball, pass → injuries → touchdowns 
 drives → half-time → full time.
 
 Actions: `move`, `block`, `blitz`, `foul`, `handoff`, `secure`, `pass`.
-Skills modelled — **22 of 108**: Accurate, Big Hand, Block, Break Tackle, Catch,
-Dodge, Fend, Grab, Guard, Juggernaut, Jump Up, Mighty Blow, Nerves of Steel, Pass,
-Prehensile Tail, Sidestep, Stand Firm, Stunty, Sure Hands, Tackle, Thick Skull,
-Titchy. The other 86 are reported as unmodelled *and can still be quoted* —
+Skills modelled — **27 of 108**: Accurate, Big Hand, Block, Brawler, Break Tackle,
+Catch, Claws, Dauntless, Dodge, Fend, Grab, Guard, Horns, Juggernaut, Jump Up,
+Mighty Blow, Nerves of Steel, Pass, Prehensile Tail, Sidestep, Stand Firm, Stunty,
+Sure Hands, Tackle, Thick Skull, Titchy, Wrestle. The other 81 are reported as unmodelled *and can still be quoted* —
 `bb_get_skill` returns the rulebook's text for all 108 whether or not the engine
 applies them.
 
@@ -386,6 +390,27 @@ Steel says "to Catch the ball, or … to Pass the ball" and is one `in
 - A modifier that belongs to the MARKER, not the roller, goes in `rules`, not a
   hook. Titchy's "will not apply a -1 … for Marking" is never applied at all, so
   there is nothing for a hook on the dodger to cancel.
+
+**READ THE VERB: "declares" and "performs" are different triggers.** S3 gives it a
+worked example, because it reads like a technicality until it costs you a Skill:
+during a Blitz, "a rule that comes into play when a player DECLARES a Block Action
+would not come into effect — the declared Action was a Blitz Action", while one
+that says PERFORMS does. So Grab, Brawler and Multiple Block are switched off on a
+Blitz; Tackle, Dauntless, Wrestle, Claws and Fend are not. `block.declared_a_block`
+is the one place that decides it. Grab shipped without this and was wrong for a
+release.
+
+**There are THREE ways onto the floor and only one is free.** S3 names them:
+"Placed Prone, Falls Over or Knocked Down". Placed Prone "aren't at risk of being
+caused harm" — no Armour Roll, no Injury Roll — and it is the whole value of
+Wrestle. `injury.place_prone` is that path; using `knock_down` for it hands out
+armour rolls the rules do not allow.
+
+**A roll cannot live in `validate`.** Dauntless is a D6, so validate REPORTS that
+the roll is coming (`dauntless: true`) and resolve makes it; Horns is
+deterministic, so it is in both and the odds a coach is shown are the odds they
+get. Reporting odds that resolve then ignores would be worse than not reporting
+them at all.
 
 **Injury hooks run in registration order and Stunty must go first**: it REPLACES
 the table (Stunty Injury Table: 2-6 Stunned · 7-8 KO · 9 Badly Hurt · 10-12

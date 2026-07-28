@@ -581,8 +581,8 @@ def _fend(ctx: SkillContext) -> None:
 @skill_hook(
     "Juggernaut",
     "push",
-    partial="only the Fend/Stand Firm/Wrestle suppression; treating Both Down as Pushed "
-    "Back is a choice the engine does not offer",
+    partial="both clauses are applied, but the Both Down conversion is taken only when "
+    "the blocker would otherwise be Knocked Down — the rules leave it a free choice",
 )
 def _juggernaut(ctx: SkillContext) -> None:
     """S3: "when this player performs a Block Action as part of a Blitz Action,
@@ -592,6 +592,67 @@ def _juggernaut(ctx: SkillContext) -> None:
     result of Both Down as Pushed Back during any Block Actions they perform
     during the Blitz Action" — is a choice on a result the engine does not offer a
     choice on yet, and Wrestle is not modelled at all, so both are still reported.
+    """
+
+
+@skill_hook("Wrestle", "block_result")
+def _wrestle(ctx: SkillContext) -> None:
+    """S3: "When this player performs a Block Action, or is the target of a Block
+    Action, if the Both Down result is applied, this player may choose to use this
+    Skill. If they do, both players in the Block Action are Placed Prone,
+    regardless of any other Skills they may possess."
+
+    PLACED PRONE, not Knocked Down — "they aren't at risk of being caused harm",
+    so neither player rolls armour. Applied by whichever participant would
+    otherwise be Knocked Down; see block._both_down_choice.
+    """
+
+
+@skill_hook("Brawler", "block_result")
+def _brawler(ctx: SkillContext) -> None:
+    """S3: "When this player declares a Block Action, they may re-roll a single
+    Both Down result."
+
+    A single one, and it re-rolls the DICE rather than reinterpreting the result.
+    "Declares", so a Blitz switches it off — see block.declared_a_block.
+    """
+
+
+@skill_hook("Dauntless", "block_result")
+def _dauntless(ctx: SkillContext) -> None:
+    """S3: "When a player with this Skill performs a Block Action against an
+    opposition player with a higher Strength Characteristic (before any modifiers
+    are applied to either player), this player may roll a D6 and add their own
+    Strength Characteristic. If the result is higher than the opposition player's
+    unmodified Strength Characteristic, then this player increases their unmodified
+    Strength Characteristic to MATCH the opposition player for the duration of the
+    Block Action. Modifiers are then applied as normal."
+
+    Matches, never exceeds — and the assists are then re-counted against the new
+    number. Because it is a ROLL, `validate` reports that it is coming rather than
+    making it: validate is asked freely and must never touch the dice.
+    """
+
+
+@skill_hook("Horns", "block_result")
+def _horns(ctx: SkillContext) -> None:
+    """S3: "Whenever this player declares a Blitz Action, then they apply a +1
+    modifier to their Strength Characteristic for any Block Actions performed
+    during that Blitz Action." Only on a Blitz, and deterministic — so it is in
+    `validate` too, and the odds a coach is shown are the odds they get.
+    """
+
+
+@skill_hook("Claws", "block_result")
+def _claws(ctx: SkillContext) -> None:
+    """S3: "Whenever an Armour Roll is made for an opposition player that has been
+    Knocked Down by this player during a Block Action, even if this player is also
+    Knocked Down, then any roll of a NATURAL 8+ on the Armour Roll will break the
+    opposition player's armour regardless of their actual Armour Value."
+
+    It lowers the bar to 8 rather than adding to the roll — which is everything
+    against AV 10+ and nothing against AV 8+. Natural, so Mighty Blow's +1 cannot
+    manufacture one.
     """
 
 
