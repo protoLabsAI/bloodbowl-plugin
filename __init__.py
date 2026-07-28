@@ -35,8 +35,14 @@ def register(registry) -> None:
         from .api import build_data_router, build_game_router, build_view_router
 
         registry.register_router(build_view_router(cfg), prefix="/plugins/bloodbowl")
-        registry.register_router(build_data_router(cfg), prefix="/api/plugins/bloodbowl")
-        registry.register_router(build_game_router(cfg), prefix="/api/plugins/bloodbowl")
+        # ONE router per prefix. The host mounts plugin routers keyed on
+        # (plugin_id, prefix) and SKIPS any it has already mounted, so handing it a
+        # second router for /api/plugins/bloodbowl silently discarded every game
+        # route — the whole match API 404'd on a real host while the board's routes
+        # worked, because the data router happened to be registered first.
+        data = build_data_router(cfg)
+        data.include_router(build_game_router(cfg))
+        registry.register_router(data, prefix="/api/plugins/bloodbowl")
     except Exception:  # noqa: BLE001 — a router failure must not sink the tools
         log.exception("[bloodbowl] mounting routers failed")
 
