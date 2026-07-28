@@ -36,13 +36,18 @@ def _dice(script, block=None):
 
 
 def _move(m, pid, x, y, dice):
+    """resolve applies its own events (see actions.Outcome) — do not re-apply."""
     from bloodbowl.engine import actions
 
     actions.load_all()
-    out = actions.get("move")["resolve"](m, {"player": pid, "x": x, "y": y}, dice)
-    for e in out.events:
-        m.apply(e)
-    return out
+    return actions.get("move")["resolve"](m, {"player": pid, "x": x, "y": y}, dice)
+
+
+def _block(m, pid, target, dice, **cmd):
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    return actions.get("block")["resolve"](m, {"player": pid, "target": target, **cmd}, dice)
 
 
 # --- determinism and replay -----------------------------------------------
@@ -278,11 +283,15 @@ def test_prehensile_tail_is_an_opponents_skill_that_modifies_our_roll():
 def test_unmodelled_skills_are_reported_rather_than_ignored():
     """A Troll's Always Hungry is not implemented. The engine says so instead of
     quietly playing as though the player did not have it."""
-    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry", "Mighty Blow", "Jump Up"]))
+    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry", "Really Stupid", "Jump Up", "Mighty Blow"]))
     out = _move(m, "h00", 7, 14, _dice([]))
     assert "Always Hungry" in out.unmodelled
-    assert "Mighty Blow" in out.unmodelled
-    assert "Jump Up" not in out.unmodelled, "Jump Up IS modelled"
+    assert "Really Stupid" in out.unmodelled
+    # Both of these ARE modelled, and the list must shrink as skills land — this
+    # test caught Mighty Blow moving from unmodelled to modelled when Blocking
+    # was added, which is exactly the drift it is here to notice.
+    assert "Jump Up" not in out.unmodelled
+    assert "Mighty Blow" not in out.unmodelled
 
 
 # --- strict in play --------------------------------------------------------
@@ -459,3 +468,381 @@ def test_abandoning_a_match_leaves_the_board(registry):
     from bloodbowl.store import load
 
     assert len(load().players) == 2
+
+
+# --- blocking --------------------------------------------------------------
+#
+# Every rule here was read off the S3 source and is quoted in the test. Block
+# dice are scripted, so a "1 in 6" never decides whether a rule works.
+
+
+def _st(side, x, y, st, skills=(), ma=6, av="9+"):
+    return (side, x, y, ma, "3+", list(skills), st, av)
+
+
+def _match_st(*specs, active="home"):
+    """Like _match but with an explicit ST and AV per player."""
+    from bloodbowl.engine.state import Match, PlayerState
+    from bloodbowl.pitch import Player
+
+    m = Match()
+    counts = {"home": 0, "away": 0}
+    for spec in specs:
+        side, x, y, ma, ag, skills, st, av = spec
+        i = counts[side]
+        counts[side] += 1
+        p = Player(
+            side=side,
+            x=x,
+            y=y,
+            position=f"{side.title()} {i}",
+            MA=str(ma),
+            ST=str(st),
+            AG=ag,
+            PA="4+",
+            AV=av,
+            skills=list(skills),
+        )
+        m.players.append(PlayerState(player=p, id=f"{side[0]}{i:02d}"))
+    m.clock.active = active
+    return m
+
+
+def _bdice(faces, script=()):
+    from bloodbowl.engine.dice import ScriptedDice
+
+    return ScriptedDice(script=list(script), block_script=[list(faces)])
+
+
+# --- dice count and who chooses -------------------------------------------
+
+
+def test_equal_strength_rolls_one_die():
+    from bloodbowl.engine.rules import block_dice
+
+    assert block_dice(3, 3) == (1, "attacker")
+
+
+def test_higher_strength_rolls_two_and_the_stronger_coach_chooses():
+    from bloodbowl.engine.rules import block_dice
+
+    assert block_dice(4, 3) == (2, "attacker")
+    assert block_dice(3, 4) == (2, "defender"), "blocking someone stronger hands THEM the pick"
+
+
+def test_over_double_rolls_three_and_double_alone_does_not():
+    """S3: three dice when one player has OVER DOUBLE the other's Strength.
+    'Over' is strictly greater, so ST 4 into ST 2 is two dice, not three."""
+    from bloodbowl.engine.rules import block_dice
+
+    assert block_dice(4, 2) == (2, "attacker"), "exactly double is not over double"
+    assert block_dice(5, 2) == (3, "attacker")
+    assert block_dice(2, 5) == (3, "defender")
+
+
+# --- assists ---------------------------------------------------------------
+
+
+def test_an_assist_needs_a_team_mate_marking_the_target():
+    from bloodbowl.engine.rules import assist_count
+
+    m = _match_st(_st("home", 7, 13, 3), _st("home", 8, 14, 3), _st("away", 7, 14, 3))
+    assert assist_count(m, "home", m.by_id("a00")) == 2, "both home players Mark the target"
+
+
+def test_an_assister_marked_by_another_opponent_does_not_assist():
+    """S3: "...and is not Marked by another opposing player." ANOTHER — the player
+    being blocked does not cancel the assists against themselves."""
+    from bloodbowl.engine.rules import assist_count
+
+    # h01 Marks the target but is itself Marked by a second away player.
+    m = _match_st(
+        _st("home", 7, 13, 3),
+        _st("home", 8, 14, 3),
+        _st("away", 7, 14, 3),
+        _st("away", 9, 14, 3),
+    )
+    assert assist_count(m, "home", m.by_id("a00")) == 1, "h01 is Marked by a01 and cannot assist"
+
+
+def test_the_target_of_the_block_never_cancels_its_own_assists():
+    m = _match_st(_st("home", 7, 13, 3), _st("home", 8, 14, 3), _st("away", 7, 14, 3))
+    from bloodbowl.engine.rules import assist_count
+
+    # a00 Marks both home players, but it is the one being blocked.
+    assert assist_count(m, "home", m.by_id("a00")) == 2
+
+
+def test_a_prone_team_mate_cannot_assist():
+    from bloodbowl.engine.rules import assist_count
+
+    m = _match_st(_st("home", 7, 13, 3), _st("home", 8, 14, 3), _st("away", 7, 14, 3))
+    m.by_id("h01").down = "prone"
+    assert assist_count(m, "home", m.by_id("a00")) == 1
+
+
+def test_guard_assists_even_while_marked():
+    """S3: Guard assists "regardless of how many opposition players are Marking
+    this player"."""
+    from bloodbowl.engine.rules import assist_count
+
+    m = _match_st(
+        _st("home", 7, 13, 3),
+        _st("home", 8, 14, 3, skills=["Guard"]),
+        _st("away", 7, 14, 3),
+        _st("away", 9, 14, 3),
+    )
+    assert assist_count(m, "home", m.by_id("a00")) == 2, "Guard ignores being Marked"
+
+
+# --- push geometry ---------------------------------------------------------
+
+
+def test_an_orthogonal_push_offers_three_squares_behind_the_target():
+    from bloodbowl.engine.rules import push_squares
+
+    assert sorted(push_squares(7, 13, 7, 14)) == [(6, 15), (7, 15), (8, 15)]
+
+
+def test_a_diagonal_push_offers_three_squares_not_five():
+    """THE geometry trap. Read literally, "an adjacent square that is not adjacent
+    to the blocker" yields FIVE squares on a diagonal; the diagrams show three.
+    The arc is the push direction plus its two neighbours. Both readings agree on
+    an orthogonal block, which is why the wrong one survives casual testing."""
+    from bloodbowl.engine.rules import push_squares
+
+    got = sorted(push_squares(7, 13, 8, 14))
+    assert len(got) == 3, got
+    assert got == [(8, 15), (9, 14), (9, 15)]
+
+
+# --- block results ---------------------------------------------------------
+
+
+def test_push_back_moves_the_target_and_the_blocker_may_follow_up():
+    m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3))
+    out = _block(m, "h00", "a00", _bdice(["push_back"]))
+    assert out.ok and not out.turnover
+    assert (m.by_id("a00").x, m.by_id("a00").y) == (7, 15), "straight back is the default push"
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 14), "follow-up takes the vacated square"
+
+
+def test_follow_up_can_be_declined():
+    m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3))
+    _block(m, "h00", "a00", _bdice(["push_back"]), follow_up=False)
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 13)
+
+
+def test_pow_pushes_then_knocks_down_in_the_square_they_land_in():
+    """S3: "Apply the Push Back result to the target player. The target player is
+    then Knocked Down in the square they are now in.\""""
+    m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3, av="4+"))
+    out = _block(m, "h00", "a00", _bdice(["pow"], script=[6, 6, 1, 1]))
+    t = m.by_id("a00")
+    assert (t.x, t.y) == (7, 15), "the push happens before the knockdown"
+    assert t.down in ("prone", "stunned")
+    assert out.ok and not out.turnover, "knocking the OPPONENT down is not a turnover"
+
+
+def test_player_down_knocks_the_blocker_over_and_is_a_turnover():
+    """A Block can go wrong. PLAYER DOWN knocks down the player who threw it."""
+    m = _match_st(_st("home", 7, 13, 3, av="4+"), _st("away", 7, 14, 3))
+    out = _block(m, "h00", "a00", _bdice(["player_down"], script=[6, 6, 1, 1]))
+    assert out.turnover and not out.ok
+    assert m.by_id("h00").down in ("prone", "stunned")
+    assert m.by_id("a00").down == "standing"
+
+
+def test_both_down_puts_both_players_on_the_floor():
+    m = _match_st(_st("home", 7, 13, 3, av="12+"), _st("away", 7, 14, 3, av="12+"))
+    out = _block(m, "h00", "a00", _bdice(["both_down"], script=[1, 1, 1, 1]))
+    assert m.by_id("h00").down == "prone" and m.by_id("a00").down == "prone"
+    assert out.turnover, "the active team's player went down"
+
+
+def test_the_block_skill_keeps_its_owner_up_on_both_down():
+    """S3: "may choose not to be Knocked Down when a Both Down result is applied
+    during a Block Action that they are part of.\""""
+    m = _match_st(
+        _st("home", 7, 13, 3, skills=["Block"], av="12+"),
+        _st("away", 7, 14, 3, av="12+"),
+    )
+    out = _block(m, "h00", "a00", _bdice(["both_down"], script=[1, 1]))
+    assert m.by_id("h00").down == "standing", "Block keeps the blocker up"
+    assert m.by_id("a00").down == "prone"
+    assert not out.turnover, "no turnover when the active player stayed on their feet"
+
+
+def test_stumble_is_only_a_push_when_the_target_has_dodge():
+    """S3: "If the target player has the Dodge skill, this becomes Push Back.
+    Otherwise, this becomes POW.\""""
+    dodgy = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3, skills=["Dodge"]))
+    _block(dodgy, "h00", "a00", _bdice(["stumble"]))
+    assert dodgy.by_id("a00").down == "standing", "Dodge turns Stumble into a plain push"
+
+    plain = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3, av="4+"))
+    _block(plain, "h00", "a00", _bdice(["stumble"], script=[6, 6, 1, 1]))
+    assert plain.by_id("a00").down != "standing", "without Dodge, Stumble is a POW"
+
+
+def test_the_defender_chooses_when_they_are_stronger():
+    """Two dice into a stronger player: THEY pick, so the engine must apply the
+    worst result for the attacker rather than the first one rolled."""
+    m = _match_st(_st("home", 7, 13, 3, av="4+"), _st("away", 7, 14, 5))
+    out = _block(m, "h00", "a00", _bdice(["pow", "player_down"], script=[6, 6, 1, 1]))
+    assert out.turnover, "the defender picks Player Down"
+    assert m.by_id("h00").down != "standing"
+
+
+# --- armour and injury -----------------------------------------------------
+
+
+def test_armour_that_holds_leaves_the_player_merely_prone():
+    m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3, av="11+"))
+    _block(m, "h00", "a00", _bdice(["pow"], script=[1, 1]))
+    t = m.by_id("a00")
+    assert t.down == "prone" and t.place == "pitch"
+
+
+def test_a_broken_armour_rolls_for_injury_and_can_stun():
+    m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3, av="3+"))
+    _block(m, "h00", "a00", _bdice(["pow"], script=[3, 3, 2, 2]))  # armour 6 vs 3+, injury 4
+    assert m.by_id("a00").down == "stunned"
+
+
+def test_a_high_injury_roll_removes_the_player_from_the_pitch():
+    m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3, av="3+"))
+    _block(m, "h00", "a00", _bdice(["pow"], script=[3, 3, 6, 6]))  # injury 12 = Casualty
+    t = m.by_id("a00")
+    assert t.place == "casualty"
+    assert m.at(t.x, t.y) is None, "a player in the box must stop occupying their square"
+
+
+def test_a_knocked_out_player_goes_to_the_ko_box():
+    m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3, av="3+"))
+    _block(m, "h00", "a00", _bdice(["pow"], script=[3, 3, 4, 5]))  # injury 9 = KO
+    assert m.by_id("a00").place == "knocked_out"
+
+
+def test_thick_skull_turns_an_eight_into_a_stunned():
+    """S3: "they will only be Knocked-out on the roll of a 9; a roll of an 8 will
+    be treated as a Stunned result.\""""
+    plain = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3, av="3+"))
+    _block(plain, "h00", "a00", _bdice(["pow"], script=[3, 3, 4, 4]))  # injury 8
+    assert plain.by_id("a00").place == "knocked_out"
+
+    tough = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3, av="3+", skills=["Thick Skull"]))
+    _block(tough, "h00", "a00", _bdice(["pow"], script=[3, 3, 4, 4]))
+    assert tough.by_id("a00").place == "pitch"
+    assert tough.by_id("a00").down == "stunned"
+
+
+def test_mighty_blow_is_spent_on_the_armour_roll_only_when_it_breaks_it():
+    """S3 lets the +1 go to EITHER roll, after the roll. Spending it on armour
+    that already broke would waste it; spending it on armour that still fails
+    would waste it too."""
+    m = _match_st(_st("home", 7, 13, 3, skills=["Mighty Blow"]), _st("away", 7, 14, 3, av="7+"))
+    _block(m, "h00", "a00", _bdice(["pow"], script=[3, 3, 1, 1]))  # armour 6, +1 = 7 breaks
+    rolls = [r for e in m.events for r in e.rolls]
+    armour = next(r for r in rolls if r.kind == "Armour")
+    assert armour.passed and armour.modifier == 1, "the +1 rescued a failed armour roll"
+
+
+def test_the_armour_roll_is_two_dice_not_an_agility_test():
+    """A natural 1 does not auto-fail an Armour Roll, and a natural 6 does not
+    auto-break it — those belong to single-die Agility Tests."""
+    m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3, av="4+"))
+    _block(m, "h00", "a00", _bdice(["pow"], script=[1, 6, 1, 1]))  # 1+6 = 7 >= 4+
+    armour = next(r for e in m.events for r in e.rolls if r.kind == "Armour")
+    assert armour.dice == [1, 6] and armour.total == 7 and armour.passed
+
+
+# --- pushes into other players and off the pitch ---------------------------
+
+
+def test_a_free_square_is_taken_before_any_chain_push():
+    """A Chain Push happens only when there is NO unoccupied square. With a flank
+    free the target simply goes there and nobody else moves."""
+    m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3), _st("away", 7, 15, 3))
+    _block(m, "h00", "a00", _bdice(["push_back"]))
+    assert (m.by_id("a00").x, m.by_id("a00").y) in ((8, 15), (6, 15))
+    assert (m.by_id("a01").x, m.by_id("a01").y) == (7, 15), "the occupant did not move"
+
+
+def _boxed_in():
+    """All three push squares behind the target occupied — the only way to chain."""
+    return _match_st(
+        _st("home", 7, 13, 3),
+        _st("away", 7, 14, 3),
+        _st("away", 7, 15, 3),
+        _st("away", 6, 15, 3),
+        _st("away", 8, 15, 3),
+    )
+
+
+def test_a_chain_push_moves_the_player_behind():
+    """S3: the occupant is Pushed Back "as if they had been Pushed Back by the
+    player who is now occupying their square"."""
+    m = _boxed_in()
+    _block(m, "h00", "a00", _bdice(["push_back"]))
+    assert (m.by_id("a00").x, m.by_id("a00").y) == (7, 15), "the target took the occupied square"
+    assert (m.by_id("a01").x, m.by_id("a01").y) == (7, 16), "and its occupant was pushed on"
+
+
+def test_a_prone_player_can_still_be_chain_pushed():
+    """S3 says so explicitly — being on the floor is no protection from a shove."""
+    m = _boxed_in()
+    m.by_id("a01").down = "prone"
+    _block(m, "h00", "a00", _bdice(["push_back"]))
+    assert (m.by_id("a01").x, m.by_id("a01").y) == (7, 16)
+    assert m.by_id("a01").down == "prone", "a chain push does not stand anyone up"
+
+
+def test_a_push_off_the_sideline_sends_the_player_into_the_crowd():
+    """Pushed into the Crowd when there is no unoccupied square on the pitch."""
+    m = _match_st(_st("home", 2, 13, 3), _st("away", 1, 13, 3, av="3+"))
+    _block(m, "h00", "a00", _bdice(["push_back"], script=[3, 3, 2, 2]))
+    t = m.by_id("a00")
+    assert t.place != "pitch" or t.down != "standing"
+    assert any(e.kind == "player_left_pitch" for e in m.events), "no crowd event recorded"
+
+
+def test_neither_participant_counts_as_an_assist():
+    """Found by distrusting a screenshot: three different targets all reported
+    "ST 5 v 4", which is too tidy for three players with different neighbours.
+
+    The blocker was assisting its own block and the target was assisting its own
+    defence. Both inflate by one and both produce a plausible number, so nothing
+    looks wrong — which is exactly why it survived a passing test suite."""
+    from bloodbowl.engine.rules import assist_count
+
+    # A lone blocker against a lone target: neither may assist, so both are zero.
+    m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3))
+    blocker, target = m.by_id("h00"), m.by_id("a00")
+    assert assist_count(m, "home", target, exclude={blocker.id}) == 0, "the blocker is not its own assist"
+    assert assist_count(m, "away", blocker, exclude={target.id}) == 0, "the target cannot assist itself"
+
+
+def test_a_lone_block_is_one_die_not_two():
+    """The end-to-end shape of the same bug: with both participants counting
+    themselves, an even fight came out as ST 4 v 4 — still equal, still one die —
+    but any asymmetry in the surrounding players turned into a phantom modifier."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3))
+    d = actions.get("block")["validate"](m, {"player": "h00", "target": "a00"}).detail
+    assert (d["attacker_strength"], d["defender_strength"]) == (3, 3)
+    assert d["offensive_assists"] == 0 and d["defensive_assists"] == 0
+    assert d["dice"] == 1
+
+
+def test_a_team_mate_marked_by_the_blocker_alone_still_assists():
+    """ "not Marked by ANOTHER opposing player" — the blocker does not cancel the
+    assists of the defenders standing next to it."""
+    from bloodbowl.engine.rules import assist_count
+
+    m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3), _st("away", 6, 13, 3))
+    blocker, target = m.by_id("h00"), m.by_id("a00")
+    # a01 Marks the blocker and is Marked only BY the blocker, so it assists.
+    assert assist_count(m, "away", blocker, exclude={target.id}) == 1

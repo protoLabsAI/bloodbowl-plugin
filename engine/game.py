@@ -66,9 +66,8 @@ def act(match: Match, action: str, cmd: dict, dice=None) -> dict:
         return {"ok": False, "error": "the match is over"}
 
     dice = dice or dice_for(match)
+    # resolve applies its own events (see actions.Outcome) — do not re-apply.
     outcome = entry["resolve"](match, cmd, dice)
-    for e in outcome.events:
-        match.apply(e)
 
     if outcome.turnover:
         match.apply(Event(kind="turnover", detail={"side": match.clock.active}, text=TURNOVER_TEXT[True]))
@@ -145,9 +144,29 @@ def legal_moves(match: Match, player_id: str) -> dict:
             else:
                 entry["reason"] = legal.reason
             squares.append(entry)
+    # Blocks the same player could throw, with the arithmetic already done. A
+    # coach eyeballing "that looks like a good block" is exactly how you end up
+    # handing two dice to a stronger opponent.
+    blocks = []
+    validate_block = actions.get("block")["validate"]
+    for foe in match.on_pitch(match.opponent(p.side)):
+        legal = validate_block(match, {"player": player_id, "target": foe.id})
+        if not legal.ok:
+            continue
+        blocks.append(
+            {
+                "target": foe.id,
+                "x": foe.x,
+                "y": foe.y,
+                "position": foe.player.position,
+                **legal.detail,
+            }
+        )
+
     return {
         "ok": True,
         "player": p.to_dict(),
         "movement_left": max(0, p.movement() - p.ma_used),
         "squares": squares,
+        "blocks": blocks,
     }

@@ -688,3 +688,32 @@ def test_the_static_asset_tree_is_declared_auth_exempt():
     assert "/plugins/bloodbowl/static/" in declared, f"static tree not exempt: {declared}"
     # Data stays gated. Exempting the api namespace would hand the board to anyone.
     assert not any(p.startswith("/api/") for p in declared), f"data must stay gated: {declared}"
+
+
+def test_the_act_route_forwards_the_whole_command(client):
+    """It used to name the fields it passed through, so a Block's `target` was
+    dropped the moment Blocking was added: the request answered 200 with ok:false
+    and the board did nothing, which reads as a dead button rather than a bug.
+    Found by capturing the response BODY in the browser harness — the status code
+    alone says a refusal and a success are the same thing."""
+    base = "/api/plugins/bloodbowl"
+    client.post(f"{base}/place", json={"side": "home", "team": "Orc", "position": "Big Un Blocker", "x": 7, "y": 13})
+    client.post(f"{base}/place", json={"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 7, "y": 14})
+    assert client.post(f"{base}/game/new", json={"seed": 4}).status_code == 200
+
+    legal = client.get(f"{base}/game/legal", params={"player": "h00"}).json()
+    assert legal["blocks"], "the blocker should have a target"
+    target = legal["blocks"][0]["target"]
+
+    r = client.post(f"{base}/game/act", json={"action": "block", "player": "h00", "target": target}).json()
+    assert r["ok"] or r["turnover"], r
+    assert r["log"], "a played block must produce log lines"
+    assert "no target" not in str(r.get("text", "")), r
+
+
+def test_a_refused_action_is_reported_rather_than_silently_dropped(client):
+    base = "/api/plugins/bloodbowl"
+    client.post(f"{base}/place", json={"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    client.post(f"{base}/game/new", json={"seed": 1})
+    r = client.post(f"{base}/game/act", json={"action": "block", "player": "h00", "target": "nobody"}).json()
+    assert r["ok"] is False and "no target" in r["text"]

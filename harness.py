@@ -275,6 +275,23 @@ def _play(browser, url: str, w: int, h: int) -> None:
     player, and check the board actually says what the engine said.
     """
     page = browser.new_page(viewport={"width": w, "height": h})
+    # Record what the page actually asks the server for. When a click does not do
+    # what it should, "was the request even made" is the first question, and
+    # guessing at it from the rendered result wastes a lot of time.
+    calls: list[str] = []
+    acted: list[dict] = []
+
+    def _watch(r):
+        calls.append(f"{r.status} {r.url.split('/api/plugins/bloodbowl')[-1]}")
+        # An action that is REFUSED still answers 200 with ok:false, so the status
+        # code alone cannot tell a played move from a rejected one. Keep the body.
+        if "/game/act" in r.url:
+            with contextlib.suppress(Exception):
+                acted.append(r.json())
+
+    page.on("response", _watch)
+    problems: list[str] = []
+    page.on("pageerror", lambda e: problems.append(str(e)))
     page.goto(url, wait_until="networkidle")
     page.wait_for_selector(".cell", timeout=10000)
     theme = ROOT / "harness_theme.css"
@@ -326,6 +343,95 @@ def _play(browser, url: str, w: int, h: int) -> None:
     log = page.locator("#log").inner_text()
     check("the move lands in the log", "moves to" in log or "Falls Over" in log, log[:90].replace("\n", " / "))
     check("the log quotes the dice", "rolled" in log or "moves to" in log, log[:90].replace("\n", " / "))
+
+    # Blocking, which is the half a server test cannot judge: a coach has to see
+    # BEFORE committing that a block hands the dice to the opponent.
+    #
+    # Restart from a FIXED seed first. The move above is dice-driven, and a failed
+    # Dodge is a turnover — which flips the active side and leaves no home player
+    # able to block, so the section failed roughly one run in three and looked
+    # like a broken feature rather than a coin toss in the setup.
+    page.evaluate("""async () => {
+      await fetch("/api/plugins/bloodbowl/game/new", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({seed: 7}),
+      });
+    }""")
+    page.reload(wait_until="networkidle")
+    page.wait_for_selector(".cell", timeout=10000)
+    if theme.exists():
+        page.add_style_tag(content=theme.read_text())
+    page.wait_for_timeout(500)
+
+    blocker = page.evaluate("""async () => {
+      const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
+      const on = m.players.filter(p => p.place === "pitch" && !p.acted && p.down === "standing");
+      const foes = on.filter(p => p.side === "away");
+      const me = on.find(p => p.side === "home" && foes.some(
+        f => Math.abs(f.x - p.x) <= 1 && Math.abs(f.y - p.y) <= 1));
+      return me ? {x: me.x, y: me.y, id: me.id} : null;
+    }""")
+    check("a blocker is available on the seeded board", blocker is not None)
+    if blocker is not None:
+        page.locator(f'.cell[data-x="{blocker["x"]}"][data-y="{blocker["y"]}"] .pc').click()
+        page.wait_for_timeout(600)
+        check("blockable opponents are marked on the board", page.locator(".cell.blockable").count() > 0)
+        pane = page.locator("#sel").inner_text()
+        check("the pane says how many dice and who chooses", "dice" in pane and "chooses" in pane, pane[:80])
+        page.screenshot(path=str(SHOTS / "block.png"), full_page=True)
+        # The click handler decides "is this a block target?" by matching the
+        # clicked badge's id against the legal-block list. If those two ever drift
+        # apart the click silently falls through to selecting the opponent, which
+        # looks like nothing happening — so check the correspondence directly.
+        wired = page.evaluate(
+            """(pid) => Promise.resolve(
+                 fetch(`/api/plugins/bloodbowl/game/legal?player=${pid}`).then(r => r.json())
+               ).then(l => ({
+                 targets: (l.blocks || []).map(b => b.target),
+                 badges: [...document.querySelectorAll('.cell.blockable .pc')].map(n => n.dataset.id),
+               }))""",
+            blocker["id"],
+        )
+        check(
+            "the blockable badges are the ids the engine named",
+            bool(wired["badges"]) and set(wired["badges"]) <= set(wired["targets"]),
+            f"badges={wired['badges']} targets={wired['targets']}",
+        )
+        before = page.locator("#log").inner_text()
+        acts_before = len([c for c in calls if "/game/act" in c])
+        page.locator(".cell.blockable .pc").first.click()
+        # Wait for the log to CHANGE rather than sleeping a guessed interval. A
+        # block is a POST plus two follow-up fetches, and a fixed wait that is
+        # merely usually long enough produces a test that fails on a slow machine
+        # and passes on yours — which reads as a broken feature, not a slow one.
+        changed = True
+        try:
+            page.wait_for_function(
+                "prev => document.querySelector('#log').innerText !== prev",
+                arg=before,
+                timeout=8000,
+            )
+        except Exception:  # noqa: BLE001 — a timeout here IS the failure
+            changed = False
+        after = page.locator("#log").inner_text()
+        acts_after = len([c for c in calls if "/game/act" in c])
+        last = acted[-1] if acted else {}
+        check(
+            "the block was played, not refused",
+            acts_after > acts_before and bool(last.get("events") or last.get("log")),
+            f"acts {acts_before}->{acts_after}; ok={last.get('ok')} text={str(last.get('text'))[:70]!r}",
+        )
+        check(
+            "throwing the block writes a result to the log",
+            changed and after != before,
+            after[:80].replace("\n", " / "),
+        )
+        check(
+            "the log names a block die face",
+            any(w in after for w in ("Push Back", "POW", "Both Down", "Player Down", "Stumble")),
+            after[:110].replace("\n", " / "),
+        )
 
     # Re-select a Marked player and get the cursor off the board before shooting.
     # The hover card follows the mouse and will happily sit on top of the very

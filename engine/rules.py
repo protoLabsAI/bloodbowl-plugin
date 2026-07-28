@@ -73,3 +73,109 @@ def armour_target(player: PlayerState) -> int:
 
 def occupied(match: Match, x: int, y: int) -> bool:
     return match.at(x, y) is not None
+
+
+# --- blocking -------------------------------------------------------------
+
+# The eight directions, in ring order, so "the two directions either side of this
+# one" is a lookup rather than trigonometry.
+RING = ((1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1))
+
+
+def _sign(n: int) -> int:
+    return (n > 0) - (n < 0)
+
+
+def push_squares(bx: int, by: int, tx: int, ty: int) -> list[tuple[int, int]]:
+    """The three squares a target may be Pushed Back into.
+
+    S3: "Pushed Back one square away from the player that performed the Block
+    Action so that they are in an adjacent square that is not adjacent to the
+    player performing the Block Action", with diagrams.
+
+    Implementing that sentence LITERALLY is wrong on a diagonal. Take the
+    neighbours of the target that are not adjacent to the blocker: for an
+    orthogonal block that is three squares and correct, but for a DIAGONAL block
+    it is five, and the diagrams show three. So the direction is what defines the
+    arc: the push vector, plus the two ring directions either side of it. Both
+    readings agree on an orthogonal block, which is exactly why the wrong one
+    survives casual testing.
+
+    Order matters: STRAIGHT BACK first, then the two flanks. The blocking coach
+    chooses which of the three is used, but when no choice is given the default
+    should be the obvious one — shoving someone directly away rather than
+    sideways into a diagonal for no reason.
+    """
+    d = (_sign(tx - bx), _sign(ty - by))
+    if d == (0, 0):
+        return []
+    i = RING.index(d)
+    return [(tx + dx, ty + dy) for dx, dy in (d, RING[(i - 1) % 8], RING[(i + 1) % 8])]
+
+
+def assist_count(
+    match: Match,
+    assisting_side: str,
+    around: PlayerState,
+    exclude: frozenset | set | tuple = (),
+) -> int:
+    """Assists for a Block, from ``assisting_side``'s point of view.
+
+    S3: "+1 Strength modifier for each player of the same team who is Marking the
+    target of the Block Action and is not Marked by another opposing player."
+
+    Three details, each of which was wrong at some point:
+
+    * The assister must be able to Mark at all — Prone, Stunned and Distracted
+      players have no Tackle Zone.
+    * "not Marked by ANOTHER opposing player" excludes ``around`` itself, so the
+      player being blocked never cancels the assists against them, and the blocker
+      never cancels their own defenders' assists.
+    * ``exclude`` is the two participants. Neither the blocker nor the target is an
+      assist: the blocker is throwing the block, and the target cannot help
+      themselves resist it. Leaving them in inflates BOTH sides by one — which
+      still produces a plausible-looking "ST 5 v 4" that no one would query.
+    """
+    from .skills import hooks_for
+
+    foes = match.opponent(assisting_side)
+    skip = set(exclude) | {around.id}
+    total = 0
+    for p in match.on_pitch(assisting_side):
+        if p.id in skip or not has_tackle_zone(p):
+            continue
+        if not adjacent(p.x, p.y, around.x, around.y):
+            continue
+        others = [
+            q for q in match.on_pitch(foes) if q.id != around.id and has_tackle_zone(q) and adjacent(q.x, q.y, p.x, p.y)
+        ]
+        if others:
+            # Guard ignores being Marked. Asked as a hook so a Skill that changes
+            # who may assist is a registration, not a branch in here.
+            free = any(p.has_skill(skill) for skill, _fn in hooks_for("may_assist_while_marked"))
+            if not free:
+                continue
+        total += 1
+    return total
+
+
+def strength_of(match: Match, p: PlayerState) -> int:
+    try:
+        return int(str(p.player.ST).strip() or 0)
+    except ValueError:
+        return 0
+
+
+def block_dice(attack_st: int, defend_st: int) -> tuple[int, str]:
+    """(number of dice, who chooses).
+
+    S3: equal strength rolls one die; higher rolls two; OVER DOUBLE rolls three.
+    "Over double" is strictly greater than twice — 4 against 2 is two dice, not
+    three. The stronger coach always chooses, which is why a block into a stronger
+    opponent hands THEM the pick.
+    """
+    if attack_st == defend_st:
+        return 1, "attacker"
+    strong, weak = max(attack_st, defend_st), min(attack_st, defend_st)
+    n = 3 if strong > 2 * weak else 2
+    return n, ("attacker" if attack_st > defend_st else "defender")

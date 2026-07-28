@@ -34,9 +34,16 @@ class Legality:
 class Outcome:
     """What resolving an action produced.
 
-    ``events`` are the facts to apply. ``turnover`` ends the team's turn, and is
-    separate from "the action failed" because in Blood Bowl most failures do both
-    and a few do not.
+    ``events`` are the facts that were APPLIED, in order — resolve owns applying
+    them, and the caller must not apply them again. That is not an arbitrary
+    choice: a Chain Push cannot work out where the next player goes until the
+    previous one has actually moved, so any multi-step action has to mutate as it
+    goes. Having one action return facts to apply and another apply them itself
+    would be the same contract described two ways, which is how a double-applied
+    event gets shipped.
+
+    ``turnover`` ends the team's turn, and is separate from "the action failed"
+    because in Blood Bowl most failures do both and a few do not.
     """
 
     ok: bool
@@ -53,6 +60,27 @@ class Outcome:
             "events": [e.to_dict() for e in self.events],
             "unmodelled_skills": self.unmodelled,
         }
+
+
+class Recorder:
+    """Applies each fact as it is made and keeps the ordered list.
+
+    The one place the "resolve applies its own events" contract lives, so every
+    action obeys it the same way.
+    """
+
+    def __init__(self, match):
+        self.match = match
+        self.events: list = []
+
+    def emit(self, event):
+        self.match.apply(event)
+        self.events.append(event)
+        return event
+
+    def extend(self, events) -> None:
+        for e in events:
+            self.emit(e)
 
 
 def register(name: str, validate: Callable, resolve: Callable) -> None:
@@ -74,4 +102,4 @@ def load_all() -> None:
     depend on what happens to be on disk, and an action that silently fails to
     import would look like an action that does not exist.
     """
-    from . import move  # noqa: F401
+    from . import block, move  # noqa: F401
