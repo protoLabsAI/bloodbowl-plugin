@@ -23,6 +23,9 @@ def new_match(scenario, seed: int = 0, kicking_to: str = "home") -> Match:
 
     The seed is stored so the match can be regenerated; the log is what lets it be
     re-watched. Both, for the reasons in dice.py.
+
+    ``kicking_to`` is the RECEIVING side — the team the ball is kicked to, which
+    takes the first turn.
     """
     m = starting_positions(scenario, seed=seed)
     m.apply(
@@ -32,42 +35,58 @@ def new_match(scenario, seed: int = 0, kicking_to: str = "home") -> Match:
             text=f"Match begins. {m.home_team or 'Home'} vs {m.away_team or 'Away'}.",
         )
     )
-    # No kick-off yet (that is the next milestone), so the ball starts loose on
-    # the centre spot. Stated plainly in the log rather than pretending a kick
-    # happened. If the centre is occupied it steps outward to a free square: a
-    # loose ball under a standing player is a legal state, but it renders beneath
-    # their badge and reads as "there is no ball".
-    from ..pitch import LENGTH, WIDTH, in_bounds
+    start_drive(m, receiving=kicking_to, dice=dice_for(m))
+    return m
 
-    bx, by = (WIDTH + 1) // 2, (LENGTH + 1) // 2
-    if m.at(bx, by) is not None:
-        for step in range(1, max(WIDTH, LENGTH)):
-            found = next(
-                (
-                    (bx + dx, by + dy)
-                    for dx, dy in ((0, step), (0, -step), (step, 0), (-step, 0))
-                    if in_bounds(bx + dx, by + dy) and m.at(bx + dx, by + dy) is None
-                ),
-                None,
-            )
-            if found:
-                bx, by = found
-                break
-    m.apply(
+
+class _gone:
+    """Stands in for a player id that is no longer in the match, so a stale setup
+    row cannot crash a kick-off."""
+
+    place = "casualty"
+
+
+def start_drive(match: Match, receiving: str, dice=None, aim=None) -> list[Event]:
+    """Set up, kick off, and hand the first turn to the receiving team.
+
+    Everyone goes back to where they stood at the last kick-off rather than the
+    operator being asked to rebuild the board after each score. Casualties stay
+    out for the match; a Knocked-out player misses this drive and returns to
+    Reserves for the next one, which is the shape of the real End of Drive
+    sequence without pretending to model the parts (Apothecary, recovery rolls)
+    that are not here.
+    """
+    from .kickoff import kick
+
+    dice = dice or dice_for(match)
+    # The setup is captured ONCE, at the first kick-off, and reused for every
+    # later drive. Re-capturing from the current board would bake in wherever the
+    # last drive happened to leave everyone, so a team that ended the drive strung
+    # out across the pitch would line up that way for the next one.
+    #
+    # (S3 lets each team set up afresh every drive. Reusing the opening setup is
+    # the honest simplification while there is no setup PHASE to do it in — the
+    # operator can always rearrange the board and start a fresh match.)
+    setup = match.setup or [{"id": p.id, "x": p.x, "y": p.y} for p in match.players if p.place in ("pitch", "reserves")]
+    setup = [row for row in setup if (match.by_id(str(row["id"])) or _gone()).place != "casualty"]
+    events = [
         Event(
-            kind="ball_moved",
-            detail={"x": bx, "y": by, "carrier": ""},
-            text=f"The ball is placed loose at ({bx},{by}) — no kick-off is modelled yet.",
+            kind="drive_started",
+            detail={"drive": match.drive + 1, "setup": setup, "receiving": receiving},
+            text=f"Drive {match.drive + 1}: {receiving} receive.",
         )
-    )
-    m.apply(
+    ]
+    match.apply(events[0])
+    events.extend(kick(match, dice, receiving=receiving))
+    events.append(
         Event(
             kind="turn_started",
-            detail={"side": kicking_to, "half": 1, "turn": 1},
-            text=f"Half 1, turn 1 — {kicking_to} to act.",
+            detail={"side": receiving, "half": match.clock.half, "turn": match.clock.turn},
+            text=f"Half {match.clock.half}, turn {match.clock.turn} — {receiving} to act.",
         )
     )
-    return m
+    match.apply(events[-1])
+    return events
 
 
 def dice_for(match: Match):
@@ -97,6 +116,22 @@ def act(match: Match, action: str, cmd: dict, dice=None) -> dict:
     # resolve applies its own events (see actions.Outcome) — do not re-apply.
     outcome = entry["resolve"](match, cmd, dice)
 
+    # A Touchdown ends the DRIVE, not just the turn: "As soon as a Touchdown is
+    # scored, play stops as a Turnover occurs — however, this is very much a
+    # Turnover you can be pleased by! Scoring a Touchdown also marks the end of a
+    # Drive." The conceder receives the next kick-off.
+    scored = _unresolved_touchdown(match)
+    if scored is not None:
+        scorer = str(scored.detail.get("side") or match.clock.active)
+        end_turn(match, forced=True, start_next=False)
+        if not match.over:
+            start_drive(match, receiving=match.opponent(scorer), dice=dice)
+        report = outcome.to_dict()
+        report["clock"] = match.clock.to_dict()
+        report["over"] = match.over
+        report["touchdown"] = scorer
+        return report
+
     if outcome.turnover:
         match.apply(Event(kind="turnover", detail={"side": match.clock.active}, text=TURNOVER_TEXT[True]))
         end_turn(match, forced=True)
@@ -107,7 +142,22 @@ def act(match: Match, action: str, cmd: dict, dice=None) -> dict:
     return report
 
 
-def end_turn(match: Match, forced: bool = False) -> dict:
+def _unresolved_touchdown(match: Match):
+    """A Touchdown with no Drive started after it.
+
+    Derived from the log rather than remembered in a side table keyed on the
+    match object: a match is reloaded from disk between tool calls, so object
+    identity does not survive, and the log is the only thing that does.
+    """
+    for e in reversed(match.events):
+        if e.kind == "drive_started":
+            return None
+        if e.kind == "touchdown":
+            return e
+    return None
+
+
+def end_turn(match: Match, forced: bool = False, start_next: bool = True) -> dict:
     """End the active team's turn.
 
     Stunned players recover to Prone at the end of a turn — modelled here rather
@@ -120,7 +170,7 @@ def end_turn(match: Match, forced: bool = False) -> dict:
                     kind="player_placed_prone",
                     actor=p.id,
                     detail={"down": "prone"},
-                    text=f"{p.player.position} recovers from Stunned to Prone.",
+                    text=f"{p.name()} recovers from Stunned to Prone.",
                 )
             )
     was = match.clock.active
@@ -131,6 +181,10 @@ def end_turn(match: Match, forced: bool = False) -> dict:
             text=("Turnover ends " if forced else "") + f"{was}'s turn.",
         )
     )
+    if match.over or not start_next:
+        if match.over:
+            match.apply(Event(kind="match_over", text="Full time."))
+        return {"ok": True, "clock": match.clock.to_dict(), "over": match.over}
     if not match.over:
         match.apply(
             Event(

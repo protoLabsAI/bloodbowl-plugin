@@ -47,7 +47,7 @@ def knock_down(match, player, dice, by=None, cause: str = "Knocked Down") -> lis
             kind="player_fell",
             actor=player.id,
             detail={"down": "prone"},
-            text=f"{player.player.position} is {cause} and lies Prone.",
+            text=f"{player.name()} is {cause} and lies Prone.",
         )
     ]
     match.apply(events[0])
@@ -93,7 +93,7 @@ def risk_injury(match, player, dice, by=None) -> list[Event]:
             kind="armour_roll",
             actor=player.id,
             rolls=[armour],
-            text=f"Armour on {player.player.position}: {armour.describe()}"
+            text=f"Armour on {player.name()}: {armour.describe()}"
             + (" — armour is broken." if armour.passed else " — the armour holds."),
         ),
     )
@@ -123,7 +123,7 @@ def risk_injury(match, player, dice, by=None) -> list[Event]:
             actor=player.id,
             rolls=[injury],
             detail={"outcome": outcome},
-            text=f"Injury on {player.player.position}: {total} — {_INJURY_TEXT[outcome]}."
+            text=f"Injury on {player.name()}: {total} — {_INJURY_TEXT[outcome]}."
             + ("".join(f" {n}." for n in tctx.notes)),
         ),
     )
@@ -134,7 +134,7 @@ def risk_injury(match, player, dice, by=None) -> list[Event]:
             kind="player_condition",
             actor=player.id,
             detail={"outcome": outcome},
-            text=f"{player.player.position} is {_INJURY_TEXT[outcome]}.",
+            text=f"{player.name()} is {_INJURY_TEXT[outcome]}.",
         ),
     )
     return events

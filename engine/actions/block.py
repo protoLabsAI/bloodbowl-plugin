@@ -38,13 +38,13 @@ def validate(match: Match, cmd: dict) -> Legality:
     if p is None:
         return Legality(False, f"no player with id {cmd.get('player')!r}")
     if p.place != "pitch":
-        return Legality(False, f"{p.player.position} is not on the pitch")
+        return Legality(False, f"{p.name()} is not on the pitch")
     if p.side != match.clock.active:
         return Legality(False, f"it is {match.clock.active}'s turn, and that player is {p.side}")
     if p.down != "standing":
         return Legality(False, f"a {p.down} player cannot Block; they must stand up first")
     if p.acted:
-        return Legality(False, f"{p.player.position} has already acted this turn")
+        return Legality(False, f"{p.name()} has already acted this turn")
 
     t = match.by_id(str(cmd.get("target") or ""))
     if t is None:
@@ -120,7 +120,7 @@ def _do_push(match: Match, blocker, target, dice, rec: Recorder, pushed: list, p
                 kind="player_left_pitch",
                 actor=target.id,
                 detail={"reason": "crowd"},
-                text=f"{target.player.position} is Pushed into the Crowd.",
+                text=f"{target.name()} is Pushed into the Crowd.",
             )
         )
         rec.absorb(risk_injury(match, target, dice, by=blocker))
@@ -138,7 +138,7 @@ def _do_push(match: Match, blocker, target, dice, rec: Recorder, pushed: list, p
             kind="player_pushed",
             actor=target.id,
             detail={"x": square[0], "y": square[1], "by": blocker.id},
-            text=f"{target.player.position} is Pushed Back to ({square[0]},{square[1]}).",
+            text=f"{target.name()} is Pushed Back to ({square[0]},{square[1]}).",
         )
     )
     pushed.append(target)
@@ -194,7 +194,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             actor=p.id,
             detail={"faces": list(faces), "chosen": face, "chooser": chooser, "target": t.id},
             rolls=[roll],
-            text=f"{p.player.position} Blocks {t.player.position}: "
+            text=f"{p.name()} Blocks {t.name()}: "
             + ", ".join(BLOCK_LABELS[f] for f in faces)
             + f" — {BLOCK_LABELS[face]} applied ({chooser} chooses).",
         )
@@ -218,7 +218,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                     kind="player_followed_up",
                     actor=p.id,
                     detail={"x": vacated[0], "y": vacated[1]},
-                    text=f"{p.player.position} follows up to ({vacated[0]},{vacated[1]}).",
+                    text=f"{p.name()} follows up to ({vacated[0]},{vacated[1]}).",
                 )
             )
 
@@ -227,7 +227,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             Event(
                 kind="note",
                 actor=t.id,
-                text=f"{t.player.position} has Dodge, so Stumble becomes Push Back.",
+                text=f"{t.name()} has Dodge, so Stumble becomes Push Back.",
             )
         )
 
@@ -247,7 +247,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         for who, other in ((p, t), (t, p)):
             stays, notes = _uses_block(match, who)
             if stays:
-                rec.emit(Event(kind="note", actor=who.id, text=f"{who.player.position} — {'; '.join(notes)}."))
+                rec.emit(Event(kind="note", actor=who.id, text=f"{who.name()} — {'; '.join(notes)}."))
                 continue
             going_down.append((who, other))
         for who, other in going_down:
@@ -266,7 +266,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             kind="note",
             actor=p.id,
             detail={"acted": True},
-            text=f"{p.player.position}'s Block Action is over.",
+            text=f"{p.name()}'s Block Action is over.",
         )
     )
 

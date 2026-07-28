@@ -1,0 +1,269 @@
+"""The kick-off, the Kick-off Event, and the drive it starts.
+
+S3's Drive sequence, in order: SET-UP (kicking team first), THE KICK-OFF, then THE
+KICK-OFF EVENT while the ball is in the air. "At this point the ball is still high
+up in the air and cannot be caught until after the Kick-off Event has been
+resolved" — so the event is rolled BEFORE the ball lands, and can change where it
+lands.
+
+The kick DEVIATES: "Immediately after the kick has Deviated, the Coach of the
+kicking team must roll 2D6 and consult the Kick-off Event Table." Deviate is a D6
+for distance and a D8 for direction.
+
+TOUCHBACK: "The ball must land safely in the opposition half... If the ball ends up
+exiting the pitch or crosses the Line of Scrimmage into the kicking team's half,
+regardless if this was down to a Deviation, Bounce, or another effect, then it
+will result in a Touchback." The receiving coach then gives it to any Standing
+player, or places it on any unoccupied square in their half.
+
+ON THE EVENT TABLE. All eleven results are listed with their real text, because a
+coach asking "what happened" deserves the actual rule. Only the ones this engine
+can honestly carry out are APPLIED — the rest depend on things it does not model
+(Cheerleaders, Assistant Coaches, Fan Factor, Team Re-rolls, Weather, Inducements)
+or on a choice no one is here to make. Those are reported as rolled-but-not-applied
+rather than silently skipped, which is the same discipline as unmodelled Skills:
+the alternative is a coach believing a Blitz happened when nothing moved.
+"""
+
+from __future__ import annotations
+
+from ..pitch import LENGTH, LOS_ROWS, in_bounds
+from .ball import DIRECTIONS, bounce, catch
+from .dice import Roll, roll_2d6
+from .events import Event
+
+# 2D6 -> (name, rule text, applied-by-this-engine?)
+KICKOFF_EVENTS: dict[int, tuple[str, str, bool]] = {
+    2: (
+        "Get the Ref",
+        "Each team immediately receives one free Bribe Inducement. This Bribe must be used by "
+        "the end of the game or it is lost.",
+        False,  # Inducements are not modelled.
+    ),
+    3: (
+        "Time-out!",
+        "If the kicking team's Turn Marker is on turn 6, 7 or 8 for the half, move both teams' "
+        "Turn Marker back one space. Otherwise, move both teams' Turn Marker forwards one space.",
+        True,  # Pure clock — the engine owns this outright.
+    ),
+    4: (
+        "Solid Defence",
+        "The Coach of the kicking team selects up to D3+3 Open players on their team. The selected "
+        "players are then removed from the pitch and can be set up again.",
+        False,  # Needs a coach's re-setup choice.
+    ),
+    5: (
+        "High Kick",
+        "One Open player on the receiving team may immediately be placed in the square the ball is going to land in.",
+        False,  # Needs a coach's choice of which player.
+    ),
+    6: (
+        "Cheering Fans",
+        "Both Coaches roll a D6 and add the number of Cheerleaders on their Team Roster. The first "
+        "Block Action performed during the Coach with the highest roll's next Turn receives an "
+        "additional Offensive Assist.",
+        False,  # Cheerleaders are a roster fact this engine does not carry.
+    ),
+    7: (
+        "Brilliant Coaching",
+        "Both Coaches roll a D6 and add the number of Assistant Coaches on their Team Roster. The "
+        "Coach with the highest total gains a free Team Re-roll for the Drive ahead.",
+        False,  # Team Re-rolls are not modelled.
+    ),
+    8: (
+        "Changing Weather",
+        "Immediately make a new roll on the Weather Table. If the new result is Perfect Conditions, "
+        "the ball will Scatter (3) in the air before it lands.",
+        False,  # Weather is not modelled.
+    ),
+    9: (
+        "Quick Snap",
+        "The Coach of the receiving team selects Open players on their team, who may each immediately move one square.",
+        False,  # Needs a coach's choice.
+    ),
+    10: (
+        "Blitz!",
+        "The Coach of the kicking team may immediately activate selected Open players for a free "
+        "Turn. If a selected player Falls Over or is Knocked Down, the Charge ends.",
+        False,  # A whole free turn, driven by choices.
+    ),
+    11: (
+        "Dodgy Snack",
+        "Both Coaches roll a D6. The Coach that rolled the lowest, or BOTH Coaches on a tie, "
+        "randomly selects one of their players on the pitch and rolls a D6. On a 2+ the player "
+        "reduces their MA and AV by 1 for the Drive. On a 1, place the player in the Reserves box.",
+        False,  # Needs an unbiased random player pick this engine has no die for.
+    ),
+    12: (
+        "Pitch Invasion",
+        "Both Coaches roll a D6 and add their Fan Factor. The Coach that rolled lowest, or both on "
+        "a tie, randomly selects D3 of their players on the pitch. The selected players are "
+        "immediately Placed Prone and become Stunned.",
+        False,  # Fan Factor is not modelled.
+    ),
+}
+
+
+def receiving_half(side: str) -> tuple[int, int]:
+    """The (min, max) rows of a side's own half, inclusive."""
+    return (1, LOS_ROWS[0]) if side == "home" else (LOS_ROWS[1], LENGTH)
+
+
+def in_own_half(side: str, y: int) -> bool:
+    lo, hi = receiving_half(side)
+    return lo <= y <= hi
+
+
+def deviate(match, dice, x: int, y: int) -> tuple[tuple[int, int], list[Roll]]:
+    """D6 squares in a D8 direction, as the kick does."""
+    dist = dice.d6()
+    direction = dice.d8()
+    rolls = [
+        Roll(kind="Deviate distance", dice=[dist], note="D6"),
+        Roll(kind="Deviate direction", dice=[direction], note="D8"),
+    ]
+    dice.rolls.extend(rolls)
+    dx, dy = DIRECTIONS[direction]
+    return (x + dx * dist, y + dy * dist), rolls
+
+
+def kick(match, dice, receiving: str, aim: tuple[int, int] | None = None) -> list[Event]:
+    """Kick to the receiving team, roll the event, then land the ball.
+
+    Ordered as S3 orders it: deviate, THEN the Kick-off Event, THEN the ball lands.
+    Rolling the event after the ball has already been caught would make half the
+    table meaningless.
+    """
+    events: list[Event] = []
+    lo, hi = receiving_half(receiving)
+    target = aim or ((match.ball.x or 8), (lo + hi) // 2)
+
+    events.append(
+        Event(
+            kind="ball_moved",
+            detail={"x": target[0], "y": target[1], "carrier": ""},
+            text=f"The ball is kicked towards ({target[0]},{target[1]}) in {receiving}'s half.",
+        )
+    )
+    match.apply(events[-1])
+
+    (nx, ny), rolls = deviate(match, dice, *target)
+    events.append(
+        Event(
+            kind="ball_moved",
+            detail={"x": nx, "y": ny, "carrier": ""},
+            rolls=rolls,
+            text=f"The kick deviates {rolls[0].dice[0]} squares to ({nx},{ny}).",
+        )
+    )
+    match.apply(events[-1])
+
+    events.extend(kickoff_event(match, dice, receiving))
+
+    # "Once the Kick-off Event has been fully resolved, the ball will land."
+    events.extend(land(match, dice, receiving))
+    return events
+
+
+def kickoff_event(match, dice, receiving: str) -> list[Event]:
+    r = roll_2d6(dice, "Kick-off Event", 0)
+    r.passed = None
+    total = int(r.total or 0)
+    name, text, applied = KICKOFF_EVENTS.get(total, ("Unknown", "", False))
+
+    events = [
+        Event(
+            kind="kickoff_event",
+            detail={"roll": total, "event": name, "applied": applied},
+            rolls=[r],
+            text=f"Kick-off Event {total}: {name.upper()} — {text}"
+            + ("" if applied else " (rolled, but NOT applied by this engine)"),
+        )
+    ]
+    match.apply(events[0])
+
+    if name == "Time-out!":
+        kicking = match.opponent(receiving)
+        # The rule reads off the KICKING team's turn marker.
+        back = match.clock.turn >= 6
+        events.append(
+            Event(
+                kind="clock_adjusted",
+                detail={"delta": -1 if back else 1, "by": kicking},
+                text=(
+                    "Both Turn Markers move back one space." if back else "Both Turn Markers move forward one space."
+                ),
+            )
+        )
+        match.apply(events[-1])
+    return events
+
+
+def land(match, dice, receiving: str) -> list[Event]:
+    """Where the kick ends up, and the Touchback if it ended up badly."""
+    events: list[Event] = []
+    x, y = match.ball.x, match.ball.y
+
+    if not in_bounds(x, y) or not in_own_half(receiving, y):
+        why = "off the pitch" if not in_bounds(x, y) else "back over the Line of Scrimmage"
+        events.append(
+            Event(
+                kind="touchback",
+                detail={"side": receiving, "why": why},
+                text=f"The kick goes {why} — Touchback.",
+            )
+        )
+        match.apply(events[-1])
+        events.extend(award_touchback(match, receiving))
+        return events
+
+    standing = match.at(x, y)
+    if standing is None:
+        events.extend(bounce(match, dice))
+    else:
+        events.extend(catch(match, standing, dice))
+
+    # A bounce can still carry it out of the half, which is also a Touchback.
+    if not in_bounds(match.ball.x, match.ball.y) or (
+        not match.ball.carrier and not in_own_half(receiving, match.ball.y)
+    ):
+        events.append(
+            Event(
+                kind="touchback",
+                detail={"side": receiving, "why": "the bounce left the receiving half"},
+                text="The ball bounces out of the receiving half — Touchback.",
+            )
+        )
+        match.apply(events[-1])
+        events.extend(award_touchback(match, receiving))
+    return events
+
+
+def award_touchback(match, receiving: str) -> list[Event]:
+    """Give the ball to a Standing receiver, or place it in their half.
+
+    The coach chooses; with nobody at the table the engine picks the player
+    furthest from the Line of Scrimmage, which is the safe, conventional choice
+    rather than a convenient one.
+    """
+    standing = [p for p in match.on_pitch(receiving) if p.down == "standing"]
+    if standing:
+        own_goal = 1 if receiving == "home" else LENGTH
+        pick = min(standing, key=lambda p: (abs(p.y - own_goal), p.id))
+        ev = Event(
+            kind="ball_picked_up",
+            actor=pick.id,
+            detail={"touchback": True},
+            text=f"Touchback: {pick.name()} is given the ball.",
+        )
+        match.apply(ev)
+        return [ev]
+
+    lo, hi = receiving_half(receiving)
+    ev = Event(
+        kind="ball_moved",
+        detail={"x": 8, "y": (lo + hi) // 2, "carrier": ""},
+        text="Touchback: no Standing receiver, so the ball is placed in their half.",
+    )
+    match.apply(ev)
+    return [ev]

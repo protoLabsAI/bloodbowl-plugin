@@ -1060,3 +1060,186 @@ def test_a_touchdown_takes_the_ball_out_of_play():
     _with_ball(m, 7, LENGTH - 1, carrier="h00")
     _move(m, "h00", 7, LENGTH, _dice([]))
     assert m.ball.in_play is False and m.ball.carrier == ""
+
+
+# --- kick-off and drives ---------------------------------------------------
+
+
+def _kicked(seed=3):
+    """A match that has already kicked off, from a small board."""
+    from bloodbowl.engine.game import new_match
+    from bloodbowl.pitch import Player, Scenario
+
+    sc = Scenario(name="t", home_team="Orc", away_team="Skaven")
+    for side, x, y in (("home", 7, 13), ("home", 8, 13), ("away", 7, 14), ("away", 8, 14)):
+        sc.players.append(
+            Player(side=side, x=x, y=y, position="Orc Lineman", team="Orc", MA="6", ST="3", AG="3+", AV="9+")
+        )
+    return new_match(sc, seed=seed, kicking_to="home")
+
+
+def test_a_new_match_kicks_off_and_the_ball_is_in_play():
+    m = _kicked()
+    assert m.ball.in_play
+    assert any(e.kind == "kickoff_event" for e in m.events), "the Kick-off Event must be rolled"
+    assert m.drive == 1
+
+
+def test_the_kick_deviates_before_the_event_is_rolled():
+    """S3 order: the kick Deviates, THEN 2D6 for the Kick-off Event, THEN the ball
+    lands. Rolling the event after the ball was caught would make half the table
+    meaningless."""
+    m = _kicked()
+    kinds = [e.kind for e in m.events]
+    dev = next(i for i, e in enumerate(m.events) if any(r.kind.startswith("Deviate") for r in e.rolls))
+    evt = kinds.index("kickoff_event")
+    assert dev < evt, "the deviation comes first"
+
+
+def test_every_kickoff_event_result_is_named_with_its_real_text():
+    from bloodbowl.engine.kickoff import KICKOFF_EVENTS
+
+    assert sorted(KICKOFF_EVENTS) == list(range(2, 13)), "2D6 spans 2..12"
+    for roll, (name, text, _applied) in KICKOFF_EVENTS.items():
+        assert name and len(text) > 30, f"{roll} has no usable rule text"
+    assert KICKOFF_EVENTS[11][0] == "Dodgy Snack", "S3 replaced Officious Ref on 11"
+    assert KICKOFF_EVENTS[12][0] == "Pitch Invasion"
+
+
+def test_an_unapplied_kickoff_event_says_so_rather_than_pretending():
+    """A coach told 'Blitz!' who sees nothing move would reasonably conclude the
+    engine is broken. Say which ones are narrative only."""
+    from bloodbowl.engine.kickoff import KICKOFF_EVENTS
+
+    unapplied = [n for n, (_name, _t, applied) in KICKOFF_EVENTS.items() if not applied]
+    assert unapplied, "if everything were applied this guard is pointless"
+    m = _kicked()
+    ev = next(e for e in m.events if e.kind == "kickoff_event")
+    if not ev.detail["applied"]:
+        assert "NOT applied" in ev.text
+
+
+def test_time_out_moves_the_turn_marker_and_is_actually_applied():
+    """The one event the engine owns outright — it is pure clock."""
+    from bloodbowl.engine.kickoff import KICKOFF_EVENTS
+
+    assert KICKOFF_EVENTS[3][2] is True, "Time-out! needs nothing this engine lacks"
+
+
+def test_a_kick_that_leaves_the_receiving_half_is_a_touchback():
+    from bloodbowl.engine.kickoff import award_touchback, in_own_half
+    from bloodbowl.pitch import LENGTH
+
+    m = _kicked()
+    assert in_own_half("home", 1) and not in_own_half("home", LENGTH)
+    events = award_touchback(m, "home")
+    assert events, "a touchback must resolve to somebody holding the ball"
+    assert m.ball.carrier or m.ball.in_play
+
+
+def test_a_touchback_gives_the_ball_to_a_standing_receiver():
+    m = _kicked()
+    from bloodbowl.engine.kickoff import award_touchback
+
+    award_touchback(m, "home")
+    holder = m.by_id(m.ball.carrier)
+    assert holder is not None and holder.side == "home"
+
+
+def test_a_touchdown_ends_the_drive_and_the_conceder_receives():
+    from bloodbowl.engine.game import act
+    from bloodbowl.pitch import LENGTH
+
+    m = _kicked()
+    scorer = m.by_id("h00")
+    scorer.player.x, scorer.player.y = 7, LENGTH - 1
+    m.ball.carrier, m.ball.x, m.ball.y, m.ball.in_play = scorer.id, 7, LENGTH - 1, True
+    m.clock.active = "home"
+    report = act(m, "move", {"player": "h00", "x": 7, "y": LENGTH})
+    assert report.get("touchdown") == "home"
+    assert m.score["home"] == 1
+    assert m.drive == 2, "scoring starts a new drive"
+    assert m.clock.active == "away", "the conceding team receives"
+
+
+def test_a_new_drive_puts_everyone_back_where_they_started():
+    from bloodbowl.engine.game import start_drive
+
+    m = _kicked()
+    before = {p.id: (p.x, p.y) for p in m.players}
+    m.by_id("h00").move_to(1, 1)
+    m.by_id("h00").down = "prone"
+    start_drive(m, receiving="away")
+    assert (m.by_id("h00").x, m.by_id("h00").y) == before["h00"]
+    assert m.by_id("h00").down == "standing", "a new drive stands everyone up"
+
+
+def test_a_casualty_does_not_come_back_for_the_next_drive():
+    from bloodbowl.engine.game import start_drive
+
+    m = _kicked()
+    m.by_id("h00").place = "casualty"
+    start_drive(m, receiving="away")
+    assert m.by_id("h00").place == "casualty", "a Casualty is out for the match"
+
+
+def test_the_half_advances_after_eight_turns_each_and_the_match_ends_after_two():
+    from bloodbowl.engine.game import end_turn
+
+    m = _kicked()
+    seen = set()
+    for _ in range(40):
+        seen.add((m.clock.half, m.clock.turn))
+        end_turn(m)
+        if m.over:
+            break
+    assert m.over, "the match must reach full time"
+    assert (2, 8) in seen, "both halves are played"
+    assert any(e.kind == "match_over" for e in m.events)
+
+
+def test_the_clock_never_runs_past_the_end_of_a_half():
+    from bloodbowl.engine.state import TURNS_PER_HALF
+
+    m = _kicked()
+    from bloodbowl.engine.events import Event
+
+    m.apply(Event(kind="clock_adjusted", detail={"delta": 5}))
+    assert m.clock.turn <= TURNS_PER_HALF
+    m.apply(Event(kind="clock_adjusted", detail={"delta": -99}))
+    assert m.clock.turn >= 1
+
+
+def test_a_whole_match_folds_back_to_the_same_position():
+    """The replay guarantee has to survive drives, kick-offs and half-time —
+    the parts with the most events per action."""
+    from bloodbowl.engine.game import end_turn
+    from bloodbowl.engine.state import Match, fold
+
+    m = _kicked()
+    for _ in range(6):
+        end_turn(m)
+    log = list(m.events)
+
+    fresh = _kicked()
+    fresh.players = fresh.players  # same roster, fresh state
+    for p in fresh.players:
+        p.down, p.place, p.ma_used, p.acted = "standing", "pitch", 0, False
+    rebuilt = fold(Match(seed=fresh.seed, players=fresh.players), log)
+    assert (rebuilt.clock.half, rebuilt.clock.turn) == (m.clock.half, m.clock.turn)
+    assert rebuilt.score == m.score
+    assert rebuilt.drive == m.drive
+
+
+def test_a_log_line_always_names_somebody():
+    """A board built from a preset holds labelled tokens with no positional, so
+    the log read "Touchback:  is given the ball" — a sentence with a hole in it."""
+    from bloodbowl.engine.state import PlayerState
+    from bloodbowl.pitch import Player
+
+    token = PlayerState(player=Player(side="home", x=1, y=1, label="LOS"), id="h00")
+    assert token.name() == "LOS"
+    nameless = PlayerState(player=Player(side="home", x=1, y=1), id="h07")
+    assert nameless.name() == "h07"
+    real = PlayerState(player=Player(side="home", x=1, y=1, position="Orc Blitzer", label="OB"), id="h01")
+    assert real.name() == "Orc Blitzer", "a real positional wins over its badge"

@@ -98,7 +98,7 @@ export function render() {
   }
 
   const c = m.clock || {};
-  $("#clock").textContent = `H${c.half} · turn ${c.turn}/${c.turns_per_half}`;
+  $("#clock").textContent = `H${c.half} · turn ${c.turn}/${c.turns_per_half} · drive ${m.drive || 1}`;
   $("#score").textContent = `${m.score.home} – ${m.score.away}`;
   const active = $("#activeSide");
   active.textContent = `${c.active} to act`;
@@ -364,6 +364,18 @@ export function wire(onChanged) {
     } catch (e) {
       fail(e);
     }
+    render();
+    await renderLog();
+  });
+  $("#kickoff").addEventListener("click", async () => {
+    try {
+      const r = await api("/game/kickoff", json({}));
+      state.match = r.match;
+      ok();
+    } catch (e) {
+      fail(e);
+    }
+    teardown();
     render();
     await renderLog();
   });

@@ -28,9 +28,9 @@ def validate(match: Match, cmd: dict) -> Legality:
     if p.place != "pitch" or p.down != "standing":
         return Legality(False, "only a Standing player on the pitch can hand the ball off")
     if match.ball.carrier != p.id:
-        return Legality(False, f"{p.player.position} is not holding the ball")
+        return Legality(False, f"{p.name()} is not holding the ball")
     if p.acted:
-        return Legality(False, f"{p.player.position} has already acted this turn")
+        return Legality(False, f"{p.name()} has already acted this turn")
 
     t = match.by_id(str(cmd.get("target") or ""))
     if t is None:
@@ -59,7 +59,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             kind="ball_dropped",
             actor=p.id,
             detail={"x": t.x, "y": t.y},
-            text=f"{p.player.position} hands the ball to {t.player.position}.",
+            text=f"{p.name()} hands the ball to {t.name()}.",
         )
     )
     rec.absorb(catch(match, t, dice))
@@ -70,7 +70,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             kind="note",
             actor=p.id,
             detail={"acted": True},
-            text=f"{p.player.position}'s Hand-off Action is over.",
+            text=f"{p.name()}'s Hand-off Action is over.",
         )
     )
     held = match.ball.carrier == t.id
@@ -79,11 +79,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         events=rec.events,
         # A dropped hand-off is a turnover — the ball hit the ground on your turn.
         turnover=not held,
-        text=(
-            f"{t.player.position} takes the hand-off."
-            if held
-            else f"{t.player.position} drops the hand-off — turnover."
-        ),
+        text=(f"{t.name()} takes the hand-off." if held else f"{t.name()} drops the hand-off — turnover."),
         unmodelled=unmodelled,
     )
 

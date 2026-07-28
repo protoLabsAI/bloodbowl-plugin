@@ -328,6 +328,35 @@ def _tools(cfg: dict):
         return json.dumps(out)
 
     @tool
+    def bb_game_kickoff(receiving: str = "") -> str:
+        """Start the next drive: everyone back to their setup, a kick, the
+        Kick-off Event, and the ball landing.
+
+        Normally automatic — a Touchdown ends the drive and the conceding team
+        receives — so this is for starting one by hand. The reply names the
+        Kick-off Event and says whether the engine applied it or only reported it.
+        """
+        from .engine.game import start_drive
+        from .store import load_match, save_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress"})
+        side = receiving if receiving in ("home", "away") else m.opponent(m.clock.active)
+        before = len(m.events)
+        start_drive(m, receiving=side)
+        save_match(m)
+        return json.dumps(
+            {
+                "ok": True,
+                "drive": m.drive,
+                "receiving": side,
+                "log": [e.text for e in m.events[before:] if e.text],
+                "match": m.to_dict(include_log=False),
+            }
+        )
+
+    @tool
     def bb_game_log(last: int = 20) -> str:
         """What has happened, most recent last, with the dice that decided it.
 
@@ -497,6 +526,7 @@ def _tools(cfg: dict):
         bb_game_act,
         bb_game_odds,
         bb_game_end_turn,
+        bb_game_kickoff,
         bb_game_log,
         bb_game_abandon,
     ]

@@ -67,6 +67,16 @@ class PlayerState:
         except ValueError:
             return 0
 
+    def name(self) -> str:
+        """What to call this player in the log.
+
+        A board built from a preset holds labelled TOKENS with no positional, so
+        `position` is empty for them — and "Touchback:  is given the ball" is a
+        sentence with a hole in it. Falls back through label to id so a log line
+        always names somebody.
+        """
+        return self.player.position or self.player.label or self.id
+
     def has_skill(self, name: str) -> bool:
         want = name.casefold()
         return any(s.casefold().startswith(want) for s in (self.player.skills or []))
@@ -151,6 +161,10 @@ class Match:
     clock: Clock = field(default_factory=Clock)
     score: dict = field(default_factory=lambda: {"home": 0, "away": 0})
     over: bool = False
+    drive: int = 0
+    # Where everyone stood when this drive kicked off. A new drive puts the teams
+    # back rather than asking the operator to rebuild the board after every score.
+    setup: list = field(default_factory=list)
     events: list = field(default_factory=list)
 
     # --- lookup -----------------------------------------------------------
@@ -253,6 +267,33 @@ class Match:
             self.ball.carrier = ""
             self.ball.x, self.ball.y = int(d.get("x", self.ball.x)), int(d.get("y", self.ball.y))
 
+        elif kind == "drive_started":
+            self.drive = int(d.get("drive") or self.drive + 1)
+            self.setup = [dict(row) for row in (d.get("setup") or [])]
+            for row in self.setup:
+                p = self.by_id(str(row.get("id") or ""))
+                if p is None:
+                    continue
+                p.move_to(int(row["x"]), int(row["y"]))
+                p.down = "standing"
+                p.place = "pitch"
+                p.ma_used, p.acted, p.dodge_reroll_used = 0, False, False
+            # A Knocked-out player misses the drive; a Casualty misses the match.
+            for p in self.players:
+                if p.place == "knocked_out" and not any(r.get("id") == p.id for r in self.setup):
+                    p.place = "reserves"
+
+        elif kind == "clock_adjusted":
+            delta = int(d.get("delta") or 0)
+            self.clock.turn = max(1, min(TURNS_PER_HALF, self.clock.turn + delta))
+
+        elif kind == "half_time":
+            self.clock.half = int(d.get("half") or self.clock.half + 1)
+            self.clock.turn = 1
+
+        elif kind == "match_over":
+            self.over = True
+
         elif kind == "touchdown":
             # Scoring is a Turnover and the end of a Drive. The ball leaves play
             # until the next kick-off, so nothing downstream can keep scoring with
@@ -303,6 +344,7 @@ class Match:
             "clock": self.clock.to_dict(),
             "score": dict(self.score),
             "over": self.over,
+            "drive": self.drive,
         }
         if include_log:
             d["events"] = [e.to_dict() for e in self.events]
