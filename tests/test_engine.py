@@ -1996,3 +1996,239 @@ def test_the_turn_ledger_is_cleared_by_the_next_turn_and_survives_a_fold():
     end_turn(m)
     end_turn(m)
     assert m.turn_actions == {}
+
+
+# --- the Foul Action -------------------------------------------------------
+
+
+def _foul(m, pid, target, dice, **cmd):
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    return actions.get("foul")["resolve"](m, {"player": pid, "target": target, **cmd}, dice)
+
+
+def _floored(m, pid, how="prone"):
+    from bloodbowl.engine.events import Event
+
+    m.apply(Event(kind="player_placed_prone", actor=pid, detail={"down": how}))
+    return m
+
+
+def test_a_foul_may_only_target_a_player_who_is_already_down():
+    """The exact complement of the Block: "The player must finish their Move
+    Action adjacent to a Prone or Stunned opposition player in order to perform
+    the Foul Action." A Block needs a Standing target; a Foul needs one that
+    isn't, and neither is a special case of the other."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    standing = actions.get("foul")["validate"](m, {"player": "h00", "target": "a01"})
+    assert not standing.ok and "Standing" in standing.reason and "Block them" in standing.reason
+
+    _floored(m, "a01")
+    assert actions.get("foul")["validate"](m, {"player": "h00", "target": "a01"}).ok
+    # …and now the Block is the one that is refused. The two are exclusive.
+    blocked = actions.get("block")["validate"](m, {"player": "h00", "target": "a01"})
+    assert not blocked.ok and "Standing" in blocked.reason
+
+
+def test_foul_assists_modify_the_armour_roll_not_strength():
+    """ "the player making the Foul Action may apply a +1 modifier for each
+    Offensive Assist, and apply a -1 modifier for each Defensive Assist."
+
+    A Block spends its assists on STRENGTH, before any dice. Carrying that habit
+    over would put the assists in the wrong place and still look plausible.
+    """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    # h00 fouls a01; h02 assists; a03 marks h00 and cancels nothing but assists back.
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6), ("home", 8, 14, 6), ("away", 6, 13, 6))
+    _floored(m, "a01")
+    d = actions.get("foul")["validate"](m, {"player": "h00", "target": "a01"}).detail
+    assert d["offensive_assists"] == 1, d
+    assert d["defensive_assists"] == 1, d
+    assert d["armour_modifier"] == 0
+
+    out = _foul(m, "h00", "a01", _dice([3, 3, 6, 6, 4]))
+    armour = next(r for e in out.events for r in e.rolls if r.kind == "Armour")
+    assert armour.modifier == 0
+
+
+def test_the_armour_roll_actually_carries_the_assist_modifier():
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6), ("home", 8, 14, 6), ("home", 6, 14, 6))
+    _floored(m, "a01")
+    out = _foul(m, "h00", "a01", _dice([3, 4, 6, 6, 4]))
+    armour = next(r for e in out.events for r in e.rolls if r.kind == "Armour")
+    assert armour.modifier == 2, "two Offensive Assists, +1 each"
+    assert armour.total == 3 + 4 + 2
+
+
+def test_a_clean_foul_is_not_a_turnover_and_ends_the_activation():
+    """ "Regardless of the outcome" only bites on a natural double. Get away with
+    it and the turn goes on — the Foul just ends that player's activation."""
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    _floored(m, "a01")
+    out = _foul(m, "h00", "a01", _dice([2, 5]))  # 7 vs AV 9+, no double, armour holds
+    assert out.ok and not out.turnover
+    assert m.by_id("h00").done is True
+    assert m.by_id("h00").place == "pitch"
+    assert not any(e.kind == "player_sent_off" for e in out.events)
+
+
+@pytest.mark.parametrize(
+    "script,where",
+    [
+        # A double that FAILS to break armour still sends you off — the third die
+        # is Argue the Call, which a sending-off always triggers.
+        ([3, 3, 4], "Armour Roll"),
+        ([6, 5, 4, 4, 3], "Injury Roll"),  # armour breaks on 6+5, injury is a double
+    ],
+)
+def test_a_natural_double_on_either_roll_sends_the_fouler_off(script, where):
+    """ "Regardless of the outcome, if during a Foul Action a natural double is
+    rolled for EITHER the Armour Roll or Injury Roll, then the player performing
+    the Foul Action is Sent-off." A double that fails to break armour still counts,
+    which is the part that reads as a bug when it happens to you."""
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    _floored(m, "a01")
+    out = _foul(m, "h00", "a01", _dice(script))
+    assert any(e.kind == "player_sent_off" for e in out.events), f"no sending-off from {where} {script}"
+    assert out.turnover, "a Sent-off player on the active team causes a Turnover"
+
+
+def test_a_natural_double_is_natural_so_assists_cannot_create_or_hide_one():
+    """ "a NATURAL double" — the raw dice, before the assist modifier."""
+    from bloodbowl.engine.actions.foul import _natural_double
+
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6), ("home", 8, 14, 6))
+    _floored(m, "a01")
+    # 3 and 5 with +1 from the assist totals 9, which breaks AV 9+ — but 3 and 5
+    # is not a double, and the Injury Roll behind it (6 and 5) is not one either,
+    # so nobody is sent off however tempting that "9" looks.
+    out = _foul(m, "h00", "a01", _dice([3, 5, 6, 5]))
+    armour = next(r for e in out.events for r in e.rolls if r.kind == "Armour")
+    assert armour.modifier == 1 and armour.dice == [3, 5]
+    assert _natural_double(out.events) is None
+    assert not any(e.kind == "player_sent_off" for e in out.events)
+
+
+def test_a_sent_off_player_leaves_for_good_and_does_not_come_back_next_drive():
+    """ "immediately removed from the pitch and will play no further part in the
+    game" — so unlike a Knocked-out player they must not reappear at the next
+    kick-off, and unlike a Casualty they are their own kind of gone."""
+    from bloodbowl.engine.game import start_drive
+
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    _floored(m, "a01")
+    _foul(m, "h00", "a01", _dice([3, 3, 2]))  # double on the armour, then Argue rolls 2
+    assert m.by_id("h00").place == "sent_off"
+
+    m.setup = [{"id": "h00", "x": 7, "y": 13}, {"id": "a01", "x": 7, "y": 14}]
+    start_drive(m, receiving="home", dice=_dice([3, 1, 4, 4, 3, 3]))
+    assert m.by_id("h00").place == "sent_off", "a Sent-off player came back for the next drive"
+
+
+@pytest.mark.parametrize(
+    "argue,stays,bans",
+    [(6, True, False), (1, False, True), (4, False, False)],
+)
+def test_argue_the_call(argue, stays, bans):
+    """1   "YOU'RE OUTTA HERE!"   still Sent-off, and the Coach may not argue again
+    2-5  "I DON'T CARE!"        still Sent-off
+     6   "WELL, WHEN YOU PUT IT LIKE THAT…"  placed back in the square they were
+         in and NOT Sent-off — "though a Turnover is still caused."
+    """
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    _floored(m, "a01")
+    out = _foul(m, "h00", "a01", _dice([3, 3, argue]))
+
+    p = m.by_id("h00")
+    assert (p.place == "pitch") is stays, f"argue {argue} -> place {p.place}"
+    if stays:
+        assert (p.x, p.y) == (7, 13), "placed back in the square they were in"
+    assert out.turnover, "a Turnover is caused either way"
+    assert ("home" in m.argue_banned) is bans
+
+
+def test_an_ejected_coach_may_not_argue_again_this_game():
+    """The ban is per SIDE and per MATCH — one of the few things a new turn does
+    not clear."""
+    from bloodbowl.engine.game import end_turn
+
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6), ("home", 6, 13, 6), ("away", 6, 14, 6))
+    _floored(m, "a01")
+    _foul(m, "h00", "a01", _dice([3, 3, 1]))  # caught, and the coach is ejected
+    assert m.argue_banned == ["home"]
+
+    end_turn(m)
+    end_turn(m)  # back round to home
+    assert m.argue_banned == ["home"], "a new turn must not clear the ejection"
+
+    _floored(m, "a03")
+    out = _foul(m, "h02", "a03", _dice([4, 4]))  # caught again; no Argue roll offered
+    assert m.by_id("h02").place == "sent_off"
+    assert not any(r.kind == "Argue the Call" for e in out.events for r in e.rolls)
+    assert any("may not Argue the Call again" in (e.text or "") for e in out.events)
+
+
+def test_the_rulebooks_worked_foul_example():
+    """Reproduced from the S3 text:
+
+    "the Tomb Kings Blitzer makes an Armour Roll for the Bretonnian Squire they
+     are fouling, rolling a 6 and a 3, which breaks their armour. They then make
+     an Injury Roll and roll a double 2, causing the Tomb Kings Blitzer to be
+     Sent-off and the Bretonnian Squire to be Stunned. The Tomb Kings Coach
+     attempts to Argue the Call and rolls a 1, meaning that the Tomb Kings Blitzer
+     is still Sent-off and the Coach cannot Argue the Call for the remainder of
+     the game!"
+    """
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    m.by_id("a01").player.AV = "8+"  # 6+3 = 9 must break it, as in the example
+    _floored(m, "a01")
+    out = _foul(m, "h00", "a01", _dice([6, 3, 2, 2, 1]))
+
+    armour = next(r for e in out.events for r in e.rolls if r.kind == "Armour")
+    assert armour.dice == [6, 3] and armour.passed, "which breaks their armour"
+    injury = next(r for e in out.events for r in e.rolls if r.kind == "Injury")
+    assert injury.dice == [2, 2]
+    assert m.by_id("a01").down == "stunned", "the Bretonnian Squire to be Stunned"
+    assert m.by_id("h00").place == "sent_off", "the Tomb Kings Blitzer to be Sent-off"
+    assert m.argue_banned == ["home"], "the Coach cannot Argue the Call for the remainder of the game"
+
+
+def test_mighty_blow_does_not_apply_to_a_foul():
+    """ "Whenever this player Knocks Down an opposition player during a BLOCK
+    ACTION" — a Foul is not one. Passing the fouler as the responsible player
+    would have handed them a +1 the rules do not give."""
+    m = _match(("home", 7, 13, 6, "3+", ["Mighty Blow"]), ("away", 7, 14, 6))
+    _floored(m, "a01")
+    out = _foul(m, "h00", "a01", _dice([4, 4, 3]))
+    armour = next(r for e in out.events for r in e.rolls if r.kind == "Armour")
+    assert armour.modifier == 0, "Mighty Blow leaked into a Foul"
+
+
+def test_only_one_foul_per_team_per_turn():
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6), ("home", 6, 13, 6), ("away", 6, 14, 6))
+    _floored(m, "a01")
+    _floored(m, "a03")
+    assert _foul(m, "h00", "a01", _dice([2, 5])).ok
+    second = actions.get("foul")["validate"](m, {"player": "h02", "target": "a03"})
+    assert not second.ok and "one Foul Action this turn" in second.reason
+
+
+def test_legal_moves_offers_the_foul_with_the_risk_spelled_out():
+    from bloodbowl.engine.game import legal_moves
+
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6), ("away", 8, 13, 6))
+    _floored(m, "a01")
+    out = legal_moves(m, "h00")
+    assert [f["target"] for f in out["fouls"]] == ["a01"], "only the one already down"
+    assert [b["target"] for b in out["blocks"]] == ["a02"], "and only the standing one is blockable"
+    assert "natural double" in out["fouls"][0]["sending_off_on"]
+    assert out["fouls"][0]["may_argue"] is True

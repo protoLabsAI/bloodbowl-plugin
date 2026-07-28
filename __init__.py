@@ -286,6 +286,12 @@ def _tools(cfg: dict):
           "blitz"   — with ``target``: DECLARES a Blitz against them. Rolls
                       nothing. Then "move" as normal, and "block" that same
                       target once adjacent — see below
+          "foul"    — with ``target``, an ADJACENT opponent who is already Prone
+                      or Stunned. The mirror of a Block, which needs a Standing
+                      target. A natural double on either the Armour or Injury
+                      Roll gets your player SENT OFF for the rest of the match
+                      and causes a turnover — the engine then rolls Argue the
+                      Call for you
           "handoff" — with ``target``, an ADJACENT team-mate who must Catch it
           "pass"    — with ``x``/``y``, the target SQUARE. Check bb_game_legal
                       first: it gives the range band and the modifier
@@ -318,7 +324,7 @@ def _tools(cfg: dict):
         cmd = {"player": player, "x": int(x), "y": int(y)}
         if action == "block":
             cmd.update({"target": target, "choice": int(choice), "follow_up": bool(follow_up)})
-        elif action in ("handoff", "blitz"):
+        elif action in ("handoff", "blitz", "foul"):
             cmd["target"] = target
         before = len(m.events)
         report = act(m, action, cmd)

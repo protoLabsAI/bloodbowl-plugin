@@ -59,6 +59,11 @@ older edition — or a language model — would say:
 | Pass, Hand-off, Secure and Foul each allow a **free Move first** | the action stands alone |
 | Most Actions are **once per TEAM per turn** | once per player |
 | Move and Block are explicitly **not** capped | capped like the rest |
+| A Foul may only target a **Prone or Stunned** player | anyone adjacent |
+| Foul assists modify the **Armour Roll**, not Strength | Strength, as in a Block |
+| A **natural double on either roll** sends the fouler off | only on a break |
+| A successful Argue the Call **still causes a Turnover** | it undoes everything |
+| Rolling a 1 bans that Coach from arguing **for the game** | for that foul |
 
 **One trap when reading the KB:** chunk boundaries can put a heading above the
 wrong body. A search hit labelled `BLOCK (ACTIVE)` actually contained *Multiple
@@ -299,29 +304,33 @@ being the struck errata — which is the worst possible input for this agent.
 ## 6. What's done, and what's next
 
 **Playable now:** set up (by hand, by agent, or from a preset) → kick-off → move,
-block, blitz, hand-off, Secure the Ball, pass → injuries → touchdowns → drives →
-half-time → full time.
+block, blitz, foul, hand-off, Secure the Ball, pass → injuries → touchdowns →
+drives → half-time → full time.
 
-Actions: `move`, `block`, `blitz`, `handoff`, `secure`, `pass`.
+Actions: `move`, `block`, `blitz`, `foul`, `handoff`, `secure`, `pass`.
 Skills modelled: Block, Dodge, Guard, Jump Up, Mighty Blow, Prehensile Tail,
 Thick Skull. Everything else is reported as unmodelled.
 
 ### Next, roughly in order
 
-1. **Foul**, and the Argue the Call / sending-off rules that go with it.
-2. **The remaining ~100 skills** as hook registrations. The registry is built for
+1. **The remaining ~100 skills** as hook registrations. The registry is built for
    this: a new skill is one decorated function, not an edit to an action.
-3. **Kick-off events that need a choice** (High Kick, Solid Defence, Quick Snap,
+2. **Kick-off events that need a choice** (High Kick, Solid Defence, Quick Snap,
    Blitz!) — these need a way for the engine to *ask* the coach mid-resolution,
    which does not exist yet and is a genuine design question.
-4. **Team Re-rolls**, which several kick-off events and much of real play depend on.
-5. **A setup phase**, so each drive can be set up afresh rather than reusing the
+3. **Team Re-rolls**, which several kick-off events and much of real play depend on.
+4. **A setup phase**, so each drive can be set up afresh rather than reusing the
    opening positions.
 
 ### Known simplifications, all deliberate and all stated in the code
 
 - The drive setup is captured once, at the first kick-off, and reused.
 - The Casualty Roll (D16 table) is not made; a Casualty just leaves the pitch.
+- Argue the Call is rolled for you rather than offered as a choice. The rules say
+  a Coach "MAY attempt" it, but declining is never better: 2-5 changes nothing and
+  only a 1 costs anything, and a 1 costs the same whether or not you argued this
+  particular call. If a Skill ever makes declining worthwhile, this becomes a
+  choice — which is the same design question as the kick-off events below.
 - No Weather, Inducements, Cheerleaders, Assistant Coaches or Fan Factor.
 - The Throw-in direction is thrown straight back in from the edge crossed; the real
   Throw-in Template is a diagram.

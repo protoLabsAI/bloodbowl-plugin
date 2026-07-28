@@ -44,7 +44,7 @@ class _gone:
     """Stands in for a player id that is no longer in the match, so a stale setup
     row cannot crash a kick-off."""
 
-    place = "casualty"
+    place = "casualty"  # any of the never-come-back places will do
 
 
 def start_drive(match: Match, receiving: str, dice=None, aim=None) -> list[Event]:
@@ -69,7 +69,8 @@ def start_drive(match: Match, receiving: str, dice=None, aim=None) -> list[Event
     # the honest simplification while there is no setup PHASE to do it in — the
     # operator can always rearrange the board and start a fresh match.)
     setup = match.setup or [{"id": p.id, "x": p.x, "y": p.y} for p in match.players if p.place in ("pitch", "reserves")]
-    setup = [row for row in setup if (match.by_id(str(row["id"])) or _gone()).place != "casualty"]
+    gone = ("casualty", "sent_off")
+    setup = [row for row in setup if (match.by_id(str(row["id"])) or _gone()).place not in gone]
     events = [
         Event(
             kind="drive_started",
@@ -285,6 +286,11 @@ def legal_moves(match: Match, player_id: str) -> dict:
                 "x": foe.x,
                 "y": foe.y,
                 "position": foe.player.position,
+                # `name` rather than `position` alone: a board built from a preset
+                # holds labelled TOKENS with no positional, and the panel was
+                # printing raw ids like "h07" at them. PlayerState.name() is where
+                # that fallback already lives — the view must not re-derive it.
+                "name": foe.name(),
                 **legal.detail,
             }
         )
@@ -303,8 +309,39 @@ def legal_moves(match: Match, player_id: str) -> dict:
                 continue
             blitz["available"] = True
             blitz["targets"].append(
-                {"target": foe.id, "x": foe.x, "y": foe.y, "position": foe.player.position, **legal.detail}
+                {
+                    "target": foe.id,
+                    "x": foe.x,
+                    "y": foe.y,
+                    "position": foe.player.position,
+                    "name": foe.name(),
+                    **legal.detail,
+                }
             )
+
+    # Fouls: adjacent opponents already on the floor. Offered separately from
+    # blocks because they are the exact complement — a Block needs a Standing
+    # target, a Foul needs one that is not — and because the interesting number is
+    # not the odds of hurting them but the odds of being caught, which the detail
+    # spells out rather than leaving to be recalled.
+    fouls = []
+    kick = actions.get("foul")
+    if kick is not None:
+        for foe in match.on_pitch(match.opponent(p.side)):
+            legal = kick["validate"](match, {"player": player_id, "target": foe.id})
+            if legal.ok:
+                fouls.append(
+                    {
+                        "target": foe.id,
+                        "x": foe.x,
+                        "y": foe.y,
+                        "position": foe.player.position,
+                        "name": foe.name(),
+                        **legal.detail,
+                    }
+                )
+
+    blitz["targets"].sort(key=lambda t: (t["steps"], not t["can_block"]))
 
     # Ball actions this player could take right now, so the view and the coach
     # both learn about Secure the Ball from the engine rather than being expected
@@ -341,6 +378,7 @@ def legal_moves(match: Match, player_id: str) -> dict:
         "squares": squares,
         "blocks": blocks,
         "blitz": blitz,
+        "fouls": fouls,
         "ball": match.ball.to_dict(),
         "ball_actions": ball_actions,
     }
