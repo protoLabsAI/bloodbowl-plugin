@@ -42,6 +42,8 @@ Start a match from the board and play it. The engine owns the rules:
   crowd pushes, follow-up
 - **Blitzing** — one per team per turn: declare a target, run at them, hit them,
   and keep running. The Block costs a square of movement and will Rush for it.
+- **Fouling** — the boot in, on a player already down; assists modify the armour
+  roll, a natural double gets you Sent off, and the engine argues the call
 - **Injury** — armour, the injury table, Stunned / Knocked-out / Casualty
 - **The ball** — pick up, Secure the Ball, hand-off, passing with ranges and
   interceptions, bounces, catches, touchdowns

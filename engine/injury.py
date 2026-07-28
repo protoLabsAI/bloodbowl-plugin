@@ -60,8 +60,15 @@ def knock_down(match, player, dice, by=None, cause: str = "Knocked Down") -> lis
     return events
 
 
-def risk_injury(match, player, dice, by=None) -> list[Event]:
-    """Armour, and the injury behind it if the armour breaks."""
+def risk_injury(match, player, dice, by=None, armour_modifier: int = 0) -> list[Event]:
+    """Armour, and the injury behind it if the armour breaks.
+
+    ``armour_modifier`` exists for the Foul Action, which is the one route here
+    that modifies the Armour Roll directly: "the player making the Foul Action may
+    apply a +1 modifier for each Offensive Assist, and apply a -1 modifier for each
+    Defensive Assist." A Block spends its assists on Strength instead, before any
+    of this, which is why nothing else passes it.
+    """
     events: list[Event] = []
 
     # Mighty Blow: +1 to EITHER the Armour or the Injury roll, "after the roll has
@@ -77,7 +84,13 @@ def risk_injury(match, player, dice, by=None) -> list[Event]:
         mighty = ctx.value
 
     av = armour_target(player)
-    armour = roll_2d6(dice, "Armour", av, note=f"AV {player.player.AV}")
+    armour = roll_2d6(
+        dice,
+        "Armour",
+        av,
+        modifier=armour_modifier,
+        note=f"AV {player.player.AV}" + (" · Foul assists" if armour_modifier else ""),
+    )
     spent_on_armour = 0
     if mighty and not armour.passed and armour.total + mighty >= av:
         spent_on_armour = mighty

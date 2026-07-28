@@ -17,7 +17,10 @@ from ..pitch import LENGTH, Player, in_bounds
 
 # Where a player can be. A knocked-out player has to go somewhere, and "off the
 # pitch" is three different places with three different rules.
-PLACES = ("pitch", "reserves", "knocked_out", "casualty")
+# A Sent-off player is its own place, not a Casualty: "immediately removed from
+# the pitch and will play no further part in the game" — no Apothecary, no return
+# between drives, and a league would treat the two completely differently.
+PLACES = ("pitch", "reserves", "knocked_out", "casualty", "sent_off")
 UPRIGHT = ("standing", "prone", "stunned")
 
 TURNS_PER_HALF = 8
@@ -185,6 +188,10 @@ class Match:
     # it. Kept on the Match rather than the player because the limit belongs to
     # the TEAM — a second player declaring one is what has to be refused.
     blitz: dict = field(default_factory=dict)
+    # Coaches ejected for arguing: "may not attempt to Argue the Call for the
+    # remainder of the game". Per SIDE and per MATCH — one of the few things here
+    # that a new turn does not clear.
+    argue_banned: list = field(default_factory=list)
     # Which Actions this team has spent this turn: action name -> player id. S3
     # caps most Actions at one per team per Turn ("Only a single Pass Action can
     # be declared each Turn"), with Move and Block named as the exceptions.
@@ -235,6 +242,27 @@ class Match:
                     p.acted = p.done = False
                     p.action = ""
                     p.dodge_reroll_used = False
+
+        elif kind == "player_sent_off":
+            p = self.by_id(event.actor)
+            if p is not None:
+                p.place = "sent_off"
+                p.acted = p.done = True
+                if self.ball.carrier == p.id:
+                    self.ball.carrier = ""
+
+        elif kind == "player_reinstated":
+            # Argue the Call, on a 6: "placed back in the square they were in".
+            p = self.by_id(event.actor)
+            if p is not None:
+                p.place = "pitch"
+                p.move_to(int(d.get("x", p.x)), int(d.get("y", p.y)))
+
+        elif kind == "argue_the_call":
+            if str(d.get("outcome")) == "ejected_coach":
+                side = str(d.get("side") or "")
+                if side and side not in self.argue_banned:
+                    self.argue_banned.append(side)
 
         elif kind == "blitz_declared":
             self.blitz = {"player": event.actor, "target": str(d.get("target") or ""), "blocked": False}
@@ -340,14 +368,15 @@ class Match:
             self.setup = [dict(row) for row in (d.get("setup") or [])]
             for row in self.setup:
                 p = self.by_id(str(row.get("id") or ""))
-                if p is None:
+                if p is None or p.place in ("casualty", "sent_off"):
                     continue
                 p.move_to(int(row["x"]), int(row["y"]))
                 p.down = "standing"
                 p.place = "pitch"
                 p.ma_used, p.acted, p.done, p.dodge_reroll_used = 0, False, False, False
                 p.action = ""
-            # A Knocked-out player misses the drive; a Casualty misses the match.
+            # A Knocked-out player misses the drive; a Casualty misses the match;
+            # a Sent-off player is gone for good and must never be set up again.
             for p in self.players:
                 if p.place == "knocked_out" and not any(r.get("id") == p.id for r in self.setup):
                     p.place = "reserves"
@@ -415,6 +444,7 @@ class Match:
             "over": self.over,
             "drive": self.drive,
             "blitz": dict(self.blitz),
+            "argue_banned": list(self.argue_banned),
             "turn_actions": dict(self.turn_actions),
         }
         if include_log:

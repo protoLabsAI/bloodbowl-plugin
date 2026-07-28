@@ -247,6 +247,16 @@ button.primary { background: var(--pl-color-accent); color: var(--pl-color-fg-on
 }
 .blitzrow { border-left: 2px solid var(--pl-color-status-warning); padding-left: 4px; }
 
+/* A Foul target: someone already on the floor. Dotted rather than dashed or
+   solid, because it is the third distinct decision on this board and the coach
+   has to tell them apart at a glance — a Block is free, a Blitz costs the team's
+   one per turn, and a Foul risks losing the player for the match. */
+.cell.foulable {
+  cursor: pointer;
+  box-shadow: inset 0 0 0 2px var(--pl-color-status-info);
+}
+.foulrow { border-left: 2px dotted var(--pl-color-status-info); padding-left: 4px; }
+
 /* Ball actions. Secure the Ball is new in S3 and nobody will think to try it
    unless the board offers it, so it gets its own mark rather than hiding in a
    menu. */

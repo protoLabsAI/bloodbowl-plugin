@@ -570,6 +570,82 @@ def _play(browser, url: str, w: int, h: int) -> None:
             "no legal squares after declaring, so the player cannot walk to the target",
         )
 
+    # The Foul. Three different decisions now share the board — a Block is free, a
+    # Blitz spends the team's one per turn, a Foul risks losing the player for the
+    # match — so the check that matters is whether a coach can tell them apart.
+    # Put somebody on the floor first rather than hoping: engineering the state is
+    # the only way this section tests fouling rather than testing the dice.
+    floored = page.evaluate("""async () => {
+      const post = (p, b) => fetch("/api/plugins/bloodbowl" + p, {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(b),
+      }).then(r => r.json());
+      await post("/game/new", {seed: 7});
+      for (let i = 0; i < 12; i++) {
+        const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
+        const down = m.players.find(p => p.place === "pitch" && p.down !== "standing");
+        if (down) {
+          const near = m.players.find(p => p.place === "pitch" && p.side !== down.side
+            && p.down === "standing" && !p.done && p.side === m.clock.active
+            && Math.max(Math.abs(p.x - down.x), Math.abs(p.y - down.y)) === 1);
+          if (near) return {x: near.x, y: near.y, id: near.id, victim: down.id};
+        }
+        // Nobody down yet: throw a block, or pass the turn and try again.
+        let threw = false;
+        for (const p of m.players.filter(q => q.side === m.clock.active && !q.done && q.down === "standing")) {
+          const l = await (await fetch(`/api/plugins/bloodbowl/game/legal?player=${p.id}`)).json();
+          if ((l.blocks || []).length) {
+            await post("/game/act", {action: "block", player: p.id, target: l.blocks[0].target});
+            threw = true; break;
+          }
+        }
+        if (!threw) await post("/game/end-turn", {});
+      }
+      return null;
+    }""")
+    check("a downed player with a standing opponent beside them could be arranged", floored is not None)
+    if floored is not None:
+        page.reload(wait_until="networkidle")
+        page.wait_for_selector(".cell", timeout=10000)
+        if theme.exists():
+            page.add_style_tag(content=theme.read_text())
+        page.wait_for_timeout(400)
+        page.locator(f'.cell[data-x="{floored["x"]}"][data-y="{floored["y"]}"] .pc').click()
+        page.wait_for_timeout(600)
+        check("Foul targets are marked on the board", page.locator(".cell.foulable").count() > 0)
+        check(
+            "a Foul target is marked differently from a Block target",
+            page.locator(".cell.foulable.blockable").count() == 0,
+            "one square carried both marks, so the two decisions are indistinguishable",
+        )
+        pane = page.locator("#sel").inner_text()
+        check(
+            "the pane names the risk rather than only the odds",
+            "Foul" in pane and "natural double" in pane,
+            pane[-120:].replace("\n", " / "),
+        )
+        page.mouse.move(4, 4)
+        page.wait_for_timeout(200)
+        page.screenshot(path=str(SHOTS / "foul.png"), full_page=True)
+
+        before = page.locator("#log").inner_text()
+        page.locator(".cell.foulable .pc").first.click()
+        with contextlib.suppress(Exception):
+            page.wait_for_function(
+                "prev => document.querySelector('#log').innerText !== prev", arg=before, timeout=8000
+            )
+        after = page.locator("#log").inner_text()
+        last = acted[-1] if acted else {}
+        check(
+            "clicking a Foul target puts the boot in, and is not refused",
+            "Standing" not in str(last.get("text", "")) and "Fouls" in after,
+            f"text={str(last.get('text'))[:80]!r}",
+        )
+        check(
+            "and the log says what the referee made of it",
+            "referee" in after,
+            after[:120].replace("\n", " / "),
+        )
+
     # The ball. A loose ball that renders under a player badge is indistinguishable
     # from no ball at all, which is the failure worth checking here.
     check(
