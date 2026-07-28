@@ -10,11 +10,33 @@ first change; it is mostly a list of things that cost time to learn.
 **The engine adjudicates; the agent coaches.**
 
 This plugin exists because of a verified failure in the agent it was built for: it
-reproduces retrieved data exactly and then fabricates the prose around it. Four
+reproduces retrieved data exactly and then fabricates the prose around it. Five
 observed instances, each while the correct passage was in hand — including
 inventing a notation legend (`G = Guarded, A = All…`) directly beneath its own
 correct list of the six skill categories. The trigger is *confidence, not
 difficulty*: it stops checking when something feels obvious.
+
+**The fifth is the one to read, because it happened while the agent was using this
+plugin.** Asked to play a Foul, it drove the engine correctly and quoted every roll
+verbatim. Then, reporting `unmodelled_skills`, it explained one of them unprompted:
+
+> "Break Tackle (h03, Orc Blitzer) — the engine doesn't apply it, so the dodge I
+> just made was a raw AG 3+ roll rather than using Break Tackle's **ST-based
+> alternative**."
+
+The engine's half was exactly right: Break Tackle *is* unmodelled and *was* named.
+The gloss is wrong. Its own knowledge base says:
+
+> BREAK TACKLE (ACTIVE): "Once per Turn, when this player attempts to Dodge, they
+> may apply a **+1 modifier to the Agility Test** if they have a Strength
+> characteristic of 3 or lower, a +2 modifier … if 4, or a +3 modifier … if 5 or
+> higher."
+
+A modifier to the Agility Test, not an alternative to it. So: structured output
+correct, prose around it invented, source available and unread. That is the whole
+thesis of this codebase in one reply — and the reason to keep pushing facts into
+tool output and rulings into the engine, rather than into anything the model
+narrates freely.
 
 Two consequences run through the whole design:
 
@@ -332,7 +354,12 @@ Thick Skull. Everything else is reported as unmodelled.
 ### Next, roughly in order
 
 1. **The remaining ~100 skills** as hook registrations. The registry is built for
-   this: a new skill is one decorated function, not an edit to an action.
+   this: a new skill is one decorated function, not an edit to an action. **The
+   source is ready**: `core_rules/skills_and_traits` is in the KB, one heading per
+   skill, tagged `(ACTIVE)` or `(PASSIVE)`, e.g. `BREAK TACKLE (ACTIVE)` followed
+   by its text. Quote it beside the hook the way the seven modelled ones do. This
+   is also the fix for the confabulation in §1 — a modelled skill cannot be
+   glossed.
 2. **Kick-off events that need a choice** (High Kick, Solid Defence, Quick Snap,
    Blitz!) — these need a way for the engine to *ask* the coach mid-resolution,
    which does not exist yet and is a genuine design question.
