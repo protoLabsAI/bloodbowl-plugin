@@ -70,14 +70,24 @@ def registry():
 
 @pytest.fixture
 def app(registry):
-    """A FastAPI app with the plugin's routers mounted EXACTLY as register() mounts
-    them — so the tests exercise the real paths, not the ones the rules recommend."""
+    """A FastAPI app with the plugin's routers mounted as the HOST mounts them.
+
+    Not merely "as register() hands them over": the host keys mounted routers on
+    (plugin_id, prefix) and SKIPS any already mounted, so a second router for one
+    prefix has all of its routes discarded. Mounting every router blindly made this
+    fixture more forgiving than production and would have let a whole dead API
+    pass its own tests.
+    """
     import bloodbowl
     from fastapi import FastAPI
 
     bloodbowl.register(registry)
     application = FastAPI()
+    mounted: set[str] = set()
     for router, prefix in registry.routers:
+        if prefix in mounted:
+            continue
+        mounted.add(prefix)
         application.include_router(router, prefix=prefix)
     return application
 

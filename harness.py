@@ -71,7 +71,16 @@ def serve() -> tuple[str, object]:
     reg = _Reg()
     mod.register(reg)
     app = FastAPI()
+    # Mount the way the HOST mounts: keyed on prefix, skipping any already
+    # mounted. Blindly including every router made the harness more forgiving than
+    # production, which is the one thing a harness must never be — it hid a second
+    # router on a shared prefix whose routes the real host was discarding.
+    mounted: set[str] = set()
     for router, prefix in reg.routers:
+        if prefix in mounted:
+            print(f"  !! host would DROP a second router on {prefix}", flush=True)
+            continue
+        mounted.add(prefix)
         app.include_router(router, prefix=prefix)
 
     port = _free_port()

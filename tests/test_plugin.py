@@ -46,7 +46,8 @@ def test_register_mounts_the_routers_on_the_right_prefixes(registry):
 
     bloodbowl.register(registry)
     prefixes = sorted(p for _, p in registry.routers)
-    assert prefixes == ["/api/plugins/bloodbowl", "/api/plugins/bloodbowl", "/plugins/bloodbowl"]
+    # ONE router per prefix — the host discards a second one for the same prefix.
+    assert prefixes == ["/api/plugins/bloodbowl", "/plugins/bloodbowl"]
 
 
 def test_register_contributes_the_tools(registry):
@@ -745,3 +746,28 @@ def test_the_version_moved_past_the_first_release():
     """
     parts = tuple(int(n) for n in str(MANIFEST["version"]).split("."))
     assert parts >= (0, 5, 0), MANIFEST["version"]
+
+
+def test_the_plugin_registers_at_most_one_router_per_prefix(registry):
+    """The host mounts plugin routers keyed on (plugin_id, prefix) and SKIPS any
+    already mounted, so a second router on a shared prefix has every route
+    silently discarded. That is exactly what happened: the whole game API 404'd on
+    the live agent while the board's routes worked, because the data router was
+    registered first.
+
+    The harness could not catch it — it mounted every router blindly, making it
+    more forgiving than production. It now mimics the host's dedup."""
+    import bloodbowl
+
+    bloodbowl.register(registry)
+    prefixes = [p for _, p in registry.routers]
+    assert len(prefixes) == len(set(prefixes)), f"two routers share a prefix: {prefixes}"
+
+
+def test_the_game_routes_are_actually_reachable(client):
+    """The regression, end to end through the mounted app rather than the router
+    object — a route that exists but is never mounted looks identical from inside."""
+    base = "/api/plugins/bloodbowl"
+    assert client.get(f"{base}/game").status_code == 200, "the match API must be mounted"
+    assert client.get(f"{base}/presets").status_code == 200, "and so must the board's"
+    assert client.post(f"{base}/game/abandon", json={}).status_code == 200
