@@ -23,10 +23,11 @@ def register(registry) -> None:
     cfg = registry.config or {}
 
     try:
-        from .api import build_data_router, build_view_router
+        from .api import build_data_router, build_game_router, build_view_router
 
         registry.register_router(build_view_router(cfg), prefix="/plugins/bloodbowl")
         registry.register_router(build_data_router(cfg), prefix="/api/plugins/bloodbowl")
+        registry.register_router(build_game_router(cfg), prefix="/api/plugins/bloodbowl")
     except Exception:  # noqa: BLE001 — a router failure must not sink the tools
         log.exception("[bloodbowl] mounting routers failed")
 
