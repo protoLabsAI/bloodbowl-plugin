@@ -36,7 +36,7 @@ from ..rules import (
 )
 from ..skills import SkillContext, hooks_for, unmodelled_skills
 from ..state import Match
-from . import Legality, Outcome, Recorder, register
+from . import Legality, Outcome, Recorder, ended, register
 
 
 def validate(match: Match, cmd: dict) -> Legality:
@@ -369,13 +369,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             )
         )
     else:
-        rec.emit(
-            Event(
-                kind="activation_ended",
-                actor=p.id,
-                text=f"{p.name()}'s Block Action is over.",
-            )
-        )
+        rec.emit(ended(p.id, "blitz" if blitzing else "block", f"{p.name()}'s Block Action is over."))
 
     return Outcome(
         ok=not turnover,

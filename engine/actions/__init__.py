@@ -19,6 +19,62 @@ from dataclasses import dataclass, field
 
 _ACTIONS: dict[str, dict[str, Callable]] = {}
 
+# S3 caps most Actions at one per TEAM per Turn, and says so action by action:
+# "Only a single Pass Action can be declared each Turn", and the same sentence for
+# Hand-off, Secure the Ball, Blitz, Foul and Throw Team-mate. The two exceptions
+# are stated just as plainly — "There is no limit to the number of players that
+# can declare a Move Action each Turn", and the same for Block.
+ONCE_PER_TURN = ("blitz", "pass", "handoff", "secure", "foul")
+
+# Actions that begin with a free Move: "A player that declares a Pass Action may
+# also make a free Move Action before making the pass, but may not continue moving
+# after the pass has been made." Hand-off, Secure the Ball, Foul and Throw
+# Team-mate all carry the same clause.
+FREE_MOVE_FIRST = ("pass", "handoff", "secure", "foul")
+
+
+def refuse_if_spent(match, p, action: str) -> str:
+    """Why ``p`` may not declare ``action`` right now — "" if they may.
+
+    The subtlety is which flag to ask. ``acted`` means an activation has BEGUN,
+    and a single step of movement sets it — so testing it here refused the free
+    Move the rules explicitly grant, and move-then-pass was impossible for as long
+    as passing has existed. ``done`` means the activation is OVER, which is the
+    real question.
+
+    ``p.action`` covers the one case where an activation is neither: a player
+    part-way through a Blitz has declared their Action already, so they may not
+    now decide it was a Pass.
+    """
+    if p.done:
+        return f"{p.name()}'s activation is over"
+    if p.action and p.action != action:
+        return f"{p.name()} has already declared a {p.action.title()} Action this activation"
+    used = match.turn_actions.get(action)
+    if used and used != p.id:
+        who = match.by_id(used)
+        return f"{match.clock.active} have already used their one {action.title()} Action this turn" + (
+            f" — {who.name()} did" if who is not None else ""
+        )
+    return ""
+
+
+def ended(actor: str, action: str, text: str = ""):
+    """The event that closes an activation, tagged with the Action it closes.
+
+    The tag is what lets ``apply`` record a once-per-turn Action without knowing
+    any rules: the decision is made here, beside the quoted text, and the event
+    carries the answer.
+    """
+    from ..events import Event
+
+    return Event(
+        kind="activation_ended",
+        actor=actor,
+        detail={"action": action, "once_per_turn": action in ONCE_PER_TURN},
+        text=text,
+    )
+
 
 @dataclass
 class Legality:

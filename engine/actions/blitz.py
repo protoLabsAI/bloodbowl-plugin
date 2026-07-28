@@ -45,7 +45,7 @@ from ..events import Event
 from ..rules import MAX_RUSHES, STAND_UP_COST, steps_to_mark
 from ..skills import SkillContext, apply_value_hook, unmodelled_skills
 from ..state import Match
-from . import Legality, Outcome, Recorder, register
+from . import Legality, Outcome, Recorder, refuse_if_spent, register
 
 
 def reach(match: Match, p, t) -> dict:
@@ -87,14 +87,13 @@ def validate(match: Match, cmd: dict) -> Legality:
     if p.down == "stunned":
         return Legality(False, "a Stunned player cannot act; they recover to Prone at the end of the turn")
     if p.acted:
+        # Unlike a Pass or a Foul, a Blitz's free Move is part of the Blitz and
+        # comes AFTER the declaration, so a player who has already moved cannot
+        # then decide it was a Blitz.
         return Legality(False, f"{p.name()} has already acted this turn")
-    if match.blitz:
-        who = match.by_id(str(match.blitz.get("player") or ""))
-        return Legality(
-            False,
-            f"{match.clock.active} have already used their one Blitz this turn"
-            + (f" — {who.name()} declared it" if who is not None else ""),
-        )
+    spent = refuse_if_spent(match, p, "blitz")
+    if spent:
+        return Legality(False, spent)
 
     t = match.by_id(str(cmd.get("target") or ""))
     if t is None:
