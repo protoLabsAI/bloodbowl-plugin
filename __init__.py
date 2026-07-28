@@ -127,6 +127,67 @@ def _tools(cfg: dict):
             return json.dumps({"ok": False, "error": f"unknown star {name!r}", "known": [x["name"] for x in stars()]})
         return json.dumps({"ok": True, "star": s})
 
+    # --- preset setups ----------------------------------------------------
+
+    @tool
+    def bb_presets() -> str:
+        """Named setups you can recall by name — shipped reference shapes plus
+        anything saved on this instance.
+
+        Use these instead of describing a formation square by square. "Put the
+        standard defence up" is both faster and less likely to go wrong than
+        eleven separate placements.
+        """
+        from .presets import all_presets
+
+        items = [{"name": p.name, "note": p.note, "builtin": p.builtin, **p.counts()} for p in all_presets()]
+        return json.dumps({"ok": True, "count": len(items), "presets": items})
+
+    @tool
+    def bb_preset_load(name: str, side: str = "", mirror: bool = False) -> str:
+        """Put a preset onto the practice board, replacing what is there.
+
+        ``side`` loads only one side's players. ``mirror`` flips a home shape into
+        the away half, so one stored defence serves both as a defence and as the
+        thing you practise attacking into.
+
+        Shipped presets store ROLES rather than positionals, so they arrive as
+        labelled tokens on the right squares — swap in real players with
+        bb_pitch_place.
+        """
+        from .presets import apply_to, find
+        from .store import save as save_board
+
+        preset = find(name)
+        if preset is None:
+            from .presets import all_presets
+
+            return json.dumps(
+                {"ok": False, "error": f"no preset named {name!r}", "known": [p.name for p in all_presets()]}
+            )
+        sc = apply_to(preset, side=side if side in ("home", "away") else "", mirror=bool(mirror), current=load())
+        save_board(sc)
+        return json.dumps({"ok": True, "loaded": preset.name, "note": preset.note, "board": sc.to_dict()})
+
+    @tool
+    def bb_preset_save(name: str, note: str = "") -> str:
+        """Save the current board as a named preset so it can be recalled later."""
+        from .presets import save as save_preset
+        from .store import load
+
+        preset, err = save_preset(name, load(), note=note)
+        if preset is None:
+            return json.dumps({"ok": False, "error": err})
+        return json.dumps({"ok": True, "saved": preset.name, **preset.counts()})
+
+    @tool
+    def bb_preset_delete(name: str) -> str:
+        """Delete a saved preset. Shipped presets cannot be deleted."""
+        from .presets import delete
+
+        done, err = delete(name)
+        return json.dumps({"ok": done, "error": err} if not done else {"ok": True, "deleted": name})
+
     # --- playing a match --------------------------------------------------
     #
     # The division of labour is the point. The coach decides WHAT to do and says
@@ -426,6 +487,10 @@ def _tools(cfg: dict):
         bb_pitch_place,
         bb_pitch_clear,
         bb_pitch_review,
+        bb_presets,
+        bb_preset_load,
+        bb_preset_save,
+        bb_preset_delete,
         bb_game_new,
         bb_game_state,
         bb_game_legal,

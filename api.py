@@ -176,6 +176,46 @@ def build_data_router(cfg: dict | None = None):
                     p.PA, p.AV, p.skills, p.cost, p.role = full.PA, full.AV, full.skills, full.cost, full.role
         return _ok(sc)
 
+    @r.get("/presets")
+    async def _presets() -> dict:
+        from .presets import all_presets
+
+        return {"presets": [p.to_dict() for p in all_presets()]}
+
+    @r.post("/presets/load")
+    async def _preset_load(body: dict) -> dict:
+        from .presets import apply_to, find
+
+        preset = find(str((body or {}).get("name") or ""))
+        if preset is None:
+            raise HTTPException(status_code=404, detail=f"no preset named {(body or {}).get('name')!r}")
+        side = str((body or {}).get("side") or "")
+        sc = apply_to(
+            preset,
+            side=side if side in ("home", "away") else "",
+            mirror=bool((body or {}).get("mirror")),
+            current=load(),
+        )
+        return _ok(sc)
+
+    @r.post("/presets/save")
+    async def _preset_save(body: dict) -> dict:
+        from .presets import save as save_preset
+
+        preset, err = save_preset(str((body or {}).get("name") or ""), load(), note=str((body or {}).get("note") or ""))
+        if preset is None:
+            raise HTTPException(status_code=400, detail=err)
+        return {"ok": True, "saved": preset.name}
+
+    @r.post("/presets/delete")
+    async def _preset_delete(body: dict) -> dict:
+        from .presets import delete
+
+        done, err = delete(str((body or {}).get("name") or ""))
+        if not done:
+            raise HTTPException(status_code=400, detail=err)
+        return {"ok": True}
+
     @r.get("/previous")
     async def _previous() -> dict:
         """The board as it was before the last write — the restart-proof safety net
