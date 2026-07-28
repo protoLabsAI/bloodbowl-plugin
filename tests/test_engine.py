@@ -2232,3 +2232,51 @@ def test_legal_moves_offers_the_foul_with_the_risk_spelled_out():
     assert [b["target"] for b in out["blocks"]] == ["a02"], "and only the standing one is blockable"
     assert "natural double" in out["fouls"][0]["sending_off_on"]
     assert out["fouls"][0]["may_argue"] is True
+
+
+def test_a_blitz_may_be_re_pointed_before_anything_happens_but_not_after():
+    """A deliberate permissive edge, pinned so it stays deliberate.
+
+    Declaring a Blitz rolls no dice and changes nothing but the declaration, so a
+    coach who names the wrong target may re-point it — the team's one Blitz is
+    still spent by the same player either way. The moment ANYTHING happens it is
+    settled: a step of movement sets `acted`, and so does the Blitz's Block, and
+    both refuse a re-declaration.
+
+    That bound is what makes it safe. Without it, re-declaring would reset
+    `blocked` to False and buy a second Blitz Block, which is a real exploit
+    rather than a convenience.
+    """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 10, 6), ("away", 7, 14, 6), ("away", 9, 14, 6))
+
+    assert _declare(m, "h00", "a01").ok
+    assert _declare(m, "h00", "a02").ok, "re-pointing before moving is allowed"
+    assert m.blitz == {"player": "h00", "target": "a02", "blocked": False}
+    assert m.turn_actions["blitz"] == "h00", "still the team's one Blitz, same player"
+
+    assert _move(m, "h00", 7, 11, _dice([])).ok
+    after_moving = actions.get("blitz")["validate"](m, {"player": "h00", "target": "a01"})
+    assert not after_moving.ok, "once the player has moved the declaration is settled"
+
+    # And no second Blitz Block: block, then try to re-point and block again.
+    m2 = _match(("home", 7, 13, 6), ("away", 7, 14, 6), ("away", 8, 12, 6))
+    _declare(m2, "h00", "a01")
+    assert _block(m2, "h00", "a01", _dice([], [["push_back"]]), follow_up=False).ok
+    again = actions.get("blitz")["validate"](m2, {"player": "h00", "target": "a02"})
+    assert not again.ok, "re-declaring after the Blitz's Block would buy a second one"
+
+
+def test_a_second_player_never_gets_the_teams_blitz():
+    """The limit that actually matters, asked of a DIFFERENT player — the one the
+    re-pointing case must not weaken."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 10, 6), ("home", 8, 10, 6), ("away", 7, 14, 6))
+    assert _declare(m, "h00", "a02").ok
+    other = actions.get("blitz")["validate"](m, {"player": "h01", "target": "a02"})
+    assert not other.ok
+    assert "one Blitz Action this turn" in other.reason and "Home 0" in other.reason
