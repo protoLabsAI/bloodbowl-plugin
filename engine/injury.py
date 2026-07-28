@@ -28,6 +28,14 @@ STUNNED_MAX = 7
 KO_MAX = 9
 
 
+def _emit(match, sink: list, event: Event) -> Event:
+    """Apply and record. Every helper in here applies as it goes, so a caller
+    appends the returned list rather than replaying it."""
+    match.apply(event)
+    sink.append(event)
+    return event
+
+
 def knock_down(match, player, dice, by=None, cause: str = "Knocked Down") -> list[Event]:
     """Put a player on the ground and resolve what it cost them.
 
@@ -42,6 +50,12 @@ def knock_down(match, player, dice, by=None, cause: str = "Knocked Down") -> lis
             text=f"{player.player.position} is {cause} and lies Prone.",
         )
     ]
+    match.apply(events[0])
+    # Losing the ball is part of going down, not a separate thing a caller has to
+    # remember — every route here (Block, failed Dodge, failed Rush) drops it.
+    from .ball import drop
+
+    events.extend(drop(match, player, dice, reason=f"is {cause}"))
     events.extend(risk_injury(match, player, dice, by=by))
     return events
 
@@ -72,14 +86,16 @@ def risk_injury(match, player, dice, by=None) -> list[Event]:
         armour.passed = True
         armour.note = (armour.note + " · Mighty Blow +1").strip(" ·")
 
-    events.append(
+    _emit(
+        match,
+        events,
         Event(
             kind="armour_roll",
             actor=player.id,
             rolls=[armour],
             text=f"Armour on {player.player.position}: {armour.describe()}"
             + (" — armour is broken." if armour.passed else " — the armour holds."),
-        )
+        ),
     )
     if not armour.passed:
         return events
@@ -99,7 +115,9 @@ def risk_injury(match, player, dice, by=None) -> list[Event]:
 
     injury.passed = outcome != "stunned"
     injury.note = (injury.note + f" · {outcome}").strip(" ·")
-    events.append(
+    _emit(
+        match,
+        events,
         Event(
             kind="injury_roll",
             actor=player.id,
@@ -107,15 +125,17 @@ def risk_injury(match, player, dice, by=None) -> list[Event]:
             detail={"outcome": outcome},
             text=f"Injury on {player.player.position}: {total} — {_INJURY_TEXT[outcome]}."
             + ("".join(f" {n}." for n in tctx.notes)),
-        )
+        ),
     )
-    events.append(
+    _emit(
+        match,
+        events,
         Event(
             kind="player_condition",
             actor=player.id,
             detail={"outcome": outcome},
             text=f"{player.player.position} is {_INJURY_TEXT[outcome]}.",
-        )
+        ),
     )
     return events
 

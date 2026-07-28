@@ -21,6 +21,7 @@ got wrong from memory, and therefore the parts with a test each:
 from __future__ import annotations
 
 from ...pitch import in_bounds
+from ..ball import check_touchdown
 from ..dice import BLOCK_LABELS
 from ..events import Event
 from ..injury import knock_down, risk_injury
@@ -98,8 +99,16 @@ def _push_to(match: Match, blocker, target, prefer: tuple | None = None):
     return on_pitch[0], "occupied"
 
 
-def _do_push(match: Match, blocker, target, dice, rec: Recorder, prefer=None, depth: int = 0) -> None:
-    """Push one player, following the chain if the square is taken."""
+def _do_push(match: Match, blocker, target, dice, rec: Recorder, pushed: list, prefer=None, depth: int = 0) -> None:
+    """Push one player, following the chain if the square is taken.
+
+    Everyone shoved is collected in ``pushed`` rather than scored here. S3 lets a
+    push into the End Zone score, but ALSO says a player "Knocked Down as they
+    move into the opposition End Zone" does not — and a POW pushes first and knocks
+    down second. Scoring at the moment of the push gets the POW case wrong, so the
+    check waits until the result has fully resolved and then simply asks who is
+    Standing in an End Zone holding the ball.
+    """
     if depth > 12:  # a ring of players cannot push forever
         return
 
@@ -114,7 +123,7 @@ def _do_push(match: Match, blocker, target, dice, rec: Recorder, prefer=None, de
                 text=f"{target.player.position} is Pushed into the Crowd.",
             )
         )
-        rec.extend(risk_injury(match, target, dice, by=blocker))
+        rec.absorb(risk_injury(match, target, dice, by=blocker))
         return
 
     if kind == "occupied":
@@ -122,7 +131,7 @@ def _do_push(match: Match, blocker, target, dice, rec: Recorder, prefer=None, de
         # the player who is now occupying their square". Prone and Stunned players
         # can be chain pushed too.
         occupant = match.at(*square)
-        _do_push(match, target, occupant, dice, rec, depth=depth + 1)
+        _do_push(match, target, occupant, dice, rec, pushed, depth=depth + 1)
 
     rec.emit(
         Event(
@@ -132,6 +141,7 @@ def _do_push(match: Match, blocker, target, dice, rec: Recorder, prefer=None, de
             text=f"{target.player.position} is Pushed Back to ({square[0]},{square[1]}).",
         )
     )
+    pushed.append(target)
 
 
 def _uses_block(match: Match, p) -> tuple[bool, list[str]]:
@@ -191,16 +201,17 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     )
 
     turnover = False
+    pushed: list = []
     follow_up = bool(cmd.get("follow_up", True))
     dodged = face == "stumble" and t.has_skill("Dodge")
 
     def _push_and_follow(knock_after: bool) -> None:
         vacated = (t.x, t.y)
-        _do_push(match, p, t, dice, rec, prefer=cmd.get("push_to"))
+        _do_push(match, p, t, dice, rec, pushed, prefer=cmd.get("push_to"))
         if knock_after and t.place == "pitch":
             # "Apply the Push Back result. The target is then Knocked Down in the
             # square they are now in" — so the Armour Roll happens where they land.
-            rec.extend(knock_down(match, t, dice, by=p))
+            rec.absorb(knock_down(match, t, dice, by=p))
         if follow_up and match.at(*vacated) is None:
             rec.emit(
                 Event(
@@ -228,7 +239,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         _push_and_follow(knock_after=True)
 
     elif face == "player_down":
-        rec.extend(knock_down(match, p, dice, by=t))
+        rec.absorb(knock_down(match, p, dice, by=t))
         turnover = True
 
     elif face == "both_down":
@@ -240,9 +251,14 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 continue
             going_down.append((who, other))
         for who, other in going_down:
-            rec.extend(knock_down(match, who, dice, by=other))
+            rec.absorb(knock_down(match, who, dice, by=other))
         # A turnover only when it is the ACTIVE team's player who went down.
         turnover = any(who.id == p.id for who, _ in going_down)
+
+    # Now that everything has resolved, see if anyone ended up Standing in an End
+    # Zone holding the ball — a shove can score, a POW cannot.
+    for who in pushed:
+        rec.absorb(check_touchdown(match, who))
 
     p.acted = True
     rec.emit(

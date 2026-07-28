@@ -32,6 +32,34 @@ def new_match(scenario, seed: int = 0, kicking_to: str = "home") -> Match:
             text=f"Match begins. {m.home_team or 'Home'} vs {m.away_team or 'Away'}.",
         )
     )
+    # No kick-off yet (that is the next milestone), so the ball starts loose on
+    # the centre spot. Stated plainly in the log rather than pretending a kick
+    # happened. If the centre is occupied it steps outward to a free square: a
+    # loose ball under a standing player is a legal state, but it renders beneath
+    # their badge and reads as "there is no ball".
+    from ..pitch import LENGTH, WIDTH, in_bounds
+
+    bx, by = (WIDTH + 1) // 2, (LENGTH + 1) // 2
+    if m.at(bx, by) is not None:
+        for step in range(1, max(WIDTH, LENGTH)):
+            found = next(
+                (
+                    (bx + dx, by + dy)
+                    for dx, dy in ((0, step), (0, -step), (step, 0), (-step, 0))
+                    if in_bounds(bx + dx, by + dy) and m.at(bx + dx, by + dy) is None
+                ),
+                None,
+            )
+            if found:
+                bx, by = found
+                break
+    m.apply(
+        Event(
+            kind="ball_moved",
+            detail={"x": bx, "y": by, "carrier": ""},
+            text=f"The ball is placed loose at ({bx},{by}) — no kick-off is modelled yet.",
+        )
+    )
     m.apply(
         Event(
             kind="turn_started",
@@ -163,10 +191,30 @@ def legal_moves(match: Match, player_id: str) -> dict:
             }
         )
 
+    # Ball actions this player could take right now, so the view and the coach
+    # both learn about Secure the Ball from the engine rather than being expected
+    # to remember that S3 added it.
+    ball_actions = []
+    for name in ("secure", "handoff"):
+        entry = actions.get(name)
+        if entry is None:
+            continue
+        if name == "handoff":
+            for mate in match.on_pitch(p.side):
+                legal = entry["validate"](match, {"player": player_id, "target": mate.id})
+                if legal.ok:
+                    ball_actions.append({"action": name, "target": mate.id, "x": mate.x, "y": mate.y, **legal.detail})
+        else:
+            legal = entry["validate"](match, {"player": player_id})
+            if legal.ok:
+                ball_actions.append({"action": name, "x": match.ball.x, "y": match.ball.y, **legal.detail})
+
     return {
         "ok": True,
         "player": p.to_dict(),
         "movement_left": max(0, p.movement() - p.ma_used),
         "squares": squares,
         "blocks": blocks,
+        "ball": match.ball.to_dict(),
+        "ball_actions": ball_actions,
     }

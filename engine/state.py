@@ -253,6 +253,18 @@ class Match:
             self.ball.carrier = ""
             self.ball.x, self.ball.y = int(d.get("x", self.ball.x)), int(d.get("y", self.ball.y))
 
+        elif kind == "touchdown":
+            # Scoring is a Turnover and the end of a Drive. The ball leaves play
+            # until the next kick-off, so nothing downstream can keep scoring with
+            # a ball that is notionally in someone's hands in an End Zone.
+            side = str(d.get("side") or self.clock.active)
+            self.score[side] = self.score.get(side, 0) + 1
+            self.ball = Ball()
+
+        elif kind == "ball_out_of_bounds":
+            self.ball.carrier = ""
+            self.ball.x, self.ball.y = int(d.get("x", self.ball.x)), int(d.get("y", self.ball.y))
+
         elif kind == "turnover":
             for p in self.players:
                 if p.side == self.clock.active:
