@@ -25,6 +25,10 @@ UPRIGHT = ("standing", "prone", "stunned")
 
 TURNS_PER_HALF = 8
 
+# Player flags a `skill_spent` event may set. An allowlist rather than a bare
+# setattr, so the log cannot reach into a player and set anything it likes.
+ONCE_PER_TURN_FLAGS = ("dodge_reroll_used", "break_tackle_used")
+
 
 @dataclass
 class PlayerState:
@@ -57,8 +61,12 @@ class PlayerState:
     # S3 status: a Standing player that has lost its Tackle Zone. Separate from
     # `down` because such a player is still standing for every other purpose.
     distracted: bool = False
-    # The Dodge Skill re-rolls once per TURN, not per activation.
+    # Skills that are "Once per Turn" rather than once per activation — the Dodge
+    # Skill's re-roll and Break Tackle's modifier. Set through a recorded event
+    # (see `skill_spent`), never assigned: they are state, and state that only the
+    # live object knows is state a folded match plays without.
     dodge_reroll_used: bool = False
+    break_tackle_used: bool = False
 
     @property
     def side(self) -> str:
@@ -106,6 +114,8 @@ class PlayerState:
             "acted": self.acted,
             "done": self.done,
             "action": self.action,
+            "dodge_reroll_used": self.dodge_reroll_used,
+            "break_tackle_used": self.break_tackle_used,
             "distracted": self.distracted,
             "movement": self.movement(),
         }
@@ -241,7 +251,7 @@ class Match:
                     p.ma_used = 0
                     p.acted = p.done = False
                     p.action = ""
-                    p.dodge_reroll_used = False
+                    p.dodge_reroll_used = p.break_tackle_used = False
 
         elif kind == "player_sent_off":
             p = self.by_id(event.actor)
@@ -301,6 +311,15 @@ class Match:
             # allowed to disagree about whether the Block happened.
             if d.get("blitz") and self.blitz.get("player") == event.actor:
                 self.blitz["blocked"] = True
+
+        elif kind == "skill_spent":
+            # A Once-per-Turn Skill being used up. The event names the flag and
+            # apply only honours ones it knows, so a malformed event cannot write
+            # an arbitrary attribute onto a player.
+            p = self.by_id(event.actor)
+            flag = str(d.get("flag") or "")
+            if p is not None and flag in ONCE_PER_TURN_FLAGS:
+                setattr(p, flag, True)
 
         elif kind == "activation_ended":
             # An Action that is over. Recorded rather than set on the player,
@@ -374,7 +393,7 @@ class Match:
                 p.down = "standing"
                 p.place = "pitch"
                 p.ma_used, p.acted, p.done, p.dodge_reroll_used = 0, False, False, False
-                p.action = ""
+                p.action, p.break_tackle_used = "", False
             # A Knocked-out player misses the drive; a Casualty misses the match;
             # a Sent-off player is gone for good and must never be set up again.
             for p in self.players:
@@ -481,6 +500,8 @@ class Match:
                     acted=bool(raw.get("acted")),
                     done=bool(raw.get("done")),
                     action=str(raw.get("action") or ""),
+                    dodge_reroll_used=bool(raw.get("dodge_reroll_used")),
+                    break_tackle_used=bool(raw.get("break_tackle_used")),
                 )
             )
 

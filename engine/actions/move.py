@@ -40,7 +40,7 @@ from ..rules import (
     is_marked,
     markers_of_square,
 )
-from ..skills import SkillContext, apply_value_hook, hooks_for, unmodelled_skills
+from ..skills import SkillContext, apply_value_hook, hooks_for, roll_modifier, unmodelled_skills
 from ..state import Match
 from . import Legality, Outcome, Recorder, register
 
@@ -201,29 +201,68 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
 
     # 3. Dodge, if leaving a Marked square.
     if needs_dodge:
-        modifier = dodge_modifier(match, p, x, y)
+        marking = dodge_modifier(match, p, x, y)
         # An opponent's Skill can modify our roll, so the hook is asked of the
         # players Marking the destination rather than of the one dodging.
-        ctx = SkillContext(match=match, player=p, value=modifier)
+        ctx = SkillContext(match=match, player=p, value=marking)
         for marker in markers_of_square(match, p.side, x, y):
             for skill, fn in hooks_for("opponent_dodge_modifier"):
                 if marker.has_skill(skill):
                     fn(ctx)
         modifier = ctx.value
+        # …and the dodging player's own Skills. `marking` rides along because
+        # Stunty cancels exactly the Marking component and nothing else.
+        mine = roll_modifier(match, p, "dodge", base=modifier, marking=marking, break_tackle_used=p.break_tackle_used)
+        modifier = mine.value
+        if mine.flags.get("break_tackle_spent"):
+            rec.emit(
+                Event(
+                    kind="skill_spent",
+                    actor=p.id,
+                    detail={"flag": "break_tackle_used", "skill": "Break Tackle"},
+                    text=f"{p.name()} uses Break Tackle — once per Turn.",
+                )
+            )
+        note = " ".join(ctx.notes + mine.notes)
 
-        r = roll_target(dice, "Dodge", agility_target(p), modifier)
+        r = roll_target(dice, "Dodge", agility_target(p), modifier, note=note)
         # Both attempts are kept. A log that shows only the successful re-roll
         # hides the failure that forced it, and the coach reads this log.
         dodge_rolls = [r]
         if not r.passed:
+            # "When an opposition player attempts to Dodge away from a square in
+            # this player's Tackle Zone, they cannot use the Dodge Skill." The
+            # square being LEFT, so these are the markers of the origin — not the
+            # ones that set the modifier above.
+            tackled = SkillContext(match=match, player=p)
+            for tackler in markers_of_square(match, p.side, p.x, p.y):
+                for skill, fn in hooks_for("deny_dodge_skill"):
+                    if tackler.has_skill(skill):
+                        fn(tackled)
             # The Dodge Skill is once per TURN, not per activation, so the flag
             # lives on the player and is cleared when their turn starts.
             reroll = SkillContext(match=match, player=p, flags={"dodge_reroll_used": p.dodge_reroll_used})
-            for skill, fn in hooks_for("dodge_reroll"):
-                if p.has_skill(skill):
-                    fn(reroll)
+            if not tackled.flags.get("denied"):
+                for skill, fn in hooks_for("dodge_reroll"):
+                    if p.has_skill(skill):
+                        fn(reroll)
+            elif p.has_skill("Dodge"):
+                rec.emit(
+                    Event(
+                        kind="note",
+                        actor=p.id,
+                        text=f"{p.name()} is Tackled — the Dodge Skill does not apply.",
+                    )
+                )
             if reroll.flags.get("may_reroll"):
-                p.dodge_reroll_used = True
+                rec.emit(
+                    Event(
+                        kind="skill_spent",
+                        actor=p.id,
+                        detail={"flag": "dodge_reroll_used", "skill": "Dodge"},
+                        text=f"{p.name()} uses the Dodge Skill's re-roll — once per Turn.",
+                    )
+                )
                 r = roll_target(dice, "Dodge (re-roll)", agility_target(p), modifier, note="Dodge skill")
                 dodge_rolls.append(r)
 

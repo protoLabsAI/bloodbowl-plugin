@@ -357,8 +357,31 @@ block, blitz, foul, hand-off, Secure the Ball, pass → injuries → touchdowns 
 drives → half-time → full time.
 
 Actions: `move`, `block`, `blitz`, `foul`, `handoff`, `secure`, `pass`.
-Skills modelled: Block, Dodge, Guard, Jump Up, Mighty Blow, Prehensile Tail,
-Thick Skull. Everything else is reported as unmodelled.
+Skills modelled — **17 of 108**: Accurate, Big Hand, Block, Break Tackle, Catch,
+Dodge, Guard, Jump Up, Mighty Blow, Nerves of Steel, Pass, Prehensile Tail,
+Stunty, Sure Hands, Tackle, Thick Skull, Titchy. The other 91 are reported as
+unmodelled *and can still be quoted* — `bb_get_skill` returns the rulebook's text
+for all 108 whether or not the engine applies them.
+
+**Two hooks carry every roll-modifying Skill**, and adding a third would be a
+smell. `roll_modifier` changes the number, `reroll` grants a second go, and the
+TEST'S NAME (`dodge` · `catch` · `pick_up` · `intercept` · `pass`) is in the
+context. Skills that span several tests then read as they are written — Nerves of
+Steel says "to Catch the ball, or … to Pass the ball" and is one `in
+("catch", "pass")`. Two conventions worth knowing before writing the next one:
+
+- `marking` arrives as the PENALTY (negative) and is already folded into `value`.
+  Cancelling it means `value -= marking`. Adding it doubles the exact thing the
+  Skill removes — which is the bug a test caught in Nerves of Steel and Stunty.
+- A modifier that belongs to the MARKER, not the roller, goes in `rules`, not a
+  hook. Titchy's "will not apply a -1 … for Marking" is never applied at all, so
+  there is nothing for a hook on the dodger to cancel.
+
+**Injury hooks run in registration order and Stunty must go first**: it REPLACES
+the table (Stunty Injury Table: 2-6 Stunned · 7-8 KO · 9 Badly Hurt · 10-12
+Casualty) and Thick Skull then ADJUSTS the result. Reversed, a 7 comes out
+Knocked-out when the rules say Stunned. `test_stunty_and_thick_skull_together`
+fails if they are ever swapped.
 
 ### Next, roughly in order
 

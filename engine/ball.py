@@ -28,6 +28,7 @@ from ..pitch import in_bounds
 from .dice import roll_target
 from .events import Event
 from .rules import agility_target, markers_of_square
+from .skills import may_reroll, roll_modifier
 from .state import touchdown_row
 
 # The Random Direction Template: D8 -> one of the eight directions.
@@ -118,14 +119,25 @@ def catch(match, player, dice, depth: int = 0, modifier: int = 0) -> list[Event]
         events.extend(bounce(match, dice, depth=depth))
         return events
 
-    mod = modifier - len(markers_of_square(match, player.side, player.x, player.y))
-    r = roll_target(dice, "Catch", agility_target(player), mod)
+    marking = -len(markers_of_square(match, player.side, player.x, player.y))
+    ctx = roll_modifier(match, player, "catch", base=modifier + marking, marking=marking)
+    mod = ctx.value
+    r = roll_target(dice, "Catch", agility_target(player), mod, note=" ".join(ctx.notes))
+    rolls = [r]
+    if not r.passed:
+        # "This player may re-roll any failed Agility Test when attempting to
+        # Catch the ball." Kept in the log beside the failure it re-rolls, because
+        # a log that shows only the successful second attempt hides the first.
+        allowed, skill = may_reroll(match, player, "catch")
+        if allowed:
+            r = roll_target(dice, "Catch (re-roll)", agility_target(player), mod, note=f"{skill} skill")
+            rolls.append(r)
     if r.passed:
         events.append(
             Event(
                 kind="ball_picked_up",
                 actor=player.id,
-                rolls=[r],
+                rolls=rolls,
                 text=f"{player.name()} catches the ball. {r.describe()}",
             )
         )
@@ -137,7 +149,7 @@ def catch(match, player, dice, depth: int = 0, modifier: int = 0) -> list[Event]
         Event(
             kind="note",
             actor=player.id,
-            rolls=[r],
+            rolls=rolls,
             text=f"{player.name()} fails to catch it. {r.describe()}",
         )
     )
@@ -152,13 +164,21 @@ def pick_up(match, player, dice) -> tuple[list[Event], bool]:
     Failing is a Turnover — which is what makes an unprotected pickup the most
     expensive routine decision in the game.
     """
-    mod = -len(markers_of_square(match, player.side, player.x, player.y))
-    r = roll_target(dice, "Pick up", agility_target(player), mod)
+    marking = -len(markers_of_square(match, player.side, player.x, player.y))
+    ctx = roll_modifier(match, player, "pick_up", base=marking, marking=marking)
+    mod = ctx.value
+    r = roll_target(dice, "Pick up", agility_target(player), mod, note=" ".join(ctx.notes))
+    rolls = [r]
+    if not r.passed:
+        allowed, skill = may_reroll(match, player, "pick_up")
+        if allowed:
+            r = roll_target(dice, "Pick up (re-roll)", agility_target(player), mod, note=f"{skill} skill")
+            rolls.append(r)
     if r.passed:
         ev = Event(
             kind="ball_picked_up",
             actor=player.id,
-            rolls=[r],
+            rolls=rolls,
             text=f"{player.name()} picks the ball up. {r.describe()}",
         )
         match.apply(ev)
@@ -167,7 +187,7 @@ def pick_up(match, player, dice) -> tuple[list[Event], bool]:
     ev = Event(
         kind="note",
         actor=player.id,
-        rolls=[r],
+        rolls=rolls,
         text=f"{player.name()} fumbles the pick-up — turnover. {r.describe()}",
     )
     match.apply(ev)

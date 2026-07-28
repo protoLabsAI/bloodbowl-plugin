@@ -38,7 +38,7 @@ from ..dice import roll_target
 from ..events import Event
 from ..ruler import band, in_corridor
 from ..rules import markers_of_square
-from ..skills import unmodelled_skills
+from ..skills import may_reroll, roll_modifier, unmodelled_skills
 from ..state import Match
 from . import Legality, Outcome, Recorder, ended, refuse_if_spent, register
 
@@ -121,7 +121,18 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     unmodelled = unmodelled_skills(p)
     d = legal.detail
 
-    r = roll_target(dice, "Pass", d["target"], d["modifier"], note=d["range"])
+    # Accurate (+1 on a Quick or Short Pass) and Nerves of Steel (ignore Marking)
+    # both land here; the band and the Marking penalty ride along so each Skill can
+    # read the one it cares about.
+    ctx = roll_modifier(match, p, "pass", base=d["modifier"], marking=d["marking_passer"], range=d["range"])
+    r = roll_target(dice, "Pass", d["target"], ctx.value, note=" ".join([d["range"], *ctx.notes]))
+    if not r.passed and r.dice[0] != 1:
+        # "This player may re-roll any failed Passing Ability Test when performing
+        # a Pass Action." A natural 1 is a Fumble rather than a failed test, and is
+        # resolved below rather than re-rolled.
+        allowed, skill = may_reroll(match, p, "pass")
+        if allowed:
+            r = roll_target(dice, "Pass (re-roll)", d["target"], ctx.value, note=f"{skill} skill")
     # "If the Passing Ability Test is a 1 after modifiers, or the roll is a natural
     # 1" — so a heavily modified pass can fumble on a die that was not a 1.
     fumbled = r.dice[0] == 1 or (r.total is not None and r.total <= 1)
@@ -175,8 +186,9 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
 
     # Interceptions are checked against the square the ball is DESTINED to land in.
     for q in _interceptors(match, p, lx, ly):
-        mod = (-3 if accurate else -2) - len(markers_of_square(match, q.side, q.x, q.y))
-        ir = roll_target(dice, "Intercept", agility_target(q), mod)
+        marking = -len(markers_of_square(match, q.side, q.x, q.y))
+        ictx = roll_modifier(match, q, "intercept", base=(-3 if accurate else -2) + marking, marking=marking)
+        ir = roll_target(dice, "Intercept", agility_target(q), ictx.value, note=" ".join(ictx.notes))
         if ir.passed:
             ev = Event(
                 kind="ball_picked_up",

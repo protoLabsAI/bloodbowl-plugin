@@ -75,6 +75,48 @@ def apply_value_hook(hook: str, ctx: SkillContext, player) -> int:
     return ctx.value
 
 
+# --- the two hooks every roll goes through --------------------------------
+#
+# A Skill that changes a roll changes one of two things: the number, or whether
+# you get a second go. Rather than a hook per test — dodge_modifier,
+# catch_modifier, pickup_modifier — there is ONE of each, and the test's NAME is
+# in the context. Skills that apply to several tests then read as they are
+# written: Nerves of Steel says "when making an Agility Test to Catch the ball, or
+# when making a Passing Ability Test to Pass", and that is one function with one
+# `in ("catch", "pass")`.
+#
+# The tests, by the name the rules use: dodge · catch · pick_up · intercept · pass
+
+
+def roll_modifier(match, player, test: str, base: int = 0, **flags) -> SkillContext:
+    """Every Skill modifier that applies to ``player``'s own ``test`` roll.
+
+    Returns the whole context: ``value`` is the modifier, ``notes`` go in the log
+    (a coach reading "needed 3+, rolled 2 — passed" with no explanation has been
+    handed a mystery rather than an adjudication), and ``flags`` carries anything
+    a once-per-turn Skill needs recorded.
+    """
+    ctx = SkillContext(match=match, player=player, value=base, flags={"test": test, **flags})
+    for skill, fn in hooks_for("roll_modifier"):
+        if player.has_skill(skill):
+            fn(ctx)
+    return ctx
+
+
+def may_reroll(match, player, test: str, **flags) -> tuple[bool, str]:
+    """May ``player`` re-roll this failed ``test``, and under what name?
+
+    Only Skills — Team Re-rolls are a separate thing the engine does not model.
+    """
+    ctx = SkillContext(match=match, player=player, flags={"test": test, **flags})
+    for skill, fn in hooks_for("reroll"):
+        if player.has_skill(skill):
+            fn(ctx)
+            if ctx.flags.get("may_reroll"):
+                return True, skill
+    return False, ""
+
+
 def unmodelled_skills(player) -> list[str]:
     """The Skills this player has that the engine does not implement.
 
@@ -265,19 +307,189 @@ def _mighty_blow(ctx: SkillContext) -> None:
     ctx.value += 1
 
 
+# --- the Stunty Injury Table, and Thick Skull on top of it ----------------
+#
+# ORDER IS LOAD-BEARING HERE. Hooks run in registration order, so Stunty must
+# REPLACE the table before Thick Skull ADJUSTS the result — reversed, a 7 on the
+# Stunty table would come out Knocked-out when the rules say Stunned. The test
+# `test_stunty_and_thick_skull_together` fails if these two are ever swapped.
+
+
+@skill_hook("Stunty", "injury_outcome")
+def _stunty_injury(ctx: SkillContext) -> None:
+    """S3: "If an Injury Roll is made for a player with the Stunty Trait, then use
+    the Stunty Injury Table below instead of the standard one."
+
+        STUNTY INJURY TABLE — 2-6 Stunned · 7-8 Knocked-out · 9 Badly Hurt ·
+        10-12 Casualty
+
+    Badly Hurt is a Casualty for the purposes of a single match ("Remove them from
+    the pitch and place them in the Casualty box"); the League consequence — an
+    automatic Badly Hurt on the Casualty Table rather than a roll — belongs to the
+    Casualty Roll, which this engine does not make either way.
+    """
+    total = ctx.value
+    ctx.flags["outcome"] = "stunned" if total <= 6 else "knocked_out" if total <= 8 else "casualty"
+    ctx.notes.append(f"Stunty: the Stunty Injury Table reads {total} as {ctx.flags['outcome'].replace('_', ' ')}")
+
+
 @skill_hook("Thick Skull", "injury_outcome")
 def _thick_skull(ctx: SkillContext) -> None:
     """S3: "When an Injury Roll is made for this player, they will only be
     Knocked-out on the roll of a 9; a roll of an 8 will be treated as a Stunned
+    result. If this player also has the Stunty Trait, then they will only be
+    Knocked-out on the roll of an 8; a roll of a 7 will be treated as a Stunned
     result."
 
-    (The Stunty interaction — KO only on 8, a 7 becoming Stunned — is not modelled;
-    no roster player here has both, and guessing at it is the failure this engine
-    exists to avoid.)
+    Written as "the lowest roll that still knocks them out", which is the same
+    sentence for both tables and cannot drift apart the way two branches would.
     """
-    if ctx.value == 8 and ctx.flags.get("outcome") == "knocked_out":
+    ko_from = 8 if ctx.player.has_skill("Stunty") else 9
+    if ctx.flags.get("outcome") == "knocked_out" and ctx.value < ko_from:
         ctx.flags["outcome"] = "stunned"
-        ctx.notes.append("Thick Skull turns the 8 into a Stunned")
+        ctx.notes.append(f"Thick Skull turns the {ctx.value} into a Stunned (Knocked-out only from {ko_from})")
+
+
+# --- Skills that modify a roll --------------------------------------------
+
+
+@skill_hook("Break Tackle", "roll_modifier")
+def _break_tackle(ctx: SkillContext) -> None:
+    """S3: "Once per Turn, when this player attempts to Dodge, they may apply a +1
+    modifier to the Agility Test if they have a Strength characteristic of 3 or
+    lower, a +2 modifier … if they have a Strength Characteristic of 4, or a +3
+    modifier … if they have a Strength Characteristic of 5 or higher."
+
+    A MODIFIER to the Agility Test — not, as is tempting to assume, a
+    Strength-based alternative to rolling one. That exact mistake is the
+    confabulation written up in docs/HANDOFF.md §1.
+    """
+    if ctx.flags.get("test") != "dodge" or ctx.flags.get("break_tackle_used"):
+        return
+    from .rules import strength_of
+
+    st = strength_of(ctx.match, ctx.player)
+    bonus = 1 if st <= 3 else 2 if st == 4 else 3
+    ctx.value += bonus
+    ctx.flags["break_tackle_spent"] = True
+    ctx.notes.append(f"Break Tackle: +{bonus} for ST {st}")
+
+
+@skill_hook("Stunty", "roll_modifier")
+def _stunty_dodge(ctx: SkillContext) -> None:
+    """S3: "When this player attempts to Dodge, they do not suffer any negative
+    modifiers to their Agility Test for being Marked by opposition players.
+    Additionally, this player applies a -1 modifier to the Agility Test when
+    attempting to Intercept the ball."
+
+    Only the MARKING penalty is cancelled, and only on a Dodge — a Stunty player
+    still suffers everything else, which is why this adds back exactly the marking
+    component rather than flooring the modifier at zero.
+    """
+    if ctx.flags.get("test") == "dodge":
+        marking = int(ctx.flags.get("marking", 0))
+        if marking:
+            # `marking` arrives as the PENALTY, i.e. negative, and is already in
+            # `value`. Cancelling it means subtracting it back out — adding it
+            # doubles the very thing the Trait is meant to remove.
+            ctx.value -= marking
+            ctx.notes.append(f"Stunty: ignores {marking} for being Marked")
+    elif ctx.flags.get("test") == "intercept":
+        ctx.value -= 1
+        ctx.notes.append("Stunty: -1 to Intercept")
+
+
+@skill_hook("Titchy", "roll_modifier")
+def _titchy(ctx: SkillContext) -> None:
+    """S3: "A player with this Trait may apply a +1 modifier to the Agility Test
+    when attempting to Dodge."
+
+    (Its other half — that a Titchy player does NOT apply their own -1 for Marking
+    an opponent dodging into their Tackle Zone — lives on the marker, not the
+    dodger, and is applied in rules.dodge_modifier.)
+    """
+    if ctx.flags.get("test") == "dodge":
+        ctx.value += 1
+        ctx.notes.append("Titchy: +1 to the Dodge")
+
+
+@skill_hook("Big Hand", "roll_modifier")
+def _big_hand(ctx: SkillContext) -> None:
+    """S3: "This player ignores all negative modifiers when attempting to pick up
+    the ball." ALL of them, not just Marking — so this floors it at zero."""
+    if ctx.flags.get("test") == "pick_up" and ctx.value < 0:
+        ctx.notes.append(f"Big Hand: ignores {ctx.value} when picking up")
+        ctx.value = 0
+
+
+@skill_hook("Nerves of Steel", "roll_modifier")
+def _nerves_of_steel(ctx: SkillContext) -> None:
+    """S3: "This player may ignore any modifiers for being Marked when making an
+    Agility Test to Catch the ball, or when making a Passing Ability Test to Pass
+    the ball." Marked only — a Long Bomb is still a Long Bomb."""
+    if ctx.flags.get("test") in ("catch", "pass"):
+        marking = int(ctx.flags.get("marking", 0))
+        if marking:
+            ctx.value -= marking  # the penalty is already in `value`; take it back out
+            ctx.notes.append(f"Nerves of Steel: ignores {marking} for being Marked")
+
+
+@skill_hook("Accurate", "roll_modifier")
+def _accurate(ctx: SkillContext) -> None:
+    """S3: "When this player performs a Pass Action which is a Quick Pass or a
+    Short Pass, this player may apply a +1 modifier to the Passing Ability Test."
+    """
+    if ctx.flags.get("test") == "pass" and ctx.flags.get("range") in ("Quick Pass", "Short Pass"):
+        ctx.value += 1
+        ctx.notes.append(f"Accurate: +1 on a {ctx.flags.get('range')}")
+
+
+# --- Skills that grant a re-roll ------------------------------------------
+
+
+@skill_hook("Sure Hands", "reroll")
+def _sure_hands(ctx: SkillContext) -> None:
+    """S3: "This player may re-roll the D6 when attempting to pick up the ball,
+    though not when making a Secure the Ball Action."
+
+    The exclusion is the whole point of Secure the Ball — it is already a flat 2+
+    bought by giving up the rest of the activation.
+    """
+    if ctx.flags.get("test") == "pick_up" and not ctx.flags.get("securing"):
+        ctx.flags["may_reroll"] = True
+
+
+@skill_hook("Catch", "reroll")
+def _catch(ctx: SkillContext) -> None:
+    """S3: "This player may re-roll any failed Agility Test when attempting to
+    Catch the ball." """
+    if ctx.flags.get("test") == "catch":
+        ctx.flags["may_reroll"] = True
+
+
+@skill_hook("Pass", "reroll")
+def _pass(ctx: SkillContext) -> None:
+    """S3: "This player may re-roll any failed Passing Ability Test when performing
+    a Pass Action." """
+    if ctx.flags.get("test") == "pass":
+        ctx.flags["may_reroll"] = True
+
+
+@skill_hook("Tackle", "deny_dodge_skill")
+def _tackle(ctx: SkillContext) -> None:
+    """S3: "When an opposition player attempts to Dodge away from a square in this
+    player's Tackle Zone, they cannot use the Dodge Skill. Additionally, when this
+    player performs a Block Action against an opposition player, the opposition
+    player does not count as having the Dodge Skill if a Stumble result is
+    selected."
+
+    Both halves are the same sentence — "you do not have Dodge against me" — so
+    both call this hook, and the caller says which case it is asking about. Note
+    it is the square being LEFT that matters for the first half, not the one being
+    entered.
+    """
+    ctx.flags["denied"] = True
+    ctx.notes.append("Tackle: the Dodge Skill does not apply")
 
 
 @skill_hook("Guard", "may_assist_while_marked")

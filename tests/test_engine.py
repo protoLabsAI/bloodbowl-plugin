@@ -2322,7 +2322,12 @@ def test_break_tackle_reads_as_the_rulebook_has_it():
     assert bt is not None
     assert "modifier to the Agility Test" in bt["text"]
     assert "+1" in bt["text"] and "+2" in bt["text"] and "+3" in bt["text"]
-    assert bt["modelled"] is False, "if this is now modelled, the hook should be quoted here too"
+    # It is modelled now, and the hook that models it quotes this same sentence —
+    # so the catalogue and the engine cannot drift into disagreeing about it.
+    assert bt["modelled"] is True
+    from bloodbowl.engine.skills import _break_tackle
+
+    assert "modifier to the Agility Test" in (_break_tackle.__doc__ or "")
 
 
 def test_a_trait_is_distinguished_from_a_skill():
@@ -2371,3 +2376,217 @@ def test_a_skill_can_be_found_by_what_it_does():
 
     names = {s["name"] for s in find_skills("re-roll")}
     assert {"DODGE", "SURE HANDS", "CATCH", "PASS"} <= names, sorted(names)
+
+
+# --- skills batch one: the ones that attach to rolls the engine already makes ---
+
+
+def _skilled(side, x, y, skills, ma=6, st=3, ag="3+"):
+    return (side, x, y, ma, ag, skills)
+
+
+def _dodge_roll(out, kind="Dodge"):
+    return next(r for e in out.events for r in e.rolls if r.kind == kind)
+
+
+def test_break_tackle_is_a_modifier_scaled_by_strength():
+    """ "a +1 modifier … if they have a Strength characteristic of 3 or lower, a +2
+    … if 4, or a +3 … if 5 or higher." The exact sentence the agent got wrong."""
+    from bloodbowl.engine.rules import strength_of
+
+    for st, want in ((3, 1), (4, 2), (5, 3), (2, 1), (6, 3)):
+        m = _match(("home", 7, 13, 6, "3+", ["Break Tackle"]), ("away", 7, 14, 6))
+        m.by_id("h00").player.ST = str(st)
+        assert strength_of(m, m.by_id("h00")) == st
+        out = _move(m, "h00", 6, 12, _dice([4]))
+        assert _dodge_roll(out).modifier == want, f"ST {st} should give +{want}"
+
+
+def test_break_tackle_is_once_per_turn_and_that_survives_the_fold():
+    """ "Once per Turn" — and the flag has to be recorded, not assigned, or a
+    folded match hands it back. (`dodge_reroll_used` had exactly that bug.)"""
+    from bloodbowl.engine.state import fold
+
+    def board():
+        return _match(("home", 7, 13, 6, "3+", ["Break Tackle"]), ("away", 7, 14, 6), ("away", 5, 11, 6))
+
+    m = board()
+    m.by_id("h00").player.ST = "4"
+    first = _move(m, "h00", 6, 12, _dice([4]))
+    assert m.by_id("h00").break_tackle_used is True
+
+    second = _move(m, "h00", 6, 13, _dice([4]))
+    # Compared rather than asserted flat, because both destinations are Marked and
+    # the point is the +2, not the board.
+    assert _dodge_roll(first).modifier == _dodge_roll(second).modifier + 2, "Break Tackle fired twice in one turn"
+
+    rebuilt = fold(board(), list(m.events))
+    assert rebuilt.by_id("h00").break_tackle_used is True, "the spend did not survive the fold"
+
+
+def test_the_dodge_skills_reroll_also_survives_the_fold():
+    """Same class, found while adding Break Tackle: `p.dodge_reroll_used = True`
+    was an assignment, so a folded match let the Dodge Skill re-roll twice."""
+    from bloodbowl.engine.state import fold
+
+    def board():
+        return _match(("home", 7, 13, 6, "3+", ["Dodge"]), ("away", 7, 14, 6))
+
+    m = board()
+    out = _move(m, "h00", 6, 12, _dice([1, 5]))
+    assert out.ok and len([r for e in out.events for r in e.rolls if r.kind.startswith("Dodge")]) == 2
+    assert m.by_id("h00").dodge_reroll_used is True
+    assert fold(board(), list(m.events)).by_id("h00").dodge_reroll_used is True
+
+
+def test_stunty_ignores_marking_on_a_dodge_but_nothing_else():
+    """ "they do not suffer any negative modifiers … for being Marked by opposition
+    players" — the Marking penalty only, and only on a Dodge."""
+    # Two opponents Marking the destination would normally be -2.
+    m = _match(("home", 7, 13, 6, "3+", ["Stunty"]), ("away", 7, 14, 6), ("away", 5, 11, 6), ("away", 5, 13, 6))
+    out = _move(m, "h00", 6, 12, _dice([4]))
+    assert _dodge_roll(out).modifier == 0, "Stunty should cancel the Marking penalty"
+
+    plain = _match(("home", 7, 13, 6), ("away", 7, 14, 6), ("away", 5, 11, 6), ("away", 5, 13, 6))
+    assert _dodge_roll(_move(plain, "h00", 6, 12, _dice([6]))).modifier == -2
+
+
+def test_stunty_uses_the_stunty_injury_table():
+    """STUNTY INJURY TABLE — 2-6 Stunned · 7-8 Knocked-out · 9 Badly Hurt · 10-12
+    Casualty. The standard table is 2-7 / 8-9 / 10-12, so a 7 is the tell."""
+    from bloodbowl.engine.injury import risk_injury
+
+    for dice_pair, want in (((3, 4), "knocked_out"), ((3, 3), "stunned"), ((4, 5), "casualty")):
+        m = _match(("home", 7, 13, 6, "3+", ["Stunty"]))
+        m.by_id("h00").player.AV = "2+"  # armour always breaks, so the injury rolls
+        events = risk_injury(m, m.by_id("h00"), _dice([6, 6, *dice_pair]))
+        outcome = next(e.detail["outcome"] for e in events if e.kind == "injury_roll")
+        assert outcome == want, f"total {sum(dice_pair)} should be {want}, got {outcome}"
+
+    # …and a 7 on the STANDARD table is only Stunned.
+    m = _match(("home", 7, 13, 6))
+    m.by_id("h00").player.AV = "2+"
+    events = risk_injury(m, m.by_id("h00"), _dice([6, 6, 3, 4]))
+    assert next(e.detail["outcome"] for e in events if e.kind == "injury_roll") == "stunned"
+
+
+def test_stunty_and_thick_skull_together():
+    """ "If this player also has the Stunty Trait, then they will only be
+    Knocked-out on the roll of an 8; a roll of a 7 will be treated as a Stunned
+    result."
+
+    ORDER-SENSITIVE: Stunty must replace the table before Thick Skull adjusts the
+    result. Swap the two registrations and this fails, which is the point.
+    """
+    from bloodbowl.engine.injury import risk_injury
+
+    def hurt(skills, pair):
+        m = _match(("home", 7, 13, 6, "3+", skills))
+        m.by_id("h00").player.AV = "2+"
+        events = risk_injury(m, m.by_id("h00"), _dice([6, 6, *pair]))
+        return next(e.detail["outcome"] for e in events if e.kind == "injury_roll")
+
+    assert hurt(["Stunty", "Thick Skull"], (3, 4)) == "stunned", "a 7 must become Stunned"
+    assert hurt(["Stunty", "Thick Skull"], (4, 4)) == "knocked_out", "an 8 still knocks them out"
+    assert hurt(["Stunty"], (3, 4)) == "knocked_out", "without Thick Skull a 7 is a KO"
+    assert hurt(["Thick Skull"], (4, 4)) == "stunned", "without Stunty an 8 becomes Stunned"
+    assert hurt(["Thick Skull"], (4, 5)) == "knocked_out", "…and a 9 does not"
+
+
+def test_titchy_helps_its_own_dodge_and_declines_to_mark():
+    """Two clauses pulling opposite ways, and the second lives on the MARKER:
+    "this player will not apply a -1 modifier … for Marking the opposition
+    player." Never applied, so it cannot be cancelled later."""
+    mine = _match(("home", 7, 13, 6, "3+", ["Titchy"]), ("away", 7, 14, 6))
+    assert _dodge_roll(_move(mine, "h00", 6, 12, _dice([4]))).modifier == 1
+
+    # An ordinary dodger moving next to a Titchy opponent takes no penalty from it.
+    theirs = _match(("home", 7, 13, 6), ("away", 7, 14, 6), ("away", 5, 11, 6, "3+", ["Titchy"]))
+    assert _dodge_roll(_move(theirs, "h00", 6, 12, _dice([5]))).modifier == 0
+
+
+def test_tackle_denies_the_dodge_skills_reroll():
+    """ "When an opposition player attempts to Dodge away from a square in this
+    player's Tackle Zone, they cannot use the Dodge Skill." The square being LEFT."""
+    m = _match(("home", 7, 13, 6, "3+", ["Dodge"]), ("away", 7, 14, 6, "3+", ["Tackle"]))
+    out = _move(m, "h00", 6, 12, _dice([1, 2, 2]))
+    assert not out.ok, "the failed Dodge should stand"
+    assert len([r for e in out.events for r in e.rolls if r.kind.startswith("Dodge")]) == 1
+    assert any("Tackle" in (e.text or "") for e in out.events)
+
+
+def test_tackle_also_turns_a_stumble_back_into_a_knockdown():
+    """ "the opposition player does not count as having the Dodge Skill if a
+    Stumble result is selected" — the blocker's Tackle, the target's Dodge."""
+    m = _match(("home", 7, 13, 6, "3+", ["Tackle"]), ("away", 7, 14, 6, "3+", ["Dodge"]))
+    _block(m, "h00", "a01", _dice([2, 2], [["stumble"]]), follow_up=False)
+    assert m.by_id("a01").down != "standing", "Stumble should have knocked them down"
+
+    without = _match(("home", 7, 13, 6), ("away", 7, 14, 6, "3+", ["Dodge"]))
+    _block(without, "h00", "a01", _dice([], [["stumble"]]), follow_up=False)
+    assert without.by_id("a01").down == "standing", "Dodge should turn Stumble into a plain push"
+
+
+@pytest.mark.parametrize(
+    "skill,test_kind",
+    [("Sure Hands", "Pick up"), ("Catch", "Catch")],
+)
+def test_a_re_roll_skill_gets_a_second_attempt(skill, test_kind):
+    from bloodbowl.engine.ball import catch, pick_up
+
+    m = _match(("home", 7, 13, 6, "3+", [skill]))
+    m.apply(_ball_at(7, 13))
+    dice = _dice([1, 5, 1, 1])
+    events = pick_up(m, m.by_id("h00"), dice)[0] if skill == "Sure Hands" else catch(m, m.by_id("h00"), dice)
+    tries = [r for e in events for r in e.rolls if r.kind.startswith(test_kind)]
+    assert len(tries) == 2, f"{skill} should have re-rolled: {[r.kind for r in tries]}"
+    assert tries[1].passed and m.ball.carrier == "h00"
+
+
+def test_sure_hands_does_not_apply_to_secure_the_ball():
+    """ "though not when making a Secure the Ball Action" — it is already a flat 2+
+    bought by giving up the activation."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 6, "3+", ["Sure Hands"]), ("away", 7, 20, 6))
+    m.apply(_ball_at(7, 13))
+    out = actions.get("secure")["resolve"](m, {"player": "h00"}, _dice([1, 5, 5]))
+    tries = [r for e in out.events for r in e.rolls if "Secure" in r.kind]
+    assert len(tries) == 1, "Secure the Ball was re-rolled"
+    assert out.turnover
+
+
+def test_big_hand_ignores_every_negative_pick_up_modifier():
+    """ "ignores ALL negative modifiers when attempting to pick up the ball"."""
+    from bloodbowl.engine.ball import pick_up
+
+    m = _match(("home", 7, 13, 6, "3+", ["Big Hand"]), ("away", 7, 14, 6), ("away", 6, 14, 6))
+    m.apply(_ball_at(7, 13))
+    events = pick_up(m, m.by_id("h00"), _dice([3]))[0]
+    r = next(r for e in events for r in e.rolls if r.kind == "Pick up")
+    assert r.modifier == 0 and r.passed
+
+
+def test_accurate_and_nerves_of_steel_on_a_pass():
+    """Accurate: "+1 … which is a Quick Pass or a Short Pass". Nerves of Steel:
+    "ignore any modifiers for being Marked … to Pass the ball"."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+
+    def throw(skills, tx, ty, foes=()):
+        m = _match(("home", 7, 2, 6, "3+", list(skills)), *foes)
+        m.by_id("h00").player.PA = "3+"
+        m.apply(_ball_at(7, 2, carrier="h00"))
+        out = actions.get("pass")["resolve"](m, {"player": "h00", "x": tx, "y": ty}, _dice([6, 6, 6, 6, 6]))
+        return next(r for e in out.events for r in e.rolls if r.kind == "Pass")
+
+    assert throw(["Accurate"], 7, 4).modifier == 1, "a Quick Pass gets +1"
+    assert throw([], 7, 4).modifier == 0
+    # A Long Pass is -2, and Accurate does not apply to it.
+    assert throw(["Accurate"], 7, 12).modifier == -2
+
+    marked = (("away", 7, 3, 6),)
+    assert throw([], 7, 4, marked).modifier == -1, "one Marker on the passer"
+    assert throw(["Nerves of Steel"], 7, 4, marked).modifier == 0

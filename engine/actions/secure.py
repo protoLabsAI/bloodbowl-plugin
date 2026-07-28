@@ -81,6 +81,10 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             )
         )
 
+    # No Sure Hands here: "though not when making a Secure the Ball Action". This
+    # roll is not a pick-up attempt at all — it is a flat 2+ bought by giving up
+    # the rest of the activation, and re-rolling it would be paying once and
+    # collecting twice.
     r = roll_target(dice, "Secure the Ball", SECURE_TARGET)
     if r.passed:
         rec.emit(
