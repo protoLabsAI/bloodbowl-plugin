@@ -78,3 +78,54 @@ def save(scenario: Scenario) -> None:
     except Exception:
         Path(tmp).unlink(missing_ok=True)
         raise
+
+
+# --- the match ------------------------------------------------------------
+#
+# Kept beside the practice board rather than replacing it. The two are different
+# things: a scenario is a position you are working out, permissively; a match is a
+# game in progress, strictly. Starting a match must not cost you the board you set
+# it up from.
+
+
+def match_path() -> Path:
+    return state_dir() / "match.json"
+
+
+def load_match():
+    """The match in progress, or None.
+
+    The saved file's log is authoritative — ``Match.from_dict`` rebuilds the
+    position by folding it, so a hand-edited board cannot disagree with its own
+    history.
+    """
+    from .engine.state import Match
+
+    p = match_path()
+    if not p.exists():
+        return None
+    try:
+        return Match.from_dict(json.loads(p.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, OSError, TypeError, ValueError, KeyError):
+        return None
+
+
+def save_match(match) -> None:
+    """Atomic, same reasoning as the board: the view polls this file."""
+    p = match_path()
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=".match-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(match.to_dict(), fh, indent=2, ensure_ascii=False)
+        os.replace(tmp, p)
+    except Exception:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def clear_match() -> bool:
+    p = match_path()
+    if p.exists():
+        p.unlink()
+        return True
+    return False

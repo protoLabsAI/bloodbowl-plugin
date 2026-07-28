@@ -126,6 +126,129 @@ def _tools(cfg: dict):
             return json.dumps({"ok": False, "error": f"unknown star {name!r}", "known": [x["name"] for x in stars()]})
         return json.dumps({"ok": True, "star": s})
 
+    # --- playing a match --------------------------------------------------
+    #
+    # The division of labour is the point. The coach decides WHAT to do and says
+    # why; the engine decides whether that was legal and what the dice said. So
+    # there is a free, side-effect-less way to ask what is possible
+    # (`bb_game_legal`) and a separate one to commit (`bb_game_act`) — and the
+    # narration comes from `bb_game_log`, which holds the rolls as they happened.
+
+    @tool
+    def bb_game_new(seed: int = 0, kicking_to: str = "home") -> str:
+        """Start a match from the current practice board.
+
+        Every player set up on the board takes the field. Pass a ``seed`` to make
+        the match reproducible — the same seed and the same moves replay to the
+        same game. The practice board is left untouched.
+        """
+        from .engine.game import new_match
+        from .store import load, save_match
+
+        sc = load()
+        if not sc.players:
+            return json.dumps({"ok": False, "error": "the board is empty — set a scenario up first"})
+        m = new_match(sc, seed=int(seed or 0), kicking_to=("away" if kicking_to == "away" else "home"))
+        save_match(m)
+        return json.dumps({"ok": True, "match": m.to_dict(include_log=False), "message": m.events[0].text})
+
+    @tool
+    def bb_game_state() -> str:
+        """The match as it stands: clock, score, ball, and every player with their
+        square, status and movement used.
+
+        Read this rather than recalling where anyone was — the board changes every
+        action.
+        """
+        from .store import load_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress; start one with bb_game_new"})
+        return json.dumps({"ok": True, "match": m.to_dict(include_log=False)})
+
+    @tool
+    def bb_game_legal(player: str) -> str:
+        """What a player may do right now — every square they could step to, which
+        need a Dodge and at what modifier, and which need a Rush.
+
+        Ask this BEFORE moving. It is the engine's own arithmetic; working the
+        odds out from a board description instead is how a confident wrong answer
+        gets made. Costs nothing and changes nothing, so ask freely.
+        """
+        from .engine.game import legal_moves
+        from .store import load_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress"})
+        return json.dumps(legal_moves(m, player))
+
+    @tool
+    def bb_game_act(action: str, player: str, x: int = 0, y: int = 0) -> str:
+        """Take an action. ``action`` is "move" for now; ``x``/``y`` is the square.
+
+        The engine adjudicates: an illegal action is refused with a reason rather
+        than performed. The reply carries every roll that was made — quote those
+        rather than describing what probably happened.
+        """
+        from .engine.game import act
+        from .store import load_match, save_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress"})
+        report = act(m, action, {"player": player, "x": int(x), "y": int(y)})
+        save_match(m)
+        report["rolls"] = [r.describe() for e in m.events[-6:] for r in e.rolls]
+        return json.dumps(report)
+
+    @tool
+    def bb_game_end_turn() -> str:
+        """End the active team's turn and hand over."""
+        from .engine.game import end_turn
+        from .store import load_match, save_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress"})
+        out = end_turn(m)
+        save_match(m)
+        return json.dumps(out)
+
+    @tool
+    def bb_game_log(last: int = 20) -> str:
+        """What has happened, most recent last, with the dice that decided it.
+
+        This is the narration source. A line here already says "Dodge needed 3+,
+        rolled 2 — FAILED"; report that, do not reconstruct it from the board.
+        """
+        from .store import load_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress"})
+        from .engine.events import describe
+
+        n = max(1, min(int(last or 20), 200))
+        return json.dumps(
+            {
+                "ok": True,
+                "clock": m.clock.to_dict(),
+                "log": [
+                    {"kind": e.kind, "text": describe(e), "rolls": [r.describe() for r in e.rolls]}
+                    for e in m.events[-n:]
+                ],
+            }
+        )
+
+    @tool
+    def bb_game_abandon() -> str:
+        """Discard the match in progress. The practice board is unaffected."""
+        from .store import clear_match
+
+        return json.dumps({"ok": True, "discarded": clear_match()})
+
     @tool
     def bb_pitch_show() -> str:
         """The current state of the practice pitch: geometry, both teams, and every
@@ -253,6 +376,13 @@ def _tools(cfg: dict):
         bb_pitch_place,
         bb_pitch_clear,
         bb_pitch_review,
+        bb_game_new,
+        bb_game_state,
+        bb_game_legal,
+        bb_game_act,
+        bb_game_end_turn,
+        bb_game_log,
+        bb_game_abandon,
     ]
 
 
