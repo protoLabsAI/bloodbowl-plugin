@@ -676,3 +676,15 @@ def test_the_two_modes_hand_the_board_over_cleanly():
     assert "setup.teardown()" in main and "game.teardown()" in main
     for mod in ("js/setup.js", "js/game.js"):
         assert "export function teardown()" in _web(mod), f"{mod} must be able to release the board"
+
+
+def test_the_static_asset_tree_is_declared_auth_exempt():
+    """The host auto-exempts a declared VIEW path, not its siblings. The page is a
+    plain iframe navigation carrying no bearer, so its stylesheet and modules must
+    be exempt too — otherwise the page loads 200 and every asset 401s, which is an
+    unstyled, dead board on any token-gated deployment. Found on the live agent,
+    not in the harness, which mounts the routers with no auth middleware at all."""
+    declared = MANIFEST.get("public_paths") or []
+    assert "/plugins/bloodbowl/static/" in declared, f"static tree not exempt: {declared}"
+    # Data stays gated. Exempting the api namespace would hand the board to anyone.
+    assert not any(p.startswith("/api/") for p in declared), f"data must stay gated: {declared}"
