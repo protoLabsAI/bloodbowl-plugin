@@ -234,3 +234,8 @@ button.primary { background: var(--pl-color-accent); color: var(--pl-color-fg-on
    menu. */
 .cell.securable { cursor: pointer; box-shadow: inset 0 0 0 2px var(--pl-color-status-info); }
 .cell.handoffable { cursor: pointer; box-shadow: inset 0 0 0 2px var(--pl-color-status-info); }
+
+/* Pass targets. Only shown once passing is armed: with the ball in hand most of
+   the pitch is a legal target, so painting them unprompted buries the moves. */
+.cell.passable { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--pl-color-status-info) 60%, transparent); }
+button.mini { padding: 0 6px; font-size: 10px; margin-left: 6px; }
