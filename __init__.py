@@ -212,12 +212,17 @@ def _tools(cfg: dict):
     # narration comes from `bb_game_log`, which holds the rolls as they happened.
 
     @tool
-    def bb_game_new(seed: int = 0, kicking_to: str = "home") -> str:
+    def bb_game_new(seed: int = 0, kicking_to: str = "home", rerolls: int = -1) -> str:
         """Start a match from the current practice board.
 
         Every player set up on the board takes the field. Pass a ``seed`` to make
         the match reproducible — the same seed and the same moves replay to the
         same game. The practice board is left untouched.
+
+        ``rerolls`` is how many Team Re-rolls EACH side gets; leave it out for the
+        default. How many a team really has is a drafting decision and a practice
+        board was never drafted, so the engine takes it as an input and tells you
+        what it used rather than inventing one.
         """
         from .engine.game import new_match
         from .store import load, save_match
@@ -225,7 +230,12 @@ def _tools(cfg: dict):
         sc = load()
         if not sc.players:
             return json.dumps({"ok": False, "error": "the board is empty — set a scenario up first"})
-        m = new_match(sc, seed=int(seed or 0), kicking_to=("away" if kicking_to == "away" else "home"))
+        m = new_match(
+            sc,
+            seed=int(seed or 0),
+            kicking_to=("away" if kicking_to == "away" else "home"),
+            rerolls=None if int(rerolls) < 0 else int(rerolls),
+        )
         save_match(m)
         return json.dumps({"ok": True, "match": m.to_dict(include_log=False), "message": m.events[0].text})
 
@@ -280,6 +290,7 @@ def _tools(cfg: dict):
         target: str = "",
         choice: int = 0,
         follow_up: bool = True,
+        team_reroll: bool = False,
     ) -> str:
         """Take an action.
 
@@ -310,6 +321,12 @@ def _tools(cfg: dict):
         costs a square of Move Allowance on top of the walk; if none is left the
         engine will Rush for it, and a failed Rush floors your player.
 
+        ``team_reroll=True`` pre-commits a Team Re-roll: if a roll in this action
+        fails and one could save it, the engine spends one. It is a PRE-commitment
+        because the engine cannot stop mid-action to ask — check bb_game_legal for
+        how many are left first. A free Skill re-roll is always tried before the
+        team's, and a Loner must pass their own D6 or the re-roll is lost anyway.
+
         For a Block, ``choice`` picks which of the rolled dice to apply — but only
         when YOU are the one entitled to choose, which is when your player is the
         stronger. Ask bb_game_odds first: it tells you how many dice you get and
@@ -325,7 +342,7 @@ def _tools(cfg: dict):
         m = load_match()
         if m is None:
             return json.dumps({"ok": False, "error": "no match in progress"})
-        cmd = {"player": player, "x": int(x), "y": int(y)}
+        cmd = {"player": player, "x": int(x), "y": int(y), "team_reroll": bool(team_reroll)}
         if action == "block":
             cmd.update({"target": target, "choice": int(choice), "follow_up": bool(follow_up)})
         elif action in ("handoff", "blitz", "foul"):

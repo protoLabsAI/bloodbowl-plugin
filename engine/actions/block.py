@@ -21,6 +21,7 @@ got wrong from memory, and therefore the parts with a test each:
 from __future__ import annotations
 
 from ...pitch import in_bounds
+from .. import rerolls as team_rerolls
 from ..ball import check_touchdown
 from ..dice import BLOCK_LABELS, roll_target
 from ..events import Event
@@ -322,6 +323,19 @@ def _uses_block(match: Match, p) -> tuple[bool, list[str]]:
     return bool(ctx.flags.get("stays_up")), ctx.notes
 
 
+def _bad_for_us(face: str, match: Match, p) -> bool:
+    """Is this result one the ACTING coach would want to spend a Team Re-roll on?
+
+    Player Down always; Both Down only when it would actually floor them, since a
+    Both Down that a Block Skill shrugs off is a good result. Anything that pushes
+    or floors the target is not worth a re-roll, and spending one on it would be
+    the engine deciding something expensive on the coach's behalf.
+    """
+    if face == "player_down":
+        return True
+    return face == "both_down" and _would_fall(match, p)
+
+
 def _would_fall(match: Match, who) -> bool:
     """Would this player hit the ground on a Both Down? Block is the only thing
     that keeps them up, and every Both Down decision below turns on the answer."""
@@ -483,6 +497,15 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         faces = dice.block(n)
         face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"))]
         again = Roll(kind="Block (re-roll)", dice=list(faces), note="Brawler, a single Both Down")
+        dice.rolls.append(again)
+        rolls.append(again)
+    elif _bad_for_us(face, match, p) and cmd.get("team_reroll") and team_rerolls.spend(match, p, "Block", dice, rec):
+        # "When a Team Re-roll is used to re-roll a dice pool, ALL THE DICE IN THE
+        # POOL must be re-rolled" — so the whole handful goes again, not the one
+        # face that was applied.
+        faces = dice.block(n)
+        face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"))]
+        again = Roll(kind="Block (Team Re-roll)", dice=list(faces), note=f"all {n} dice re-rolled")
         dice.rolls.append(again)
         rolls.append(again)
 

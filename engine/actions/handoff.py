@@ -63,7 +63,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             text=f"{p.name()} hands the ball to {t.name()}.",
         )
     )
-    rec.absorb(catch(match, t, dice))
+    rec.absorb(catch(match, t, dice, team_reroll=bool(cmd.get("team_reroll"))))
 
     rec.emit(ended(p.id, "handoff", f"{p.name()}'s Hand-off Action is over."))
     held = match.ball.carrier == t.id

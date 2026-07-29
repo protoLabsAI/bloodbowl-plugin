@@ -712,6 +712,21 @@ def _animal_savagery(ctx: SkillContext) -> None:
     ctx.flags.update(target=4, modifier=2 if _blitzy(ctx) else 0, on_fail="lash_out")
 
 
+@skill_hook("Loner", "team_reroll")
+def _loner(ctx: SkillContext) -> None:
+    """S3: "Whenever this player wishes to use a Team Re-roll, they must roll a D6.
+    If they roll equal to or higher than the number shown in brackets, then they
+    may use the Team Re-roll as normal. If they roll lower than the number shown
+    in brackets, then they may not re-roll the dice and THE TEAM RE-ROLL IS LOST
+    just as if it had been used."
+
+    Losing it either way is the whole cost of the Trait, and the half that would
+    be easy to skip — a Loner who fails has spent the re-roll and got nothing.
+    Applied in engine/rerolls.py, where the number in the brackets is read off the
+    player's own skill string (`Loner (4+)`) rather than assumed.
+    """
+
+
 @skill_hook("Drunkard", "roll_modifier")
 def _drunkard(ctx: SkillContext) -> None:
     """S3: "This player applies a -1 modifier to test whenever they attempt to

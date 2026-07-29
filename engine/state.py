@@ -204,6 +204,11 @@ class Match:
     # A team gets ONE per turn, so this is per-turn state and turn_started clears
     # it. Kept on the Match rather than the player because the limit belongs to
     # the TEAM — a second player declaring one is what has to be refused.
+    # Team Re-rolls remaining, per side, and the full complement each half starts
+    # with. Two numbers rather than one because "a team will always start each
+    # half with its FULL complement" and "unused Team Re-rolls do NOT carry over".
+    rerolls: dict = field(default_factory=dict)
+    rerolls_max: dict = field(default_factory=dict)
     blitz: dict = field(default_factory=dict)
     # Coaches ejected for arguing: "may not attempt to Argue the Call for the
     # remainder of the game". Per SIDE and per MATCH — one of the few things here
@@ -246,6 +251,9 @@ class Match:
 
         if kind == "match_started":
             self.clock = Clock(half=1, turn=1, active=str(d.get("kicking_to") or "home"))
+            full = d.get("rerolls") or {}
+            self.rerolls_max = {"home": int(full.get("home", 0)), "away": int(full.get("away", 0))}
+            self.rerolls = dict(self.rerolls_max)
 
         elif kind == "turn_started":
             self.clock.active = str(d.get("side") or self.clock.active)
@@ -302,6 +310,13 @@ class Match:
                 side = str(d.get("side") or "")
                 if side and side not in self.argue_banned:
                     self.argue_banned.append(side)
+
+        elif kind == "team_reroll_used":
+            # Spent whether or not it bought anything — a failed Loner roll loses
+            # it "just as if it had been used".
+            side = str(d.get("side") or "")
+            if side in self.rerolls:
+                self.rerolls[side] = max(0, self.rerolls[side] - 1)
 
         elif kind == "blitz_declared":
             self.blitz = {"player": event.actor, "target": str(d.get("target") or ""), "blocked": False}
@@ -444,8 +459,14 @@ class Match:
             self.clock.turn = max(1, min(TURNS_PER_HALF, self.clock.turn + delta))
 
         elif kind == "half_time":
-            self.clock.half = int(d.get("half") or self.clock.half + 1)
+            # The clock has ALREADY turned over in _advance_clock — this event is
+            # the log's record of it, so applying it must be idempotent. (It was
+            # declared in events.py and handled here for a long time without ever
+            # being emitted, which is the third dead event kind this codebase has
+            # turned up: declared, handled, never produced.)
+            self.clock.half = int(d.get("half") or self.clock.half)
             self.clock.turn = 1
+            self.rerolls = dict(self.rerolls_max)
 
         elif kind == "match_over":
             self.over = True
@@ -483,6 +504,10 @@ class Match:
                     return
                 self.clock.half += 1
                 self.clock.turn = 1
+                # Half-time. "Any used during the first half will be replenished
+                # … Unused Team Re-rolls do not carry over." One assignment does
+                # both halves of that sentence, up or down.
+                self.rerolls = dict(self.rerolls_max)
             else:
                 self.clock.turn += 1
         self.clock.active = nxt
@@ -502,6 +527,8 @@ class Match:
             "over": self.over,
             "drive": self.drive,
             "blitz": dict(self.blitz),
+            "rerolls": dict(self.rerolls),
+            "rerolls_max": dict(self.rerolls_max),
             "argue_banned": list(self.argue_banned),
             "turn_actions": dict(self.turn_actions),
         }

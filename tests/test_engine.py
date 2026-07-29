@@ -35,12 +35,12 @@ def _dice(script, block=None):
     return ScriptedDice(script=list(script), block_script=list(block or []))
 
 
-def _move(m, pid, x, y, dice):
+def _move(m, pid, x, y, dice, **cmd):
     """resolve applies its own events (see actions.Outcome) — do not re-apply."""
     from bloodbowl.engine import actions
 
     actions.load_all()
-    return actions.get("move")["resolve"](m, {"player": pid, "x": x, "y": y}, dice)
+    return actions.get("move")["resolve"](m, {"player": pid, "x": x, "y": y, **cmd}, dice)
 
 
 def _block(m, pid, target, dice, **cmd):
@@ -3080,3 +3080,166 @@ def test_drunkard_makes_the_rush_harder():
     rush = next((r for e in out.events for r in e.rolls if r.kind == "Rush"), None)
     assert rush is not None and rush.modifier == -1, rush
     assert rush.passed, "4 - 1 = 3 still beats a 2+"
+
+
+# --- Team Re-rolls ---------------------------------------------------------
+
+
+def _reroll_board(skills=(), n=3):
+    """A match with `n` Team Re-rolls a side and a Marked home player."""
+    from bloodbowl.engine.events import Event
+
+    m = _match(("home", 7, 13, 6, "3+", list(skills)), ("away", 7, 14, 6))
+    m.apply(Event(kind="match_started", detail={"kicking_to": "home", "rerolls": {"home": n, "away": n}}))
+    return m
+
+
+def test_a_coach_may_use_as_many_team_re_rolls_as_they_want_in_a_turn():
+    """S3: "A COACH MAY USE AS MANY TEAM RE-ROLLS AS THEY WANT DURING THEIR TURN,
+    though they may still never re-roll a re-roll."
+
+    A previous edition allowed one per team turn and that is what most people will
+    tell you. S3 does not cap them at all — the only limits are how many you
+    bought and that a re-roll cannot itself be re-rolled.
+    """
+    from bloodbowl.engine.events import Event
+
+    # A second Marker beside the FIRST destination, so the second step also needs
+    # a Dodge — otherwise there is nothing for the second re-roll to re-roll and
+    # the test passes against an engine that allows only one.
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6), ("away", 5, 12, 6))
+    m.apply(Event(kind="match_started", detail={"kicking_to": "home", "rerolls": {"home": 3, "away": 3}}))
+
+    assert _move(m, "h00", 6, 12, _dice([1, 5]), team_reroll=True).ok
+    assert m.rerolls["home"] == 2
+    assert _move(m, "h00", 6, 11, _dice([1, 5]), team_reroll=True).ok
+    assert m.rerolls["home"] == 1, "the second re-roll in one turn was refused"
+
+
+def test_a_team_re_roll_is_only_spent_when_the_coach_asks():
+    """The engine cannot stop mid-action to ask, so the coach pre-commits — the
+    same way they already do for `choice`, `follow_up` and `push_to`. Spending one
+    unasked would be the engine making an expensive decision on their behalf."""
+    m = _reroll_board()
+    out = _move(m, "h00", 6, 12, _dice([1, 2, 2]))
+    assert not out.ok and m.rerolls["home"] == 3, "a re-roll was spent without being asked for"
+
+
+def test_a_free_skill_re_roll_is_always_tried_before_the_teams():
+    """Dodge's re-roll costs nothing; the team's is finite. Spending the finite one
+    while a free one sat unused would be strictly worse in every position."""
+    m = _reroll_board(skills=["Dodge"])
+    out = _move(m, "h00", 6, 12, _dice([1, 5]), team_reroll=True)
+    assert out.ok
+    assert m.rerolls["home"] == 3, "the Team Re-roll was spent despite the Dodge Skill"
+    assert any("Dodge skill" in (r.note or "") for e in out.events for r in e.rolls)
+
+
+def test_a_team_re_roll_may_not_re_roll_an_armour_or_injury_roll():
+    """ "A Team Re-roll cannot be used to re-roll any of the following types of
+    roll: Scatter, Armour, Injury, Casualty, Throw-in, Bribe, Argue the Call or if
+    the Crowd Takes Action." """
+    from bloodbowl.engine.rerolls import excluded
+
+    for kind in ("Armour", "Injury", "Casualty", "Scatter", "Throw-in", "Argue the Call", "Bounce"):
+        assert excluded(kind), kind
+    for kind in ("Dodge", "Rush", "Pick up", "Catch", "Pass", "Block", "Bone Head"):
+        assert not excluded(kind), kind
+
+    # …and the exclusion holds through a real action: a failed Dodge re-rolls, the
+    # Armour Roll behind the fall does not.
+    m = _reroll_board(n=3)
+    out = _move(m, "h00", 6, 12, _dice([1, 1, 2, 2]), team_reroll=True)
+    assert not out.ok, "both Dodges failed"
+    assert m.rerolls["home"] == 2, "exactly one re-roll, on the Dodge"
+
+
+def test_a_team_re_roll_needs_it_to_be_your_turn():
+    """ "Team Re-rolls can only be used when the team is active … can never be used
+    to re-roll an opposing Coach's dice." """
+    from bloodbowl.engine.rerolls import available
+
+    m = _reroll_board()
+    assert available(m, m.by_id("h00")) == 3
+    assert available(m, m.by_id("a01")) == 0, "the inactive side offered a re-roll"
+
+
+def test_the_whole_block_pool_is_re_rolled_not_the_one_face():
+    """ "When a Team Re-roll is used to re-roll a dice pool, ALL THE DICE IN THE
+    POOL must be re-rolled." """
+    m = _reroll_board()
+    m.by_id("h00").player.ST, m.by_id("a01").player.ST = "4", "3"  # two dice
+    out = _block(
+        m,
+        "h00",
+        "a01",
+        _dice([2, 2], [["player_down", "player_down"], ["pow", "push_back"]]),
+        team_reroll=True,
+        follow_up=False,
+    )
+    again = next(r for e in out.events for r in e.rolls if r.kind == "Block (Team Re-roll)")
+    assert len(again.dice) == 2, f"only {len(again.dice)} die re-rolled"
+    assert m.rerolls["home"] == 2 and out.ok
+
+
+def test_a_block_result_that_is_good_for_us_is_not_re_rolled():
+    """A Push Back or a POW is what you wanted. Spending the team's finite re-roll
+    on one would be the engine throwing money away on the coach's behalf."""
+    m = _reroll_board()
+    _block(m, "h00", "a01", _dice([2, 2], [["pow"]]), team_reroll=True, follow_up=False)
+    assert m.rerolls["home"] == 3
+
+
+def test_loner_must_pass_a_roll_and_loses_the_re_roll_either_way():
+    """ "If they roll lower than the number shown in brackets, then they may not
+    re-roll the dice and THE TEAM RE-ROLL IS LOST just as if it had been used."
+
+    Losing it either way is the entire cost of the Trait.
+    """
+    m = _reroll_board(skills=["Loner (4+)"])
+    out = _move(m, "h00", 6, 12, _dice([1, 2, 2, 2]), team_reroll=True)  # Dodge 1, Loner 2 = fail
+    assert not out.ok, "the Dodge should still have failed"
+    assert m.rerolls["home"] == 2, "a failed Loner must still cost the re-roll"
+    assert any("Loner" in (e.text or "") for e in out.events)
+
+    passed = _reroll_board(skills=["Loner (4+)"])
+    ok_out = _move(passed, "h00", 6, 12, _dice([1, 5, 5]), team_reroll=True)  # Dodge 1, Loner 5, Dodge 5
+    assert ok_out.ok and passed.rerolls["home"] == 2
+
+
+def test_loner_reads_the_number_out_of_its_own_brackets():
+    """`Loner (4+)` and `Loner (2+)` are different Traits wearing one name."""
+    from bloodbowl.engine.rerolls import _loner_target
+
+    m = _match(("home", 7, 13, 6, "3+", ["Loner (2+)"]), ("home", 8, 13, 6, "3+", ["Loner (5+)"]), ("home", 9, 13, 6))
+    assert _loner_target(m.by_id("h00")) == 2
+    assert _loner_target(m.by_id("h01")) == 5
+    assert _loner_target(m.by_id("h02")) is None
+
+
+def test_re_rolls_are_replenished_at_half_time_and_do_not_carry_over():
+    """ "any used during the first half of a game will be replenished at half-time …
+    Unused Team Re-rolls do NOT carry over to the next half." One assignment does
+    both halves of that sentence — up for the team that spent them, down for the
+    team that hoarded."""
+    from bloodbowl.engine.game import end_turn
+
+    m = _reroll_board(n=2)
+    _move(m, "h00", 6, 12, _dice([1, 5]), team_reroll=True)
+    assert m.rerolls["home"] == 1
+
+    # Grant the away side an extra to prove the reset works downwards too.
+    m.rerolls["away"] = 9
+    for _ in range(2 * 8):
+        end_turn(m)
+    assert m.clock.half == 2, m.clock
+    assert m.rerolls == {"home": 2, "away": 2}, m.rerolls
+    assert any(e.kind == "half_time" for e in m.events), "half-time was never recorded in the log"
+
+
+def test_legal_moves_says_how_many_re_rolls_are_left_before_committing():
+    from bloodbowl.engine.game import legal_moves
+
+    m = _reroll_board(skills=["Loner (4+)"])
+    out = legal_moves(m, "h00")
+    assert out["team_rerolls"] == {"left": 3, "loner": 4}
