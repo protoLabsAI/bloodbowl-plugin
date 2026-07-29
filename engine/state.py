@@ -261,6 +261,10 @@ class Match:
     # the Kick-off Event Table gives them away: "Each team immediately receives one
     # free Bribe Inducement." Spent on a sending-off, after Argue the Call.
     bribes: dict = field(default_factory=dict)
+    # Star Player Points, per player id. Earned during the game — "it's important
+    # to keep track of every time a player does something that generates SPP
+    # DURING A GAME" — and spent after one, which needs a league.
+    spp: dict = field(default_factory=dict)
     # Set-ups declared for the NEXT Drive, per side. "The kicking team must set up
     # first followed by the receiving team", so the order is recorded too.
     setups: dict = field(default_factory=dict)
@@ -479,6 +483,24 @@ class Match:
             # Spent either way: "the referee pockets the Bribe but sends the player
             # off anyway — the player is still Sent-off AND THE BRIBE IS LOST."
             self.bribes[side] = max(0, int(self.bribes.get(side, 0)) - 1)
+
+        elif kind == "player_added":
+            # PLAGUE RIDDEN's new Lineman. APPLY does the adding, from the team and
+            # position in the event, because `fold(events)` must rebuild the match
+            # exactly — a player appended by the helper that emitted this would
+            # exist in the live object and vanish on reload, which is the trap this
+            # engine's whole event model exists to avoid.
+            if self.by_id(event.actor) is None:
+                from ..pitch import player_from_roster
+
+                fresh, _err = player_from_roster(
+                    str(d.get("side") or "home"), 0, 0, str(d.get("team") or ""), str(d.get("position") or "")
+                )
+                if fresh is not None:
+                    self.players.append(PlayerState(player=fresh, id=event.actor, place="reserves"))
+
+        elif kind == "spp_earned":
+            self.spp[event.actor] = int(self.spp.get(event.actor, 0)) + int(d.get("points") or 0)
 
         elif kind == "bribes_awarded":
             for side in ("home", "away"):
@@ -737,6 +759,7 @@ class Match:
             "apothecary": dict(self.apothecary),
             "leader_used": dict(self.leader_used),
             "bribes": dict(self.bribes),
+            "spp": dict(self.spp),
             "setups": {k: [dict(r) for r in v] for k, v in self.setups.items()},
             "pending": dict(self.pending),
             "charge": dict(self.charge),

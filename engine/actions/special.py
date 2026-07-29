@@ -108,15 +108,20 @@ def _validate(action: str, match: Match, cmd: dict) -> Legality:
     return Legality(True, "", {"skill": skill, "target": t.id, "replaces_blitz_block": blitzing})
 
 
-def _unmodified_armour(match: Match, victim, dice, rec: Recorder, why: str, modifier: int = 0) -> None:
+def _unmodified_armour(match: Match, victim, dice, rec: Recorder, why: str, modifier: int = 0, by=None) -> None:
     """An Armour Roll that is NOT a knock-down: nobody falls over, and the roll is
     made straight for the victim.
 
-    Stab and Projectile Vomit both say "This Armour Roll cannot be modified in any
-    way", which is why they pass no `by` — Mighty Blow and Claws both hang off the
-    player responsible, and letting them through here would modify the unmodifiable.
+    Stab and Projectile Vomit both say "This Armour Roll CANNOT BE MODIFIED IN ANY
+    WAY", so `by` stays None — Mighty Blow and Claws both hang off it, and letting
+    either through would modify the unmodifiable. `credit` is the separate
+    question of who CAUSED the Casualty, which SPP need and the roll must not see.
+
+    `from_block=False` is what stops a Special Action awarding SPP at all: "other
+    methods, SUCH AS SPECIAL ACTIONS … do not generate SPP" — unless the causer has
+    VIOLENT INNOVATOR, which is the clause that overturns it.
     """
-    rec.absorb(risk_injury(match, victim, dice, by=None, armour_modifier=modifier))
+    rec.absorb(risk_injury(match, victim, dice, by=None, armour_modifier=modifier, from_block=False, credit=by))
 
 
 def _resolve(action: str, match: Match, cmd: dict, dice) -> Outcome:
@@ -149,14 +154,14 @@ def _resolve(action: str, match: Match, cmd: dict, dice) -> Outcome:
     )
 
     if action == "stab":
-        _unmodified_armour(match, t, dice, rec, "Stab")
+        _unmodified_armour(match, t, dice, rec, "Stab", by=p)
 
     elif action == "vomit":
         r = roll_target(dice, "Projectile Vomit", 2)
         rec.emit(Event(kind="note", actor=p.id, rolls=[r], text=r.describe()))
         # "On a 1, this player covers THEMSELVES in acidic bile" — the roll is made
         # for whoever it landed on, and that can be the player who made it.
-        _unmodified_armour(match, t if r.passed else p, dice, rec, "Projectile Vomit")
+        _unmodified_armour(match, t if r.passed else p, dice, rec, "Projectile Vomit", by=p if r.passed else None)
         turnover = not r.passed and p.down != "standing"
 
     elif action == "punt":

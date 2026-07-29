@@ -95,35 +95,31 @@ Three verdicts, and the middle one is the important one:
 quotable through `bb_get_skill`. `bb_list_skills(only_unmodelled=True)` is the live
 version of this count and now returns nothing.
 
-**"Modelled" is not the same as "complete", and 9 of them say so.** A Skill with a
-`partial=` is applied with a named clause left out, and `bb_game_state` reports
-those on the pitch under `partly_modelled_skills` every turn.
+**One `partial=` remains**, and it names a POST-GAME step: Plague Ridden's "during
+the Post-game Sequence, this player may be hired in the same manner as any
+Journeyman". The in-match half — "you may IMMEDIATELY add one new Lineman player
+from your team's Team Roster to your Reserves Box" — is applied.
 
-Nine were closed outright once the reason they were open turned out to be wrong:
+Seventeen were closed, and the reasons are worth keeping because most of them were
+not gaps at all:
 
-* **The keywords were there all along.** `data/rosters.json` carries every
-  positional's Keywords under `role` — the parenthesised list after each position
-  name, "Eagle Warrior (Lineman, Human)" — and nothing had ever read it. That
-  closed HATRED, ANIMOSITY and BLOODLUST's bite (Thrall Lineman is a Keyword, and
-  the Vampire roster prints it).
-* **Very Long Legs' Cloud Burster clause** was stale: Cloud Burster is modelled, so
-  there is something to ignore, and Very Long Legs is its written counter.
-* **Shadowing's per-Turn bound** is counted now, from the log rather than a field.
-* **Diving Catch's other half** — catching a ball that lands in your Tackle Zone
-  from a Pass, Throw-in or Kick-off, but NOT from a Bounce — is implemented.
-* **Multiple Block and the two template Skills were not partial at all.** Rolling
-  a Multiple Block's halves separately is the procedure the rules themselves offer
-  ("you may wish to roll them separately for clarity"), and the Throw-in Template
-  is the same diagram the Range Ruler is — see the section above.
-
-The five that remain are all one of two things, and both are stated:
-
-* **A coach's free choice the engine takes for them** — Sidestep, Stand Firm, Safe
-  Pair of Hands, Trickster. `Match.pending` could ask; whether a board should stop
-  and ask four times a turn is a judgement about the game, not a missing rule.
-* **A League ledger the engine does not keep** — Star Player Points (Violent
-  Innovator), the Team Draft List (Insignificant), the post-game hire (Plague
-  Ridden), and On the Ball's mid-Pass interrupt.
+* **The keywords were in the data.** `data/rosters.json` carries every positional's
+  Keywords under `role` — "Eagle Warrior (Lineman, Human)" — and nothing had read
+  it. That closed HATRED, ANIMOSITY and BLOODLUST's bite (Thrall Lineman is a
+  Keyword and the Vampire roster prints it).
+* **A coach's free choice is not a missing half once there is a way to make it.**
+  SIDESTEP, STAND FIRM, TRICKSTER, SAFE PAIR OF HANDS and JUGGERNAUT each take a
+  field on the Block or the drop; the engine's policy is what happens when nobody
+  says, which is what a default is for.
+* **Two were stale.** VERY LONG LEGS' "ignores Cloud Burster" was written when
+  Cloud Burster was unmodelled; it has been modelled for six PRs.
+* **Two were misreadings.** Rolling a MULTIPLE BLOCK's halves separately is the
+  procedure the rules offer in the same breath, and the Throw-in Template (PUNT,
+  SWOOP) is the same diagram the Range Ruler is.
+* **The rest were work** — Shadowing's per-Turn bound, Diving Catch's other half,
+  On the Ball's mid-Pass interrupt, Insignificant against the only list the engine
+  keeps, and STAR PLAYER POINTS, which are earned during a game even though they
+  are spent after one. That last one is what made VIOLENT INNOVATOR mean something.
 
 ## The Range Ruler, and why it is `yes`
 

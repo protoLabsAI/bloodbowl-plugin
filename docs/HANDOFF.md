@@ -373,12 +373,14 @@ Skills modelled — **108 of 108**. `bb_get_skill` returns the rulebook's text f
 of them, which was always a separate job from applying them: quoting is what a
 coach asks for, applying is what the board does.
 
-**9 carry a `partial=`**, and that is the number to watch rather than the modelled
-count. Nine more were closed once the reason they were open turned out to be
-wrong — most memorably the KEYWORDS, which `data/rosters.json` had carried all
-along under `role` (the parenthesised list after each position name) and which
-nothing had ever read. Before writing off a partial as "the data does not have
-it", go and look at the data.
+**ONE carries a `partial=`** — Plague Ridden's post-game hire, which needs a league
+and a Treasury. Seventeen were closed, and the pattern in them is worth more than
+the number: most were not gaps. The KEYWORDS were in `data/rosters.json` all along
+under `role`; two partials were stale (written when a Skill they depended on was
+unmodelled); two were misreadings of what the rules permit; and five were coach's
+choices, which stopped being partial the moment there was a command field to make
+them with. **Before writing off a partial, check whether the reason it was written
+is still true.**
 
 **"Modelled" is not binary, and pretending it is flatters.** A Skill with two
 clauses of which one is applied would report as modelled and quietly do half its

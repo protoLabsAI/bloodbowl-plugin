@@ -45,6 +45,7 @@ tactically sane.
 from __future__ import annotations
 
 from ...pitch import in_bounds
+from .. import spp
 from ..ball import DIRECTIONS, bounce, check_touchdown
 from ..dice import Roll, roll_target
 from ..events import Event
@@ -232,6 +233,7 @@ def _land(match: Match, who, dice, rec: Recorder, penalty: int, had_ball: bool) 
 
     # "Players that were Prone, Stunned or Distracted when they were thrown will
     # automatically fail the Agility Test to land."
+    # (The two SPP awards for a landing are below, where the roll is made.)
     helpless = who.down != "standing" or getattr(who, "distracted", False)
     marking = -len(markers_of_square(match, who.side, who.x, who.y))
     mod = penalty + marking
@@ -249,6 +251,9 @@ def _land(match: Match, who, dice, rec: Recorder, penalty: int, had_ball: bool) 
     r = roll_target(dice, "Landing", agility_target(who), mod)
     if r.passed:
         rec.emit(Event(kind="note", actor=who.id, rolls=[r], text=f"{who.name()} lands on their feet. {r.describe()}"))
+        # "if a player is thrown by a team-mate and SUCCESSFULLY LANDS SAFELY, they
+        # will ALSO gain 1 SPP for landing safely, REGARDLESS of the type of throw."
+        rec.absorb(spp.award(match, who, spp.LANDED_SAFELY, "landing safely"))
         rec.absorb(check_touchdown(match, who))
         return False
     rec.emit(Event(kind="note", actor=who.id, rolls=[r], text=f"{who.name()} lands badly. {r.describe()}"))
@@ -387,6 +392,12 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         _scatter_player(match, t, dice, rec, times=1 if fumbled else 3)
 
     turned_over = _land(match, t, dice, rec, penalty, had_ball)
+    # "…results in a SUPERB Throw, AND the thrown team-mate successfully lands on
+    # their feet, the player who made the Throw Team-mate Action gains 1 SPP."
+    # Both conditions — a Superb Throw that ends face-down earns the thrower
+    # nothing, which is why this is checked after the landing rather than at it.
+    if superb and t.down == "standing" and t.place == "pitch":
+        rec.absorb(spp.award(match, p, spp.THROW_TEAM_MATE, "a Superb Throw that landed on its feet"))
     rec.emit(ended(p.id, "kickteam" if cmd.get("_kick") else "throwteam"))
     return Outcome(
         ok=not turned_over,
