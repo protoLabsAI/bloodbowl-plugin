@@ -320,6 +320,7 @@ def drive(base: str, *, do_checks: bool, live: bool) -> int:
             # true of the section above until this guard. Found while wanting a
             # screenshot of a match that was actually being played.
             _play(browser, url, w=1400, h=950)
+            _drag(browser, url, w=1400, h=950)
             _choices(browser, url, w=1400, h=950)
             _versus(browser, url, w=1400, h=950)
 
@@ -737,6 +738,187 @@ def _play(browser, url: str, w: int, h: int) -> None:
     page.wait_for_timeout(250)
     page.screenshot(path=str(SHOTS / "play.png"), full_page=True)
     print(f"  shot: {(SHOTS / 'play.png').relative_to(ROOT)}")
+    page.close()
+
+
+def _drag(browser, url: str, w: int, h: int) -> None:
+    """Drag a player to a square, with a real pointer.
+
+    This is the section that could not be written against HTML5 drag-and-drop,
+    and the reason `drag.js` uses Pointer Events instead: Playwright drives
+    `mouse.move`/`down`/`up` natively. Everything here is the part a grep test
+    cannot reach — whether the gesture LANDS.
+
+    Three things it is really checking, all of which have shipped broken before
+    on the setup board: that a short press is still a CLICK; that the poller does
+    not tear the node out mid-drag; and that the square under the pointer is the
+    square the move goes to.
+    """
+    page = browser.new_page(viewport={"width": w, "height": h})
+    problems: list[str] = []
+    page.on("pageerror", lambda e: problems.append(str(e)))
+    page.goto(url, wait_until="networkidle")
+    page.wait_for_selector(".cell", timeout=10000)
+    theme = ROOT / "harness_theme.css"
+    if theme.exists():
+        page.add_style_tag(content=theme.read_text())
+    print("  -- drag to move --")
+
+    page.locator("#modePlay").click()
+    page.wait_for_timeout(300)
+    # A fixed seed, for the same reason the block section uses one: a dice-driven
+    # move can end the turn and leave nobody to drag.
+    page.evaluate("""async () => {
+      await fetch("/api/plugins/bloodbowl/game/new", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({seed: 7}),
+      });
+    }""")
+    page.reload(wait_until="networkidle")
+    page.wait_for_selector(".cell", timeout=10000)
+    # RE-INJECT: a reload throws the added style tag away, and without it the shot
+    # is unthemed — every token falls back and the whole board photographs grey.
+    # Which looks exactly like "the legal squares are not being highlighted".
+    if theme.exists():
+        page.add_style_tag(content=theme.read_text())
+    page.wait_for_timeout(400)
+    _get_past_any_question(page)
+
+    # A MARKED player, for the same reason the play section picks one: somebody in
+    # open field has eight free squares and no roll to show, so the odds badges
+    # this section checks the survival of would legitimately not exist and the
+    # check would pass by being vacuous.
+    who = page.evaluate("""async () => {
+      const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
+      const on = m.players.filter(p => p.place === "pitch" && p.down === "standing" && !p.acted);
+      const mine = on.filter(p => p.side === m.clock.active);
+      const foes = on.filter(p => p.side !== m.clock.active);
+      const marked = mine.find(p => foes.some(
+        f => Math.abs(f.x - p.x) <= 1 && Math.abs(f.y - p.y) <= 1));
+      const me = marked || mine[0];
+      return me ? {x: me.x, y: me.y, id: me.id, marked: !!marked} : null;
+    }""")
+    check("a draggable player is on the seeded board", who is not None)
+    if who is None:
+        page.close()
+        return
+
+    src = page.locator(f'.cell[data-x="{who["x"]}"][data-y="{who["y"]}"] .pc')
+
+    # A PRESS THAT DOES NOT TRAVEL IS STILL A CLICK. If the drag layer swallowed
+    # it, select-then-click — the accessible path, and what the rest of this
+    # harness drives — would be dead and nothing would say so.
+    box = src.bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.down()
+    page.mouse.up()
+    page.wait_for_timeout(600)
+    check(
+        "a press that does not travel is still a click, so selection survives",
+        page.locator(".cell.legal").count() > 0,
+        "clicking a player no longer selects it — the drag layer ate the click",
+    )
+
+    # Now a real drag onto a legal square.
+    dest = page.evaluate("""() => {
+      const c = document.querySelector('.cell.legal');
+      return c ? {x: +c.dataset.x, y: +c.dataset.y} : null;
+    }""")
+    check("the selected player has somewhere to be dragged", dest is not None)
+    if dest is None:
+        page.close()
+        return
+    tgt = page.locator(f'.cell[data-x="{dest["x"]}"][data-y="{dest["y"]}"]')
+    tb = tgt.bounding_box()
+    box = src.bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.down()
+    # In steps, because the drag only starts after the pointer clears the slop
+    # threshold — a single jump to the destination is not a drag, it is a
+    # teleport, and it would pass while a real gesture failed.
+    page.mouse.move(tb["x"] + tb["width"] / 2, tb["y"] + tb["height"] / 2, steps=12)
+    page.wait_for_timeout(150)
+    check(
+        "the square under the pointer is marked as the drop target",
+        page.locator(".cell.droptarget").count() == 1,
+        f"{page.locator('.cell.droptarget').count()} squares marked",
+    )
+    check(
+        "the dragged player is shown following the pointer",
+        page.locator(".pc.follower").count() == 1 and page.locator(".pc.ghost").count() == 1,
+        "no follower or no ghost — the original should stay put, dimmed",
+    )
+    # THE MARKS MUST SURVIVE THE DRAG. `clearMarks` strips every odds badge on the
+    # board whatever classes it is passed, so clearing the drop target through it
+    # wiped the Dodge, Rush and dice tags — the marks a coach is dragging BY —
+    # once per pointer move. The green stayed and only the numbers vanished, which
+    # is exactly the kind of thing a passing element count does not notice.
+    check(
+        "the legal squares survive being dragged over",
+        page.locator(".cell.legal").count() > 0,
+        "the drag cleared the move list it is being aimed with",
+    )
+    if who["marked"]:
+        check(
+            "the odds badges survive being dragged over",
+            page.locator(".cell .odds").count() > 0,
+            "clearMarks removed every badge on the board mid-drag",
+        )
+    else:
+        print("  (no Marked player on this board — skipping the odds-badge check rather than passing it vacuously)")
+    # The drop target must be VISIBLE, not merely classed. Every mark on this
+    # board that shipped broken shipped present-in-the-DOM and invisible on the
+    # pitch — the odds tag was white on white for exactly this reason. An element
+    # count cannot see that; the computed outline can.
+    outline = page.evaluate(
+        "() => { const n = document.querySelector('.cell.droptarget');"
+        " if (!n) return ''; const s = getComputedStyle(n);"
+        " return `${s.outlineStyle} ${s.outlineWidth} ${s.outlineColor}`; }"
+    )
+    check(
+        "the drop target is actually drawn, not just classed",
+        "none" not in outline and "0px" not in outline and bool(outline.strip()),
+        f"computed outline {outline!r}",
+    )
+    # …and not drawn UNDERNEATH the follower. A mark that is present, styled and
+    # covered by the very thing being dragged is invisible in the way that matters,
+    # and no element count or computed style can tell — only the geometry can.
+    fits = page.evaluate(
+        "() => { const f = document.querySelector('.pc.follower');"
+        " const c = document.querySelector('.cell.droptarget'); if (!f || !c) return null;"
+        " const a = f.getBoundingClientRect(), b = c.getBoundingClientRect();"
+        " return {follower: Math.round(a.width), cell: Math.round(b.width)}; }"
+    )
+    check(
+        "the follower does not blot out the square it is aiming at",
+        fits is not None and fits["follower"] < fits["cell"] * 0.85,
+        f"follower {fits and fits['follower']}px inside a {fits and fits['cell']}px square",
+    )
+    page.screenshot(path=str(SHOTS / "drag.png"), full_page=True)
+    page.mouse.up()
+    page.wait_for_timeout(900)
+
+    landed = page.evaluate(
+        """async (want) => {
+      const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
+      const p = m.players.find(q => q.id === want.id);
+      return p ? {x: p.x, y: p.y, down: p.down} : null;
+    }""",
+        {"id": who["id"]},
+    )
+    # A failed Dodge leaves them on the floor where they started, which is a legal
+    # outcome of the same gesture — so the check is "moved, or fell trying".
+    arrived = landed is not None and landed["x"] == dest["x"] and landed["y"] == dest["y"]
+    fell = landed is not None and landed["down"] != "standing"
+    check(
+        "the player is on the square it was dropped on",
+        arrived or fell,
+        f"dropped on {dest}, ended at {landed}",
+    )
+    check("the follower is cleaned up after the drop", page.locator(".pc.follower").count() == 0)
+    check("no ghost is left behind", page.locator(".pc.ghost").count() == 0)
+    check("no page errors", not problems, "; ".join(problems[:2]))
+    print(f"  shot: {(SHOTS / 'drag.png').relative_to(ROOT)}")
     page.close()
 
 
