@@ -917,6 +917,125 @@ def _drag(browser, url: str, w: int, h: int) -> None:
     )
     check("the follower is cleaned up after the drop", page.locator(".pc.follower").count() == 0)
     check("no ghost is left behind", page.locator(".pc.ghost").count() == 0)
+
+    # A RUN OF SEVERAL SQUARES. The whole point of dragging rather than clicking:
+    # one gesture, a step at a time, halting the moment a step does not land.
+    #
+    # FROM A FRESH BOARD, for the reason the block section restarts too: the drag
+    # above has already spent a player and may have ended the turn under everyone,
+    # so picking "the first unmarked player" afterwards lands on somebody with no
+    # movement left, whose first step is a Rush, which fails about half the time.
+    # That failure is the engine being right and read as the run being broken.
+    page.evaluate("""async () => {
+      await fetch("/api/plugins/bloodbowl/game/new", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({seed: 7}),
+      });
+    }""")
+    page.reload(wait_until="networkidle")
+    page.wait_for_selector(".cell", timeout=10000)
+    if theme.exists():
+        page.add_style_tag(content=theme.read_text())
+    page.wait_for_timeout(400)
+    _get_past_any_question(page)
+
+    runner = page.evaluate("""async () => {
+      const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
+      const on = m.players.filter(p => p.place === "pitch" && p.down === "standing" && !p.acted);
+      const foes = on.filter(p => p.side !== m.clock.active);
+      // Somebody in the OPEN, so the run is not a chain of Dodges that ends on
+      // the first bad die and makes this section a coin toss.
+      const me = on.find(p => p.side === m.clock.active && !foes.some(
+        f => Math.abs(f.x - p.x) <= 1 && Math.abs(f.y - p.y) <= 1));
+      return me ? {x: me.x, y: me.y, id: me.id} : null;
+    }""")
+    check("an unmarked player is available for a run", runner is not None)
+    if runner is not None:
+        page.locator(f'.cell[data-x="{runner["x"]}"][data-y="{runner["y"]}"] .pc').click()
+        page.wait_for_timeout(500)
+        # Straight down the pitch, three squares, staying on the board.
+        far = {"x": runner["x"], "y": runner["y"] + 3 if runner["y"] + 3 <= 26 else runner["y"] - 3}
+        src2 = page.locator(f'.cell[data-x="{runner["x"]}"][data-y="{runner["y"]}"] .pc')
+        b0 = src2.bounding_box()
+        page.mouse.move(b0["x"] + b0["width"] / 2, b0["y"] + b0["height"] / 2)
+        page.mouse.down()
+        # Step through each intervening square, as a hand would.
+        step = 1 if far["y"] > runner["y"] else -1
+        for k in range(1, 4):
+            cell = page.locator(f'.cell[data-x="{runner["x"]}"][data-y="{runner["y"] + step * k}"]')
+            bb = cell.bounding_box()
+            page.mouse.move(bb["x"] + bb["width"] / 2, bb["y"] + bb["height"] / 2, steps=6)
+            page.wait_for_timeout(60)
+        trail = page.locator(".cell.path").count()
+        check("the trail shows every square of the run", trail == 3, f"{trail} squares marked, wanted 3")
+        check(
+            "each square of the trail is numbered",
+            page.locator(".cell .step").count() == 3,
+            "a coach cannot tell the order of a trail without it",
+        )
+        page.screenshot(path=str(SHOTS / "drag-path.png"), full_page=True)
+        page.mouse.up()
+        page.wait_for_timeout(2200)
+        ended = page.evaluate(
+            """async (id) => {
+          const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
+          const p = m.players.find(q => q.id === id);
+          return p ? {x: p.x, y: p.y, down: p.down, used: p.ma_used} : null;
+        }""",
+            runner["id"],
+        )
+        moved = ended is not None and (ended["x"] != runner["x"] or ended["y"] != runner["y"])
+        check(
+            "the whole run is walked, not just the first square",
+            moved and (ended["used"] or 0) >= 2,
+            f"started {runner['x']},{runner['y']} ended at {ended} — one gesture should spend several squares",
+        )
+        check("the trail is cleaned up after the run", page.locator(".cell.path").count() == 0)
+
+    # DROP ON AN OPPONENT. A fresh board again, and this time a blocker.
+    page.evaluate("""async () => {
+      await fetch("/api/plugins/bloodbowl/game/new", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({seed: 7}),
+      });
+    }""")
+    page.reload(wait_until="networkidle")
+    page.wait_for_selector(".cell", timeout=10000)
+    if theme.exists():
+        page.add_style_tag(content=theme.read_text())
+    page.wait_for_timeout(400)
+    _get_past_any_question(page)
+
+    duel = page.evaluate("""async () => {
+      const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
+      const on = m.players.filter(p => p.place === "pitch" && p.down === "standing" && !p.acted);
+      const foes = on.filter(p => p.side !== m.clock.active);
+      for (const me of on.filter(p => p.side === m.clock.active)) {
+        const f = foes.find(q => Math.abs(q.x - me.x) <= 1 && Math.abs(q.y - me.y) <= 1);
+        if (f) return {me: {x: me.x, y: me.y, id: me.id}, foe: {x: f.x, y: f.y, id: f.id}};
+      }
+      return null;
+    }""")
+    check("an adjacent pair is available to test a dropped block", duel is not None)
+    if duel is not None:
+        before = page.locator("#log").inner_text()
+        src3 = page.locator(f'.cell[data-x="{duel["me"]["x"]}"][data-y="{duel["me"]["y"]}"] .pc')
+        b1 = src3.bounding_box()
+        tgt3 = page.locator(f'.cell[data-x="{duel["foe"]["x"]}"][data-y="{duel["foe"]["y"]}"]')
+        b2 = tgt3.bounding_box()
+        page.mouse.move(b1["x"] + b1["width"] / 2, b1["y"] + b1["height"] / 2)
+        page.mouse.down()
+        page.mouse.move(b2["x"] + b2["width"] / 2, b2["y"] + b2["height"] / 2, steps=10)
+        page.wait_for_timeout(150)
+        page.mouse.up()
+        page.wait_for_timeout(1200)
+        after = page.locator("#log").inner_text()
+        check(
+            "dropping onto an adjacent opponent throws a Block",
+            ("Blocks" in after or "Blitzes" in after) and after != before,
+            after[:110].replace("\n", " / "),
+        )
+
     check("no page errors", not problems, "; ".join(problems[:2]))
     print(f"  shot: {(SHOTS / 'drag.png').relative_to(ROOT)}")
     page.close()
