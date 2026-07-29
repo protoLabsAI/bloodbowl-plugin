@@ -45,6 +45,7 @@ def new_match(
     weather: str | None = None,
     apothecary: bool = False,
     controllers: dict | None = None,
+    session_id: str = "",
 ) -> Match:
     """Start a match from a set-up board.
 
@@ -105,6 +106,9 @@ def new_match(
                 # Who plays which side. Empty leaves the board permissive, which is
                 # the practice-board default and what every existing caller gets.
                 "controllers": dict(controllers or {}),
+                # The chat this game belongs to, so the agent's turn arrives where
+                # the person playing is looking. See Match.session_id.
+                "session_id": str(session_id or ""),
             },
             text=f"Match begins. {m.home_team or 'Home'} vs {m.away_team or 'Away'}. "
             f"{n} Team Re-roll(s) each. Weather: {weather_name(condition)}. "

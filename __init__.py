@@ -16,6 +16,34 @@ import logging
 
 from langchain_core.tools import tool
 
+# WHICH CHAT A TOOL WAS CALLED FROM. `current_session_id()` reads EMPTY inside a
+# tool body — the tracing contextvar does not survive the hop — so the graph state
+# is the only reliable carrier, and it arrives through this annotation.
+#
+# Guarded because `langgraph` is a HOST dependency: this plugin's own suite and its
+# browser harness import and register it with no host at all, and must keep doing
+# so. Without langgraph the parameter is a plain optional that nothing fills in,
+# every tool still works, and only the session binding is lost — which is exactly
+# what "no host" should cost.
+try:  # pragma: no cover — one branch per environment, and CI only has one
+    from typing import Annotated, Any
+
+    from langgraph.prebuilt import InjectedState
+
+    _Injected = Annotated[Any, InjectedState]
+except Exception:  # noqa: BLE001
+    _Injected = "Any"
+
+
+def _session_of(state) -> str:
+    """The chat id out of injected graph state, or "" when there is none."""
+    if not state:
+        return ""
+    if isinstance(state, dict):
+        return str(state.get("session_id") or "")
+    return str(getattr(state, "session_id", "") or "")
+
+
 log = logging.getLogger("protoagent.plugins.bloodbowl")
 
 # How the plugin publishes on the bus. Captured at registration because the routers
@@ -91,31 +119,37 @@ def register(registry) -> None:
     try:
         from graph import sdk  # type: ignore[import-not-found]
 
-        def _prompt(ev: dict) -> str | None:
-            d = ev.get("data") or {}
+        # NOT `sdk.react_on`: that binds ONE session at registration, and the
+        # session varies per match — the whole point is that your opponent's turn
+        # arrives in the chat you are playing in. So this subscribes directly and
+        # calls `run_in_session` with the session the match itself recorded.
+        def _turn_ready(payload: dict) -> None:
+            d = (payload or {}).get("data") or {}
             if d.get("controller") != "agent":
-                return None
+                return
             if d.get("why") == "answer":
-                return (
-                    f"It is your move in the Blood Bowl match — but first the engine is waiting on "
-                    f"an answer from {d.get('side')}, which is your side: {d.get('question')}\n\n"
-                    "Answer it with bb_game_choose, then carry on."
+                prompt = (
+                    f"Your Blood Bowl opponent has moved, and the engine is waiting on an answer "
+                    f"from {d.get('side')} — your side: {d.get('question')}\n\n"
+                    "Answer it with bb_game_choose, then carry on with your turn."
                 )
-            return (
-                f"Your turn in the Blood Bowl match: you play {d.get('side')}, and it is "
-                f"half {d.get('half')}, turn {d.get('turn')}.\n\n"
-                "Read the board with bb_game_state, then PLAY THE WHOLE TURN — activate the players "
-                "you want, and finish with bb_game_end_turn so it comes back to your opponent. "
-                "bb_game_legal and bb_game_odds are free, so check before you commit. Then tell them "
-                "in a sentence or two what you did and what it means for the position — you are "
-                "playing against a person, not narrating to yourself."
-            )
+            else:
+                prompt = (
+                    f"Your turn in the Blood Bowl match: you play {d.get('side')}, and it is "
+                    f"half {d.get('half')}, turn {d.get('turn')}.\n\n"
+                    "Read the board with bb_game_state, then PLAY THE WHOLE TURN — activate the "
+                    "players you want and finish with bb_game_end_turn, which hands the board back. "
+                    "bb_game_legal and bb_game_odds are free, so check before you commit. Then tell "
+                    "your opponent in a sentence or two what you did and what it means for the "
+                    "position — you are playing a person, not narrating to yourself."
+                )
+            # A match started from the BOARD has no chat behind it, so fall back to
+            # the durable Activity thread rather than dropping the turn on the
+            # floor. `bb_game_here` is how a person moves it into their own chat.
+            session = str(d.get("session_id") or "") or "system:activity"
+            sdk.run_in_session(session, prompt, job_id="bloodbowl-turn")
 
-        registry.on_unsubscribe = sdk.react_on(
-            "bloodbowl.turn_ready",
-            prompt=_prompt,
-            job_id="bloodbowl-turn",
-        )
+        registry.on("bloodbowl.turn_ready", _turn_ready)
     except Exception:  # noqa: BLE001 — no host, no nudge; the plugin still works
         log.debug("[bloodbowl] turn nudge unavailable (no host SDK)", exc_info=True)
 
@@ -289,6 +323,7 @@ def _tools(cfg: dict):
         weather: str = "",
         apothecary: bool = False,
         you: str = "",
+        state: _Injected = None,
     ) -> str:
         """Start a match from the current practice board.
 
@@ -353,6 +388,10 @@ def _tools(cfg: dict):
             controllers=(
                 {you: "human", ("away" if you == "home" else "home"): "agent"} if you in ("home", "away") else {}
             ),
+            # The chat you start the game in is the chat it gets played in — your
+            # opponent's turns arrive where you are looking rather than in the
+            # Activity thread. See Match.session_id.
+            session_id=_session_of(state),
         )
         save_match(m)
         out = {"ok": True, "match": m.to_dict(include_log=False), "message": m.events[0].text}
@@ -363,6 +402,42 @@ def _tools(cfg: dict):
             out["pending"] = dict(m.pending)
             out["message"] = str(m.pending.get("text") or "") + " Answer with bb_game_choose, or decline."
         return json.dumps(out)
+
+    @tool
+    def bb_game_here(state: _Injected = None) -> str:
+        """Play the current match HERE — in this conversation.
+
+        Your turns are enqueued into a chat, so a head-to-head has to know which
+        one. A match you started with ``bb_game_new`` is already bound to the chat
+        you started it in; use this for one that was started **from the board**,
+        which has no conversation behind it, or to move a game into a different
+        chat. Until it is bound, your turns arrive in the Activity thread.
+        """
+        from .engine.events import Event
+        from .store import load_match, save_match
+
+        sid = _session_of(state)
+        if not sid:
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": "no session to bind — this looks like a host-free call, "
+                    "so there is no conversation to play in",
+                }
+            )
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress; start one with bb_game_new"})
+        was = m.session_id
+        m.apply(
+            Event(
+                kind="session_bound",
+                detail={"session_id": sid, "was": was},
+                text="This match will be played out here.",
+            )
+        )
+        save_match(m)
+        return json.dumps({"ok": True, "session_id": sid, "was": was, "message": "your turns will arrive here"})
 
     @tool
     def bb_game_state() -> str:
@@ -1018,6 +1093,7 @@ def _tools(cfg: dict):
         bb_get_skill,
         bb_list_skills,
         bb_game_choose,
+        bb_game_here,
         bb_game_setup,
         bb_game_apothecary,
         bb_game_extra_time,

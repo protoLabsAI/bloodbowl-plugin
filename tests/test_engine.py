@@ -6597,7 +6597,14 @@ def test_the_handover_says_who_is_waited_on_and_only_when_it_changes():
 
     m = _versus(("home", 7, 13), ("away", 7, 20), you="home", active="home")
     mine = handover.owed(m)
-    assert mine == {"side": "home", "controller": "human", "why": "turn", "half": 1, "turn": 1}
+    assert mine == {
+        "side": "home",
+        "controller": "human",
+        "session_id": "",
+        "why": "turn",
+        "half": 1,
+        "turn": 1,
+    }
     assert handover.changed(mine, mine) == {}, "the same side twice is not news"
 
     from bloodbowl.engine.game import end_turn
