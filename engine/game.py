@@ -12,7 +12,7 @@ from .dice import SeededDice
 from .events import Event
 from .rerolls import DEFAULT_REROLLS
 from .skills import NOTED, activation_gates, first_mentions, partly_modelled_on_pitch, unmodelled_on_pitch
-from .state import Match, starting_positions
+from .state import Match, flesh_out, starting_positions
 from .weather import from_roll as _weather_from_roll
 from .weather import name_of as weather_name
 
@@ -53,6 +53,11 @@ def new_match(
     ``kicking_to`` is the RECEIVING side — the team the ball is kicked to, which
     takes the first turn.
     """
+    # A board drawn from a preset holds labelled TOKENS with no stats. Give them
+    # a real player's numbers before anything reads a Move Allowance off them —
+    # `movement()` returns 0 for an empty MA, so the alternative is eleven players
+    # who cannot move and no explanation.
+    tokens = flesh_out(scenario)
     m = starting_positions(scenario, seed=seed)
     # How many Team Re-rolls a team has is a DRAFTING decision, and a practice
     # board was never drafted — so it is an input with a stated default rather
@@ -80,7 +85,14 @@ def new_match(
                 "apothecary": {"home": bool(apothecary), "away": bool(apothecary)},
             },
             text=f"Match begins. {m.home_team or 'Home'} vs {m.away_team or 'Away'}. "
-            f"{n} Team Re-roll(s) each. Weather: {weather_name(condition)}.",
+            f"{n} Team Re-roll(s) each. Weather: {weather_name(condition)}."
+            + (
+                f" {len(tokens)} preset token(s) took the field as linemen: {'; '.join(tokens[:4])}"
+                + ("…" if len(tokens) > 4 else "")
+                + "."
+                if tokens
+                else ""
+            ),
         )
     )
     start_drive(m, receiving=receiving, dice=dice_for(m))

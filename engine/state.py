@@ -773,6 +773,51 @@ def fold(match: Match, events: list) -> Match:
     return match
 
 
+def flesh_out(scenario) -> list[str]:
+    """Give any statless TOKEN on the board a real player's numbers.
+
+    A shipped preset is a SHAPE — "Coordinates … so a preset can be diffed against
+    a live board", with a role label and no positional, no MA, no ST, no AG, no
+    AV. That is exactly right for the practice board and exactly wrong the moment
+    a match starts on it: `PlayerState.movement()` reads `int("" or 0)`, so every
+    one of them is a player who cannot move, and nothing anywhere says so. Found
+    by looking at a screenshot of eleven "?" badges, not by a test.
+
+    They become the team's LINEMAN, which is the honest default: it is the
+    cheapest positional on every roster and the only one a team may field sixteen
+    of, so a shape drawn without naming anybody is a shape drawn out of linemen.
+    The label is kept — the coach drew "safety" for a reason. Returns what was
+    filled in, because the alternative to saying so is a coach believing they
+    fielded a Blitzer.
+    """
+    from ..pitch import find_team
+
+    filled: list[str] = []
+    for p in scenario.players:
+        if p.MA:
+            continue
+        team = find_team(p.team or (scenario.home_team if p.side == "home" else scenario.away_team))
+        if team is None or not team.get("positionals"):
+            continue
+        # "0-16" — the one every team may field most of, which is the lineman on
+        # every roster in the data.
+        pos = max(team["positionals"], key=lambda q: _qty_max(q.get("qty", "")))
+        p.position, p.team = pos["position"], team["name"]
+        for stat in ("MA", "ST", "AG", "PA", "AV"):
+            setattr(p, stat, pos.get(stat, ""))
+        p.skills = list(pos.get("skills") or [])
+        p.cost = pos.get("cost", "")
+        filled.append(f"{p.label or 'token'} at ({p.x},{p.y}) → {pos['position']}")
+    return filled
+
+
+def _qty_max(qty: str) -> int:
+    import re as _re
+
+    found = _re.findall(r"\d+", str(qty or ""))
+    return int(found[-1]) if found else 0
+
+
 def starting_positions(scenario, seed: int = 0) -> Match:
     """Begin a match from a set-up practice board.
 

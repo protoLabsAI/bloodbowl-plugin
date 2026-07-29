@@ -1091,3 +1091,49 @@ def test_the_apothecary_casualty_choice_works_through_the_tools(registry):
     assert answered["ok"], answered
     after = load_match()
     assert not after.pending, "the answer has to reach the SAVED match"
+
+
+def test_a_match_started_from_a_preset_has_players_who_can_actually_move(client):
+    """A shipped preset is a SHAPE — a role label and no positional, no MA, no ST,
+    no AV. Right for the practice board, wrong the moment a match starts on it:
+    `movement()` reads int("" or 0), so every one of them was a player who could
+    not move and nothing anywhere said so.
+
+    Found by looking at a harness screenshot of eleven "?" badges, not by a test —
+    which is why this one exists."""
+    base = "/api/plugins/bloodbowl"
+    client.post(f"{base}/teams", json={"home_team": "Orc", "away_team": "Skaven"})
+    loaded = client.post(f"{base}/presets/load", json={"name": "Standard defence"}).json()
+    assert loaded["players"], loaded
+    assert all(not p["MA"] for p in loaded["players"]), "the preset itself is still a shape"
+
+    started = client.post(f"{base}/game/new", json={"seed": 4}).json()
+    on = [p for p in started["match"]["players"] if p["place"] == "pitch"]
+    assert on, started
+    assert all(p["movement"] > 0 for p in on), [p for p in on if not p["movement"]]
+    assert all(p["position"] for p in on), "and they have a name a coach can read"
+    # …and the engine says it did it, rather than quietly promoting eleven tokens.
+    log = client.get(f"{base}/game/log").json()["log"]
+    assert any("took the field as linemen" in (e.get("text") or "") for e in log), log[:2]
+
+
+def test_the_lineman_is_the_one_a_team_may_field_most_of(registry):
+    """The default has to be defensible: the lineman is the cheapest positional on
+    every roster and the only one with a 0-16 limit, so a shape drawn without
+    naming anybody is a shape drawn out of linemen."""
+    from bloodbowl.engine.state import flesh_out
+    from bloodbowl.pitch import Player, Scenario
+
+    sc = Scenario(name="shape", home_team="Orc", away_team="Skaven")
+    sc.players = [Player(side="home", x=7, y=13, label="LOS"), Player(side="away", x=7, y=14, label="LOS")]
+    filled = flesh_out(sc)
+    assert len(filled) == 2, filled
+    assert sc.players[0].position == "Orc Lineman" and sc.players[0].MA == "5"
+    assert sc.players[1].position == "Skaven Clanrat"
+    assert sc.players[0].label == "LOS", "the label is kept — the coach drew 'LOS' for a reason"
+
+    # A real player is left alone.
+    sc2 = Scenario(name="real", home_team="Orc", away_team="Skaven")
+    sc2.players = [Player(side="home", x=7, y=13, position="Orc Blitzer", team="Orc", MA="6", AG="3+", AV="9+")]
+    assert flesh_out(sc2) == []
+    assert sc2.players[0].position == "Orc Blitzer"
