@@ -682,6 +682,101 @@ def disturbing_presence(match, player, test: str) -> int:
     return -n
 
 
+@skill_hook("Extra Arms", "roll_modifier")
+def _extra_arms(ctx: SkillContext) -> None:
+    """S3: "This player applies a +1 modifier to the Agility Test whenever they
+    attempt to CATCH, PICK UP or INTERCEPT the ball." Three tests, one number —
+    the plainest Skill in the catalogue and the most generally useful."""
+    if ctx.flags.get("test") in ("catch", "pick_up", "intercept"):
+        ctx.value += 1
+        ctx.notes.append(f"Extra Arms: +1 to the {str(ctx.flags.get('test')).replace('_', ' ')}")
+
+
+@skill_hook("Timmm-ber!", "roll_modifier")
+def _timber(ctx: SkillContext) -> None:
+    """S3: "If this player has AN MA OF 2 OR LESS and attempts to stand up, apply a
+    +1 modifier to the roll for standing up FOR EACH OPEN STANDING TEAM-MATE
+    ADJACENT to this player. A roll of a natural 1 will still fail as normal."
+
+    Only a player with MA 2 or less ever rolls to stand at all, so the condition
+    is really a reminder rather than a filter — but it is in the text, and a Skill
+    on an MA 3 player doing nothing is the sort of thing a coach asks about.
+
+    OPEN, so a team-mate pinned by a Tackle Zone is no help: they are busy.
+    """
+    if ctx.flags.get("test") != "stand_up" or ctx.player.movement() > 2:
+        return
+    from .rules import adjacent, is_open
+
+    match = ctx.match
+    helpers = [
+        q
+        for q in match.on_pitch(ctx.player.side)
+        if q.id != ctx.player.id and adjacent(q.x, q.y, ctx.player.x, ctx.player.y) and is_open(match, q)
+    ]
+    if helpers:
+        ctx.value += len(helpers)
+        ctx.notes.append(f"Timmm-ber!: +{len(helpers)} from team-mates hauling them up")
+
+
+@skill_hook("Decay", "casualty")
+def _decay(ctx: SkillContext) -> None:
+    """S3: "Apply a +1 modifier to any Casualty Roll made against this player."
+    Against — so it belongs to the player being rolled for, not to whoever put
+    them there, and a higher D16 is a worse result."""
+
+
+@skill_hook("Regeneration", "casualty")
+def _regeneration(ctx: SkillContext) -> None:
+    """S3: "Whenever this player suffers a Casualty, BEFORE MAKING THE CASUALTY
+    ROLL for them, roll a D6. On a 1-3, this player suffers the Casualty … On a
+    4+, this player REGENERATES and ignores the Casualty … and is instead placed
+    in their team's RESERVES BOX." """
+
+
+@skill_hook("Cloud Burster", "pass")
+def _cloud_burster(ctx: SkillContext) -> None:
+    """S3: "When this player performs a Pass Action, opposition players MAY NOT
+    ATTEMPT TO INTERCEPT the ball." The thrower's Skill shutting off the
+    defender's roll — Very Long Legs is the counter, and ignores it."""
+
+
+@skill_hook("My Ball", "possession")
+def _my_ball(ctx: SkillContext) -> None:
+    """S3: "…may not willingly give up the ball … may not declare Pass Actions,
+    Hand-off Actions, or use any other Skill or Trait that would allow them to
+    relinquish possession." Refused at declaration, with the reason."""
+
+
+@skill_hook("No Ball", "possession")
+def _no_ball(ctx: SkillContext) -> None:
+    """S3: "A player with this Trait MAY NEVER HAVE POSSESSION of the ball. If this
+    player would be required to attempt to Catch or Pick-up the Ball, they will
+    AUTOMATICALLY FAIL to do so AS IF THEY HAD ROLLED A NATURAL 1. A player with
+    this Trait may not attempt to Intercept a Pass."
+
+    "As if they had rolled a natural 1" matters: it is a failure that no re-roll
+    can rescue, not a hard target.
+    """
+
+
+@skill_hook("Unsteady", "possession")
+def _unsteady(ctx: SkillContext) -> None:
+    """S3: "This player may not declare Secure the Ball Actions." """
+
+
+@skill_hook("Steady Footing", "footing")
+def _steady_footing(ctx: SkillContext) -> None:
+    """S3: "Whenever this player would be Knocked Down or Fall Over, roll a D6. On
+    a 6, this player does NOT get Knocked Down or Fall Over. If this happens
+    during their activation, they may continue their activation as normal AND NO
+    TURNOVER WILL BE CAUSED."
+
+    Not an Armour Roll saved — the knock-down never happens, so there is no
+    Injury Roll, no dropped ball and no Turnover.
+    """
+
+
 # --- Skills that grant a re-roll ------------------------------------------
 
 

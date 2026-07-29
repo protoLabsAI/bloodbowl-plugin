@@ -139,6 +139,23 @@ def catch(match, player, dice, depth: int = 0, modifier: int = 0, team_reroll: b
         events.extend(bounce(match, dice, depth=depth))
         return events
 
+    # NO BALL: "If this player would be required to attempt to Catch or Pick-up the
+    # Ball, they will AUTOMATICALLY FAIL to do so AS IF THEY HAD ROLLED A NATURAL
+    # 1." A natural 1 rather than a hard target, so no re-roll can rescue it —
+    # which is why this returns before the roll rather than setting a modifier.
+    if player.has_skill("No Ball"):
+        events.append(
+            Event(
+                kind="note",
+                actor=player.id,
+                detail={"skill": "No Ball"},
+                text=f"{player.name()} has No Ball and cannot hold one — it bounces away.",
+            )
+        )
+        match.apply(events[-1])
+        events.extend(bounce(match, dice, depth=depth))
+        return events
+
     marking = -len(markers_of_square(match, player.side, player.x, player.y))
     ctx = roll_modifier(match, player, "catch", base=modifier + marking, marking=marking)
     mod = ctx.value
@@ -188,6 +205,22 @@ def pick_up(match, player, dice, team_reroll: bool = False) -> tuple[list[Event]
     expensive routine decision in the game.
     """
     events: list[Event] = []
+    # NO BALL, again: an automatic failure "as if they had rolled a natural 1", so
+    # it returns before the roll and no re-roll can rescue it. Failing a pick-up is
+    # a Turnover, which makes this Trait genuinely dangerous rather than merely odd.
+    if player.has_skill("No Ball"):
+        events.append(
+            Event(
+                kind="note",
+                actor=player.id,
+                detail={"skill": "No Ball"},
+                text=f"{player.name()} has No Ball and cannot pick one up — turnover.",
+            )
+        )
+        match.apply(events[-1])
+        events.extend(bounce(match, dice))
+        return events, True
+
     marking = -len(markers_of_square(match, player.side, player.x, player.y))
     ctx = roll_modifier(match, player, "pick_up", base=marking, marking=marking)
     mod = ctx.value

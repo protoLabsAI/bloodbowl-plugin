@@ -32,6 +32,8 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, "only a Standing player on the pitch can hand the ball off")
     if match.ball.carrier != p.id:
         return Legality(False, f"{p.name()} is not holding the ball")
+    if p.has_skill("My Ball"):
+        return Legality(False, f"{p.name()} has My Ball and will not give it up — no Pass, no Hand-off")
 
     t = match.by_id(str(cmd.get("target") or ""))
     if t is None:

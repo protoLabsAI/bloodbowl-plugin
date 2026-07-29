@@ -44,6 +44,9 @@ def validate(match: Match, cmd: dict) -> Legality:
     spent = refuse_if_spent(match, p, "secure")
     if spent:
         return Legality(False, spent)
+    # UNSTEADY: "This player may not declare Secure the Ball Actions."
+    if p.has_skill("Unsteady"):
+        return Legality(False, f"{p.name()} is Unsteady and may not declare a Secure the Ball Action")
     if not match.ball.in_play or match.ball.carrier:
         return Legality(False, "the ball is not loose on the ground")
 

@@ -68,6 +68,11 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, "only a Standing player on the pitch can Pass")
     if match.ball.carrier != p.id:
         return Legality(False, f"{p.name()} is not holding the ball")
+    # MY BALL: "may not willingly give up the ball … may not declare Pass Actions,
+    # Hand-off Actions, or use any other Skill or Trait that would allow them to
+    # relinquish possession."
+    if p.has_skill("My Ball"):
+        return Legality(False, f"{p.name()} has My Ball and will not give it up — no Pass, no Hand-off")
     if not _passing_target(p):
         return Legality(False, f"{p.name()} has no Passing Ability and cannot Pass")
 
@@ -111,6 +116,9 @@ def _interceptors(match: Match, passer, lx: int, ly: int) -> list:
     out = []
     for q in match.on_pitch(match.opponent(passer.side)):
         if q.down != "standing" or getattr(q, "distracted", False):
+            continue
+        # "A player with this Trait may not attempt to Intercept a Pass."
+        if q.has_skill("No Ball"):
             continue
         if in_corridor(passer.x, passer.y, lx, ly, q.x, q.y):
             out.append(q)
@@ -219,8 +227,22 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
 
     lx, ly = match.ball.x, match.ball.y
 
+    # CLOUD BURSTER: "When this player performs a Pass Action, opposition players
+    # MAY NOT ATTEMPT TO INTERCEPT the ball." The thrower's Skill switching off the
+    # defender's roll — and Very Long Legs is the written counter to it.
+    burst = can_use(p, "Cloud Burster")
+    if burst:
+        rec.emit(
+            Event(
+                kind="note",
+                actor=p.id,
+                detail={"skill": "Cloud Burster"},
+                text=f"{p.name()} throws a flat one — nobody may attempt to Intercept.",
+            )
+        )
+
     # Interceptions are checked against the square the ball is DESTINED to land in.
-    for q in _interceptors(match, p, lx, ly):
+    for q in [] if burst else _interceptors(match, p, lx, ly):
         marking = -len(markers_of_square(match, q.side, q.x, q.y))
         ictx = roll_modifier(match, q, "intercept", base=(-3 if accurate else -2) + marking, marking=marking)
         ir = roll_target(dice, "Intercept", agility_target(q), ictx.value, note=" ".join(ictx.notes))
