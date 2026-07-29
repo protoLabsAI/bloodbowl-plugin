@@ -230,6 +230,9 @@ class Match:
     # "they can use them ONCE PER GAME" — so this is a boolean per side, spent
     # rather than counted, and never replenished at half-time.
     apothecary: dict = field(default_factory=dict)
+    # Set-ups declared for the NEXT Drive, per side. "The kicking team must set up
+    # first followed by the receiving team", so the order is recorded too.
+    setups: dict = field(default_factory=dict)
     # Cheering Fans: which side's next Turn gets a free Offensive Assist on its
     # first Block, and whether that Turn has begun yet.
     cheer: dict = field(default_factory=dict)
@@ -311,6 +314,9 @@ class Match:
                     p.rooted = bool(d["rooted"])
                 if "chomped" in d:
                     p.chomped_by = str(d["chomped"] or "")
+                if d.get("reserves"):
+                    # TOO MANY PLAYERS, and Dodgy Snack's worse result.
+                    p.place, p.down = "reserves", "standing"
 
         elif kind == "player_left_pitch":
             # Pushed into the Crowd. They land in the Reserves Box unless the
@@ -355,6 +361,10 @@ class Match:
                 self.drive_rerolls[side] -= 1
             elif side in self.rerolls:
                 self.rerolls[side] = max(0, self.rerolls[side] - 1)
+
+        elif kind == "drive_setup":
+            side = str(d.get("side") or "")
+            self.setups[side] = [dict(row) for row in (d.get("squares") or [])]
 
         elif kind == "apothecary_used":
             p = self.by_id(event.actor)
@@ -500,9 +510,11 @@ class Match:
 
         elif kind == "drive_started":
             self.drive = int(d.get("drive") or self.drive + 1)
-            # A Drive-scoped re-roll lasts exactly one Drive.
+            # A Drive-scoped re-roll lasts exactly one Drive, and a set-up is
+            # consumed by the Drive it was declared for.
             self.drive_rerolls = {}
             self.cheer = {}
+            self.setups = {}
             self.setup = [dict(row) for row in (d.get("setup") or [])]
             for row in self.setup:
                 p = self.by_id(str(row.get("id") or ""))
@@ -610,6 +622,7 @@ class Match:
             "staff": {k: dict(v) for k, v in self.staff.items()},
             "weather": self.weather,
             "apothecary": dict(self.apothecary),
+            "setups": {k: [dict(r) for r in v] for k, v in self.setups.items()},
             "cheer": dict(self.cheer),
             "argue_banned": list(self.argue_banned),
             "turn_actions": dict(self.turn_actions),

@@ -513,7 +513,7 @@ def test_a_match_starts_from_the_board_without_consuming_it(registry):
 
     _setup_board()
     t = _tools(registry)
-    out = j.loads(t["bb_game_new"].invoke({"seed": 7}))
+    out = j.loads(t["bb_game_new"].invoke({"seed": 7, "kicking_to": "home"}))
     assert out["ok"] and len(out["match"]["players"]) == 2
     assert out["match"]["clock"]["half"] == 1
 
@@ -539,7 +539,7 @@ def test_legal_reports_every_neighbour_without_changing_the_game(registry):
 
     _setup_board()
     t = _tools(registry)
-    t["bb_game_new"].invoke({"seed": 3})
+    t["bb_game_new"].invoke({"seed": 3, "kicking_to": "home"})
     before = j.loads(t["bb_game_state"].invoke({}))
     out = j.loads(t["bb_game_legal"].invoke({"player": "h00"}))
     assert out["ok"] and len(out["squares"]) == 8
@@ -553,7 +553,7 @@ def test_acting_is_refused_when_illegal_and_says_why(registry):
 
     _setup_board()
     t = _tools(registry)
-    t["bb_game_new"].invoke({"seed": 3})
+    t["bb_game_new"].invoke({"seed": 3, "kicking_to": "home"})
     out = j.loads(t["bb_game_act"].invoke({"action": "move", "player": "a00", "x": 7, "y": 15}))
     assert out["ok"] is False and "turn" in out["text"]
 
@@ -563,7 +563,7 @@ def test_the_log_carries_the_rolls_so_the_coach_quotes_rather_than_guesses(regis
 
     _setup_board()
     t = _tools(registry)
-    t["bb_game_new"].invoke({"seed": 11})
+    t["bb_game_new"].invoke({"seed": 11, "kicking_to": "home"})
     t["bb_game_act"].invoke({"action": "move", "player": "h00", "x": 6, "y": 12})
     log = j.loads(t["bb_game_log"].invoke({"last": 10}))
     assert log["ok"]
@@ -603,7 +603,7 @@ def test_successive_actions_do_not_repeat_the_same_roll(registry):
 
     _setup_board()
     t = _tools(registry)
-    t["bb_game_new"].invoke({"seed": 5})
+    t["bb_game_new"].invoke({"seed": 5, "kicking_to": "home"})
     # A Rush every step: MA 5 is spent, then each further square rolls.
     for step in range(6):
         t["bb_game_act"].invoke({"action": "move", "player": "h00", "x": 7 if step % 2 else 6, "y": 12 - step // 2})
@@ -618,7 +618,7 @@ def test_abandoning_a_match_leaves_the_board(registry):
 
     _setup_board()
     t = _tools(registry)
-    t["bb_game_new"].invoke({"seed": 1})
+    t["bb_game_new"].invoke({"seed": 1, "kicking_to": "home"})
     assert j.loads(t["bb_game_abandon"].invoke({}))["discarded"] is True
     assert j.loads(t["bb_game_state"].invoke({}))["ok"] is False
 
@@ -4225,3 +4225,112 @@ def test_the_apothecary_sends_a_crowd_victim_to_the_reserves_instead():
     m.clock.active = "away"
     out = use_apothecary(m, "a01", _dice([]))
     assert out["ok"] and m.by_id("a01").place == "reserves"
+
+
+# --- the Set-up phase ------------------------------------------------------
+
+
+def _squad(side, n=11):
+    """A legal formation: three on the Line, the rest tucked behind it."""
+    from bloodbowl.engine.setup import LOS_ROWS
+
+    line = LOS_ROWS[0] if side == "home" else LOS_ROWS[1]
+    back = line - 1 if side == "home" else line + 1
+    squares = [(6, line), (7, line), (8, line)]
+    x = 5
+    while len(squares) < n:
+        squares.append((x, back))
+        x += 1
+    return squares
+
+
+def _setup_match(n=11):
+    squares = _squad("home", n) + _squad("away", n)
+    return _match(*[("home" if i < n else "away", x, y, 6) for i, (x, y) in enumerate(squares)])
+
+
+def test_a_set_up_is_checked_against_all_four_rules_at_once():
+    """ "Players must be deployed in their own half … At least three players … must
+    be deployed in the Centre Field, directly adjacent to the Line of Scrimmage …
+    No more than two players from each team may be deployed within each Wide Zone."
+
+    Every violation comes back together, because a coach fixing a formation wants
+    the whole list rather than one error at a time.
+    """
+    from bloodbowl.engine.setup import violations
+
+    assert violations("home", _squad("home"), 11) == []
+
+    # Over the Line, none on it, and four in a Wide Zone.
+    bad = [(1, 20), (2, 5), (3, 5), (4, 5), (1, 5), (7, 4), (8, 4), (9, 4), (10, 4), (11, 4), (12, 4)]
+    problems = violations("home", bad, 11)
+    assert any("opponent's half" in v for v in problems)
+    assert any("Line of Scrimmage" in v for v in problems)
+    assert any("Wide Zone" in v for v in problems)
+
+
+def test_a_short_handed_team_must_put_everyone_on_the_line():
+    """ "Should a team only be able to field three or fewer players, then they must
+    be deployed in the Centre Field directly adjacent to the Line of Scrimmage."
+    """
+    from bloodbowl.engine.setup import violations
+
+    assert violations("home", [(6, 13), (7, 13), (8, 13)], 3) == []
+    assert violations("home", [(6, 13), (7, 13), (7, 11)], 3), "the third is off the Line"
+    # …and a team that could field more must: "they must set up as many as they can".
+    assert any("as many as they can" in v for v in violations("home", [(6, 13), (7, 13), (8, 13)], 8))
+
+
+def test_declaring_a_set_up_refuses_an_illegal_one_and_records_a_legal_one():
+    from bloodbowl.engine.game import declare_setup
+
+    m = _setup_match()
+    ids = [p.id for p in m.players if p.side == "home"]
+    legal = [{"id": i, "x": x, "y": y} for i, (x, y) in zip(ids, _squad("home"), strict=False)]
+    out = declare_setup(m, "home", legal)
+    assert out["ok"] and m.setups["home"], out
+    assert out["waiting_on"] == "away"
+
+    crowded = [{"id": i, "x": 1 + n % 4, "y": 12} for n, i in enumerate(ids)]
+    bad = declare_setup(m, "home", crowded)
+    assert not bad["ok"] and bad["violations"]
+
+
+def test_a_declared_set_up_beats_the_reused_opening_one():
+    """The captured opening set-up is the documented fallback, not the rule."""
+    from bloodbowl.engine.game import declare_setup, start_drive
+
+    m = _setup_match()
+    ids = [p.id for p in m.players if p.side == "home"]
+    moved = _squad("home")
+    moved[-1] = (12, 11)  # somewhere the opening set-up never had anybody
+    declare_setup(m, "home", [{"id": i, "x": x, "y": y} for i, (x, y) in zip(ids, moved, strict=False)])
+    start_drive(m, receiving="home", dice=_dice([3] + [4] * 20))
+    last = m.by_id(ids[-1])
+    assert (last.x, last.y) == (12, 11), "the declared set-up was ignored"
+    assert m.setups == {}, "a set-up is consumed by the Drive it was declared for"
+
+
+def test_too_many_players_are_removed_by_the_opposition():
+    """ "any extra players on the pitch will be immediately removed … The players
+    that are removed CANNOT HAVE THE BALL, cannot be a Star Player and are chosen
+    by the opposition Coach." """
+    from bloodbowl.engine.game import enforce_squad_size
+
+    m = _match(*[("home", 1 + i % 15, 5 + i // 15, 6) for i in range(13)], ("away", 7, 20, 6))
+    m.apply(_ball_at(1, 5, carrier="h00"))
+    assert len(m.on_pitch("home")) == 13
+
+    enforce_squad_size(m)
+    assert len(m.on_pitch("home")) == 11
+    assert m.by_id("h00").place == "pitch", "the ball carrier may not be the one removed"
+
+
+def test_the_kicking_team_is_rolled_off_for_when_nobody_says():
+    """ "this is done with a simple coin toss … The Coach who rolls highest decides
+    which team is kicking and which team is receiving." """
+    from bloodbowl.engine.game import _roll_off
+
+    assert _roll_off(_dice([6, 2])) == "away", "home rolled highest, so they kick"
+    assert _roll_off(_dice([2, 6])) == "home"
+    assert _roll_off(_dice([4, 4, 5, 1])) == "away", "a tie is re-rolled"

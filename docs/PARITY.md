@@ -19,14 +19,14 @@ Three verdicts, and the middle one is the important one:
 | Section | | Notes |
 |---|---|---|
 | A GAME OF TWO HALVES! | yes | two halves of eight turns each |
-| SETTING UP THE GAME | partly | the practice board is permissive by design; no formal set-up phase |
+| SETTING UP THE GAME | yes | `bb_game_setup` is strict; the practice board stays permissive on purpose |
 | YOUR FIRST FEW GAMES | n/a | advice, not a rule |
 | PRE-GAME SEQUENCE | no | a league-and-inducements sequence |
 | THE FANS · FAN FACTOR | partly | an input, defaulting to zero; Pitch Invasion uses it |
 | THE WEATHER · WEATHER TABLE · WEATHER CONDITION | yes | rolled at kick-off; rides the same modifier hook as Skills |
-| DETERMINE KICKING TEAM | partly | `bb_game_new(kicking_to=…)` says who receives; no coin toss |
-| START OF A DRIVE! · START OF DRIVE SEQUENCE | partly | the opening set-up is reused each drive |
-| SET-UP · TOO MANY PLAYERS | partly | reported by `bb_pitch_review`, never enforced |
+| DETERMINE KICKING TEAM | yes | rolled off unless a side is named |
+| START OF A DRIVE! · START OF DRIVE SEQUENCE | yes | a declared set-up wins; the reused one is the fallback |
+| SET-UP · TOO MANY PLAYERS | yes | all four rules enforced, every violation reported at once |
 | THE KICK-OFF · NOMINATE KICKING PLAYER · PLACE THE KICK | yes | |
 | THE KICK DEVIATES | yes | D6 distance, D8 direction |
 | THE KICK-OFF EVENT · KICK-OFF EVENT TABLE | partly | all 11 rolled and quoted; 6 applied |

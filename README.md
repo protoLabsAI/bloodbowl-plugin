@@ -100,7 +100,7 @@ Ten of the eleven kick-off events say plainly that they were rolled but not appl
 `bb_game_act` · `bb_game_end_turn` · `bb_game_kickoff` · `bb_game_log` ·
 `bb_game_abandon` · `bb_pass_ranges`
 
-**Finishing** — `bb_game_apothecary` · `bb_game_extra_time` · `bb_game_penalties`
+**Finishing** — `bb_game_setup` · `bb_game_apothecary` · `bb_game_extra_time` · `bb_game_penalties`
 
 `bb_game_legal` and `bb_game_odds` are free and side-effect-free — ask them as
 often as you like. They exist so the coach never has to work out a dodge modifier
