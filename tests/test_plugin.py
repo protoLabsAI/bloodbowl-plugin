@@ -1190,14 +1190,17 @@ def test_every_skill_in_the_catalogue_is_modelled(registry):
     assert not missing, f"{len(missing)} Skill(s) with no implementation: {missing}"
 
 
-def test_a_partial_skill_names_what_it_leaves_out(registry):
-    """A `partial=` with no text would be worse than none: it would report a gap
-    without saying what the gap is, which is the failure mode the whole
-    partly-modelled mechanism exists to prevent."""
+def test_no_skill_is_left_half_applied(registry):
+    """The companion to `test_every_skill_in_the_catalogue_is_modelled`: every one
+    of the 108 is not merely registered but applied in full.
+
+    A `partial=` is how a Skill declares a clause it leaves out, and there are none
+    — so this asserts that, and asserts each one still SAYS something if one comes
+    back. A partial with no text would be worse than none: it would report a gap
+    without naming it, which is the failure the mechanism exists to prevent."""
     from bloodbowl.engine.skills import describe_skill, partial_skills
 
     partials = sorted(partial_skills())
-    assert partials, "the mechanism is unused — check it still works before deleting it"
-    for name in partials:
-        note = (describe_skill(name) or {}).get("partial") or ""
-        assert len(note) > 20, f"{name}'s partial says nothing useful: {note!r}"
+    assert not partials, "these Skills are only half-applied: " + ", ".join(
+        f"{n} ({(describe_skill(n) or {}).get('partial')})" for n in partials
+    )

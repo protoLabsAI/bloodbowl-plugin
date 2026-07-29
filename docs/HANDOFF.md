@@ -373,14 +373,18 @@ Skills modelled — **108 of 108**. `bb_get_skill` returns the rulebook's text f
 of them, which was always a separate job from applying them: quoting is what a
 coach asks for, applying is what the board does.
 
-**ONE carries a `partial=`** — Plague Ridden's post-game hire, which needs a league
-and a Treasury. Seventeen were closed, and the pattern in them is worth more than
-the number: most were not gaps. The KEYWORDS were in `data/rosters.json` all along
-under `role`; two partials were stale (written when a Skill they depended on was
-unmodelled); two were misreadings of what the rules permit; and five were coach's
-choices, which stopped being partial the moment there was a command field to make
-them with. **Before writing off a partial, check whether the reason it was written
-is still true.**
+**NONE carries a `partial=`.** All eighteen were closed, and the pattern in them is
+worth more than the number: most were not gaps. The KEYWORDS were in
+`data/rosters.json` all along under `role`; two partials were stale (written when a
+Skill they depended on was unmodelled); two were misreadings of what the rules
+permit; five were coach's choices, which stopped being partial the moment there
+was a command field to make them with; and the rest were simply work.
+
+**Before writing off a partial, check whether the reason it was written is still
+true.** Three fixtures in this suite have now hit assertions predicting their own
+obsolescence — `_unmodelled_pair`, the unapplied-Kick-off-Event guard, and the
+partly-modelled one. Each was rewritten to drive its MECHANISM with something
+synthetic, because a fork will still need it.
 
 **"Modelled" is not binary, and pretending it is flatters.** A Skill with two
 clauses of which one is applied would report as modelled and quietly do half its

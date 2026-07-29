@@ -1610,12 +1610,7 @@ def _violent_innovator(ctx: SkillContext) -> None:
     """
 
 
-@skill_hook(
-    "Plague Ridden",
-    "scoring",
-    partial="the POST-GAME half — 'during the Post-game Sequence, this player may be hired in "
-    "the same manner as any Journeyman', which needs a league and a Treasury",
-)
+@skill_hook("Plague Ridden", "scoring")
 def _plague_ridden(ctx: SkillContext) -> None:
     """S3: "Once per game, when a player with this Trait causes a Casualty … and
     that player suffers a DEAD result … you may immediately add one new Lineman
@@ -1630,7 +1625,11 @@ def _plague_ridden(ctx: SkillContext) -> None:
     REGENERATION or STUNTY Traits"), and the first of those is a Keyword rather
     than a Trait.
 
-    What is left is the sentence after: hiring them permanently is Post-game.
+    The sentence after — "during the Post-game Sequence, this player may be hired
+    in the same manner as any Journeyman" — is step four of the Post-game Sequence,
+    which `engine/postgame.py` reports as needing a Treasury and a Team Draft List.
+    The engine has already done the part that happens on the pitch: the Lineman is
+    in the Reserves Box.
     """
 
 

@@ -2743,28 +2743,33 @@ def test_a_partly_modelled_skill_says_which_half_is_missing():
     clauses of which one is applied would report as modelled and quietly do half
     its job — which sounds settled, and is worse than saying nothing.
 
-    JUGGERNAUT AND STAND FIRM USED TO BE THE EXAMPLES HERE, and both have since
-    been closed: a coach's free choice is not a missing half once there is a
-    command field to make it with. The mechanism is unchanged, so this now uses
-    whichever Skills still carry a `partial=` and asserts the reporting, not the
-    membership."""
+    NOTHING IS PARTIAL ANY MORE — the last one, Plague Ridden's post-game hire, was
+    closed by giving the Post-game Sequence the same treatment the Pre-game one
+    got. So this registers a partial of its own and drives the reporting with it,
+    the third fixture in this file to do that: the MECHANISM has to keep working,
+    because a fork adding a Skill it half-applies is exactly who needs it."""
+    from bloodbowl.engine import skills as _skills
     from bloodbowl.engine.game import state_report
     from bloodbowl.engine.skills import describe_skill, partial_skills, partly_modelled_on_pitch
 
-    partials = sorted(partial_skills())
-    assert partials, "nothing is partial — this fixture needs rewriting, happily"
-    for name in partials:
-        assert describe_skill(name)["modelled"] is True
-        assert len(describe_skill(name)["partial"]) > 20, name
+    assert not partial_skills(), f"something is partial again — say so here: {sorted(partial_skills())}"
     assert describe_skill("Grab").get("partial") is None, "a fully modelled skill needs no caveat"
 
-    on_pitch = partials[0].title()
-    m = _match(("home", 7, 13, 6, "3+", [on_pitch]), ("away", 7, 14))
-    rows = {r["skill"].casefold(): r for r in partly_modelled_on_pitch(m)}
-    assert partials[0] in rows, rows
-    assert rows[partials[0]]["players"] == ["h00"]
-    assert len(rows[partials[0]]["not_applied"]) > 20
-    assert state_report(m)["partly_modelled_skills"] == partly_modelled_on_pitch(m)
+    @_skills.skill_hook("Block", "test_only", partial="the half a fork forgot to write")
+    def _pretend(ctx):
+        """A partial registered by this test, to drive the reporting mechanism."""
+
+    try:
+        assert "block" in partial_skills()
+        assert describe_skill("Block")["partial"] == "the half a fork forgot to write"
+        m = _match(("home", 7, 13, 6, "3+", ["Block"]), ("away", 7, 14))
+        rows = {r["skill"]: r for r in partly_modelled_on_pitch(m)}
+        assert rows["Block"]["players"] == ["h00"], rows
+        assert rows["Block"]["not_applied"] == "the half a fork forgot to write"
+        assert state_report(m)["partly_modelled_skills"] == partly_modelled_on_pitch(m)
+    finally:
+        _skills._PARTIAL.pop("block", None)
+        _skills._HOOKS.pop("test_only", None)
 
 
 def test_a_player_pushed_into_the_crowd_actually_leaves_the_pitch():
@@ -6479,3 +6484,39 @@ def test_insignificant_is_checked_against_the_only_list_the_engine_keeps():
     sc.players.append(Player(side="home", x=10, y=13, position="Orc Lineman", team="Orc"))
     sc.players.append(Player(side="home", x=11, y=13, position="Orc Lineman", team="Orc"))
     assert not any("Insignificant" in p for p in sc.review("home")["problems"])
+
+
+def test_the_post_game_sequence_runs_the_two_steps_that_are_about_the_match():
+    """S3: six steps. Only the first two are about the game that just finished; the
+    other four need a team that persists between games.
+
+    "RECORD OUTCOME … how many CASUALTIES each team caused, COUNTING ONLY THOSE
+    THAT EARNED STAR PLAYER POINTS" — so the count is not the Casualty box, it is
+    the SPP ledger, and nothing else in the engine knows the difference."""
+    from bloodbowl.engine.events import Event
+    from bloodbowl.engine.postgame import outcome, steps, update_dedicated_fans
+
+    m = _match(("home", 7, 13), ("away", 7, 14))
+    m.score = {"home": 2, "away": 1}
+    m.apply(Event(kind="spp_earned", actor="h00", detail={"points": 2, "why": "causing a Casualty"}))
+    m.apply(Event(kind="spp_earned", actor="h00", detail={"points": 3, "why": "a Touchdown"}))
+    got = outcome(m)
+    assert got["result"] == {"home": "win", "away": "loss"}
+    assert got["touchdowns"] == {"home": 2, "away": 1}
+    assert got["casualties"] == {"home": 1, "away": 0}, "only the SPP-earning one counts"
+    assert got["spp"]["h00"] == 5
+
+    # "If your team WON, roll a D6. If the result is EQUAL TO OR HIGHER THAN your
+    # team's Dedicated Fans Characteristic, INCREASE [it] by 1." Both a winner and
+    # a loser want a HIGH roll, which is the asymmetry that is easy to get wrong.
+    assert update_dedicated_fans(_dice([3]), 3, "win")[0] == 4
+    assert update_dedicated_fans(_dice([2]), 3, "win")[0] == 3
+    assert update_dedicated_fans(_dice([2]), 3, "loss")[0] == 2
+    assert update_dedicated_fans(_dice([5]), 3, "loss")[0] == 3
+    assert update_dedicated_fans(_dice([1]), 1, "loss")[0] == 1, "never below 1"
+    assert update_dedicated_fans(_dice([6]), 7, "win")[0] == 7, "never above 7"
+    assert update_dedicated_fans(_dice([]), 3, "draw") == (3, None), "a draw rolls nothing"
+
+    ran = [s["step"] for s in steps(league=False) if s["applies"]]
+    assert ran == ["Record Outcome and Collect Winnings", "Update Dedicated Fans"]
+    assert all(s["applies"] for s in steps(league=True))

@@ -95,31 +95,31 @@ Three verdicts, and the middle one is the important one:
 quotable through `bb_get_skill`. `bb_list_skills(only_unmodelled=True)` is the live
 version of this count and now returns nothing.
 
-**One `partial=` remains**, and it names a POST-GAME step: Plague Ridden's "during
-the Post-game Sequence, this player may be hired in the same manner as any
-Journeyman". The in-match half — "you may IMMEDIATELY add one new Lineman player
-from your team's Team Roster to your Reserves Box" — is applied.
+**No `partial=` remains.** Every one of the 108 is applied in full, and
+`test_no_skill_is_left_half_applied` is the line that says so — it fails with the
+name and the missing clause the moment one comes back.
 
-Seventeen were closed, and the reasons are worth keeping because most of them were
-not gaps at all:
+Eighteen were closed, and the pattern in them is worth more than the number:
 
 * **The keywords were in the data.** `data/rosters.json` carries every positional's
   Keywords under `role` — "Eagle Warrior (Lineman, Human)" — and nothing had read
-  it. That closed HATRED, ANIMOSITY and BLOODLUST's bite (Thrall Lineman is a
-  Keyword and the Vampire roster prints it).
+  it. That closed HATRED, ANIMOSITY and BLOODLUST's bite.
 * **A coach's free choice is not a missing half once there is a way to make it.**
   SIDESTEP, STAND FIRM, TRICKSTER, SAFE PAIR OF HANDS and JUGGERNAUT each take a
-  field on the Block or the drop; the engine's policy is what happens when nobody
-  says, which is what a default is for.
-* **Two were stale.** VERY LONG LEGS' "ignores Cloud Burster" was written when
-  Cloud Burster was unmodelled; it has been modelled for six PRs.
-* **Two were misreadings.** Rolling a MULTIPLE BLOCK's halves separately is the
-  procedure the rules offer in the same breath, and the Throw-in Template (PUNT,
-  SWOOP) is the same diagram the Range Ruler is.
-* **The rest were work** — Shadowing's per-Turn bound, Diving Catch's other half,
-  On the Ball's mid-Pass interrupt, Insignificant against the only list the engine
-  keeps, and STAR PLAYER POINTS, which are earned during a game even though they
-  are spent after one. That last one is what made VIOLENT INNOVATOR mean something.
+  field; the engine's policy is what happens when nobody says.
+* **Two were stale** — written when a Skill they depended on was unmodelled.
+* **Two were misreadings** of what the rules permit (MULTIPLE BLOCK's ordering, and
+  the Throw-in Template, which is the Range Ruler's problem).
+* **The rest were work** — Shadowing's bound, Diving Catch's other half, On the
+  Ball's mid-Pass interrupt, Insignificant against the board, STAR PLAYER POINTS,
+  and the two Post-game steps that are about the match rather than the league.
+
+**The sequences say what they skip and why.** `engine/pregame.py` and
+`engine/postgame.py` list all five and all six steps, each marked applies/skipped
+with the rulebook's own reason. Take On Journeymen, Inducements, Player
+Advancement, Hiring, Expensive Mistakes and Prepare for Next Fixture are League
+Play — the book says so in those words — and a match engine reporting them is
+completing the sequence, not skipping it.
 
 ## The Range Ruler, and why it is `yes`
 
