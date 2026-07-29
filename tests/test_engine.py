@@ -492,6 +492,19 @@ def _tools(registry):
     return {t.name: t for t in registry.tools}
 
 
+def _decline_any_choice(t):
+    """Answer, by declining, whatever Kick-off Event the seed happened to roll.
+
+    Three of the eleven stop and ask the Coach something, and nothing else may
+    happen until one of them is answered — so a test about anything ELSE has to
+    get past the question first. Declining is always legal ("MAY", in all three),
+    and it leaves the board exactly as the kick-off left it.
+    """
+    import json as _json
+
+    return _json.loads(t["bb_game_choose"].invoke({"decline": True}))
+
+
 def _setup_board(home="Orc", away="Skaven"):
     """A small legal-ish board saved where the tools will find it."""
     import json as _json
@@ -564,6 +577,7 @@ def test_the_log_carries_the_rolls_so_the_coach_quotes_rather_than_guesses(regis
     _setup_board()
     t = _tools(registry)
     t["bb_game_new"].invoke({"seed": 11, "kicking_to": "home"})
+    _decline_any_choice(t)  # seed 11 rolls Quick Snap!, which asks before anything else can happen
     t["bb_game_act"].invoke({"action": "move", "player": "h00", "x": 6, "y": 12})
     log = j.loads(t["bb_game_log"].invoke({"last": 10}))
     assert log["ok"]
@@ -4409,3 +4423,169 @@ def test_a_bomb_explodes_where_it_stops_and_catches_the_neighbours():
     assert m.by_id("a01").down != "standing", "the player under it should be down"
     blast = [r for e in out.events for r in e.rolls if r.kind == "Blast"]
     assert blast, "the neighbour should have been rolled for"
+
+
+# --- The Kick-off Events that stop and ask the Coach a question ---------------
+
+
+def _pending(match, kind, side, **detail):
+    """Put the engine into the state a Kick-off Event leaves it in."""
+    from bloodbowl.engine.events import Event
+
+    match.apply(Event(kind="choice_pending", detail={"choice": kind, "side": side, **detail}))
+    return match
+
+
+def test_an_open_player_is_standing_and_unmarked_not_merely_standing():
+    """ "A Standing player that is not being Marked by an opposition is referred to
+    as an OPEN player." Four Kick-off Events are written entirely in those terms,
+    and the definition is narrower than "on their feet"."""
+    from bloodbowl.engine.rules import is_open
+
+    m = _match(("home", 7, 13), ("home", 2, 10), ("away", 7, 14))
+    assert is_open(m, m.by_id("h01")), "alone in a Wide Zone, on their feet"
+    assert not is_open(m, m.by_id("h00")), "standing, but Marked by the player opposite"
+    m.by_id("h01").down = "prone"
+    assert not is_open(m, m.by_id("h01")), "a Prone player is not Standing"
+
+
+def test_the_engine_refuses_to_play_on_while_a_kickoff_event_is_waiting_on_an_answer():
+    """The Kick-off Event is resolved BEFORE the ball lands, so nothing else can
+    happen in between. The refusal has to name the question, or a coach is stuck
+    guessing what the board wants."""
+    from bloodbowl.engine import game
+
+    m = _match(("home", 7, 13), ("away", 2, 20))
+    _pending(m, "high_kick", "home", square=[7, 10], eligible=["h00"])
+    out = game.act(m, "move", {"player": "h00", "x": 7, "y": 12})
+    assert out["ok"] is False
+    assert "high kick" in out["text"], out["text"]
+    assert out["pending"]["choice"] == "high_kick"
+    assert m.by_id("h00").y == 13, "the refused move must not have happened"
+
+
+def test_declining_a_choice_is_an_answer_and_lets_play_resume():
+    """Every one of these says the Coach MAY. Declining is a real answer, not a
+    no-op — the Drive cannot go on until one is given."""
+    from bloodbowl.engine import game
+
+    m = _match(("home", 7, 13), ("away", 2, 20))
+    _pending(m, "high_kick", "home", square=[7, 10], eligible=["h00"])
+    assert game.resolve_choice(m, {"decline": True}, _dice([]))["ok"]
+    assert not m.pending
+    assert game.act(m, "move", {"player": "h00", "x": 7, "y": 12})["ok"]
+
+
+def test_high_kick_places_one_open_player_under_the_ball():
+    """ "One Open player on the receiving team may immediately be placed in the
+    square the ball is going to land in." """
+    from bloodbowl.engine import game
+
+    m = _match(("home", 7, 13), ("home", 3, 11), ("away", 7, 14))
+    m.ball.x, m.ball.y = 4, 10
+    _pending(m, "high_kick", "home", square=[4, 10], eligible=["h01"])
+    out = game.resolve_choice(m, {"player": "h01"}, _dice([]))
+    assert out["ok"], out
+    assert (m.by_id("h01").x, m.by_id("h01").y) == (4, 10)
+    assert not m.pending
+
+
+def test_high_kick_refuses_a_marked_player_because_the_rule_says_open():
+    """h00 is Standing and could physically run there — but they are Marked, and
+    the rule is written in terms of Open players, not standing ones."""
+    from bloodbowl.engine import game
+
+    m = _match(("home", 7, 13), ("away", 7, 14))
+    _pending(m, "high_kick", "home", square=[4, 10], eligible=[])
+    out = game.resolve_choice(m, {"player": "h00"}, _dice([]))
+    assert out["ok"] is False and "Open" in out["error"]
+    assert m.pending, "an illegal answer is not an answer — the question stands"
+
+
+def test_quick_snap_moves_one_square_each_and_may_cross_the_halfway_line():
+    """ "The selected players may immediately move one square IN ANY DIRECTION,
+    EVEN IF THIS TAKES THEM INTO THE OPPOSITION'S HALF." """
+    from bloodbowl.engine import game
+
+    m = _match(("home", 7, 13), ("home", 3, 12), ("away", 12, 20))
+    _pending(m, "quick_snap", "home", limit=4, eligible=["h00", "h01"])
+    out = game.resolve_choice(m, {"moves": [{"id": "h00", "x": 7, "y": 14}, {"id": "h01", "x": 3, "y": 13}]}, _dice([]))
+    assert out["ok"], out
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 14), "over the Line of Scrimmage is explicitly allowed"
+    assert m.by_id("h00").ma_used == 0, "a Quick Snap is not a Move Action and costs no Move Allowance"
+
+
+def test_quick_snap_is_one_square_and_no_more_than_the_roll_allowed():
+    from bloodbowl.engine import game
+
+    m = _match(("home", 7, 13), ("home", 3, 12), ("away", 12, 20))
+    _pending(m, "quick_snap", "home", limit=1, eligible=["h00", "h01"])
+    far = game.resolve_choice(m, {"moves": [{"id": "h00", "x": 7, "y": 11}]}, _dice([]))
+    assert far["ok"] is False and "one square" in far["error"]
+    two = game.resolve_choice(m, {"moves": [{"id": "h00", "x": 7, "y": 12}, {"id": "h01", "x": 3, "y": 11}]}, _dice([]))
+    assert two["ok"] is False and "up to 1" in two["error"], two
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 13), "a refused answer moves nobody at all"
+
+
+def test_solid_defence_re_places_players_under_the_full_set_up_restrictions():
+    """ "The selected players are then removed from the pitch and can be set up
+    again FOLLOWING ALL THE USUAL RESTRICTIONS FOR SETTING UP THE TEAM." So the
+    resulting formation must be legal, not merely the squares that moved: pulling
+    a player off the Line breaks a rule that belongs to the whole team."""
+    from bloodbowl.engine import game
+
+    # Three on the Line, exactly as the rules require, and one spare behind. The
+    # opposition are kept well clear so that every home player is Open — a Marked
+    # player is not selectable, and that would refuse this for the wrong reason.
+    m = _match(("home", 6, 13), ("home", 7, 13), ("home", 8, 13), ("home", 7, 11), ("away", 2, 20))
+    _pending(m, "solid_defence", "home", limit=4, eligible=["h01", "h03"])
+
+    off = game.resolve_choice(m, {"moves": [{"id": "h03", "x": 2, "y": 9}, {"id": "h01", "x": 7, "y": 12}]}, _dice([]))
+    assert off["ok"] is False and "Line of Scrimmage" in off["error"], off
+    assert (m.by_id("h01").x, m.by_id("h01").y) == (7, 13), "nobody moves when the formation is refused"
+
+    ok = game.resolve_choice(m, {"moves": [{"id": "h03", "x": 2, "y": 9}]}, _dice([]))
+    assert ok["ok"], ok
+    assert (m.by_id("h03").x, m.by_id("h03").y) == (2, 9)
+
+
+def test_solid_defence_will_not_deploy_past_the_line_of_scrimmage():
+    from bloodbowl.engine import game
+
+    m = _match(("home", 6, 13), ("home", 7, 13), ("home", 8, 13), ("home", 7, 11), ("away", 2, 20))
+    _pending(m, "solid_defence", "home", limit=4, eligible=["h03"])
+    out = game.resolve_choice(m, {"moves": [{"id": "h03", "x": 7, "y": 16}]}, _dice([]))
+    assert out["ok"] is False and "opponent's half" in out["error"], out
+
+
+def test_a_kickoff_event_that_asks_a_question_leaves_the_question_in_the_state():
+    """The pending question has to survive a save/load round trip, because the
+    coach answers it in a SEPARATE tool call — and a Match is rebuilt from disk
+    between calls. A question the reload forgets is a wedged game."""
+    from bloodbowl.engine.state import Match
+
+    m = _match(("home", 7, 13), ("away", 2, 20))
+    _pending(m, "quick_snap", "home", limit=5, eligible=["h00"])
+    back = Match.from_dict(m.to_dict())
+    assert back.pending.get("choice") == "quick_snap" and back.pending.get("limit") == 5
+
+
+def test_a_roll_with_nothing_to_pass_is_not_reported_as_a_failure():
+    """A Kick-off Event, a Deviate distance and a D3+3 are table rolls, not tests.
+    The log said "Kick-off Event: needed 0+, rolled 3+1 — FAILED" for a roll of 4
+    that had succeeded at nothing, because `describe` branched on the target and a
+    target of zero is not None."""
+    from bloodbowl.engine.dice import Roll
+
+    event = Roll(kind="Kick-off Event", dice=[3, 1], total=4, target=0, passed=None)
+    assert event.describe() == "Kick-off Event: 3+1"
+    assert "FAILED" not in event.describe()
+
+    # And where the total is not the dice — D3+3 — the line has to say so, or "2"
+    # is the answer to a question nobody asked.
+    d3 = Roll(kind="Solid Defence", dice=[2], total=5, note="D3+3 players")
+    assert d3.describe() == "Solid Defence: 2 = 5 (D3+3 players)"
+
+    # A real test still reads as one.
+    dodge = Roll(kind="Dodge", dice=[4], total=3, target=3, modifier=-1, passed=True)
+    assert "needed 3+" in dodge.describe() and "passed" in dodge.describe()

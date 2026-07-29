@@ -29,7 +29,7 @@ Three verdicts, and the middle one is the important one:
 | SET-UP · TOO MANY PLAYERS | yes | all four rules enforced, every violation reported at once |
 | THE KICK-OFF · NOMINATE KICKING PLAYER · PLACE THE KICK | yes | |
 | THE KICK DEVIATES | yes | D6 distance, D8 direction |
-| THE KICK-OFF EVENT · KICK-OFF EVENT TABLE | partly | all 11 rolled and quoted; 6 applied |
+| THE KICK-OFF EVENT · KICK-OFF EVENT TABLE | partly | all 11 rolled and quoted; 9 applied — Charge! and Get the Ref are not |
 | TOUCHBACKS | yes | including a bounce that crosses back |
 | A TEAM'S TURN! · ROUNDS · TURNS | yes | |
 | PLAYER ACTIVATIONS | yes | `acted` begins one, `done` ends it |
@@ -99,10 +99,12 @@ live version of this count; the number above is only ever a snapshot.
 
 Four things, and knowing which one a rule is waiting on is most of the work:
 
-1. **A way to ask the coach mid-resolution.** Five Kick-off Events (Solid Defence,
-   High Kick, Quick Snap, Blitz!, Get the Ref) and several Skills currently run on
-   a stated engine policy where the rules give a coach a real choice. This is the
-   one genuine design question left.
+1. ~~A way to ask the coach mid-resolution.~~ Done — `Match.pending` plus
+   `bb_game_choose`. The engine stops, says what it is waiting for, and refuses
+   every other action until it is answered; declining is always legal. Solid
+   Defence, High Kick and Quick Snap! run on it. **Charge!** is the one Kick-off
+   Event still unapplied for want of more than a choice: it is a whole free turn
+   of activations with its own stop condition, so it needs a mode, not a question.
 2. ~~A uniform random pick.~~ Done — `Dice.dn(sides)`.
 3. **Roster facts a practice board never bought** — Fan Factor, Apothecaries,
    Inducements. The pattern is settled: take them as input, default them, and say

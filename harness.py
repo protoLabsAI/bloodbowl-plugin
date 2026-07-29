@@ -109,6 +109,11 @@ def seed(base: str) -> None:
         with urllib.request.urlopen(req, timeout=10) as r:
             return json.load(r)
 
+    # CLEAR first. This is called again mid-run to "put the seeded board back",
+    # and without it the preset loaded by the interaction checks stays underneath —
+    # so every later section ran against sixteen home players, eleven of them
+    # statless preset tokens. The screenshots showed it for weeks.
+    post("/clear", {})
     post("/teams", {"home_team": "Orc", "away_team": "Skaven"})
     home = [
         ("Big Un Blocker", 6, 13),
@@ -292,6 +297,8 @@ def drive(base: str, *, do_checks: bool, live: bool) -> int:
             page.close()
 
             _play(browser, url, w=1400, h=950)
+            if not live:
+                _choices(browser, url, w=1400, h=950)
         browser.close()
 
     failed = [c for c in CHECKS if c[1] == "FAIL"]
@@ -341,6 +348,14 @@ def _play(browser, url: str, w: int, h: int) -> None:
     page.locator("#newMatch").click()
     page.wait_for_timeout(800)
     check("a match starts", page.locator(".pc").count() > 0, f"{page.locator('.pc').count()} players")
+
+    # #newMatch takes a random seed, and three Kick-off Events in eleven stop and
+    # ask the Coach a question. Answer it before going on, or the rest of this
+    # section fails once every three or four runs and looks like a broken board.
+    if page.locator("#choice").is_visible():
+        print("  (a Kick-off Event asked something — declining to get on with it)")
+        page.locator("#choiceDecline").click()
+        page.wait_for_timeout(500)
     clock = page.locator("#clock").inner_text()
     check("the clock renders the half, turn and drive", "H1" in clock and "drive" in clock, clock)
     log0 = page.locator("#log").inner_text()
@@ -679,6 +694,104 @@ def _play(browser, url: str, w: int, h: int) -> None:
     page.wait_for_timeout(250)
     page.screenshot(path=str(SHOTS / "play.png"), full_page=True)
     print(f"  shot: {(SHOTS / 'play.png').relative_to(ROOT)}")
+    page.close()
+
+
+def _choices(browser, url: str, w: int, h: int) -> None:
+    """The Kick-off Events that stop and ask the Coach a question.
+
+    Three results in eleven do, and while one is pending the engine refuses every
+    other action. So a board that does not surface the question is not merely
+    missing a feature — it is a board where clicking has stopped working, with no
+    visible reason. That is exactly the failure a server-side 200 cannot see.
+    """
+    page = browser.new_page(viewport={"width": w, "height": h})
+    problems: list[str] = []
+    page.on("pageerror", lambda e: problems.append(str(e)))
+    page.goto(url, wait_until="networkidle")
+    page.wait_for_selector(".cell", timeout=10000)
+    theme = ROOT / "harness_theme.css"
+    if theme.exists():
+        page.add_style_tag(content=theme.read_text())
+    page.locator("#modePlay").click()
+    page.wait_for_timeout(300)
+    print("  -- kick-off choices --")
+
+    # Hunt for a seed that rolls one, rather than hoping. Which seed asks what
+    # depends on the board, so hard-coding one here would rot the first time the
+    # seeded formation changed.
+    found = page.evaluate("""async () => {
+      for (let seed = 1; seed < 60; seed++) {
+        const r = await fetch("/api/plugins/bloodbowl/game/new", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({seed}),
+        });
+        const m = (await r.json()).match;
+        if (m.pending && m.pending.choice) return {seed, ...m.pending};
+      }
+      return null;
+    }""")
+    check("some seed rolls a Kick-off Event that asks the Coach something", found is not None, str(found)[:90])
+    if not found:
+        page.close()
+        return
+
+    page.reload(wait_until="networkidle")
+    page.wait_for_selector(".cell", timeout=10000)
+    if theme.exists():
+        page.add_style_tag(content=theme.read_text())
+    page.wait_for_timeout(600)
+
+    check("the question is on the board, not buried in the log", page.locator("#choice").is_visible())
+    asked = page.locator("#choiceText").inner_text()
+    check("the bar states the rule, not just the event's name", len(asked) > 30, asked[:90])
+    check(
+        "the players the rule allows are marked on the pitch",
+        page.locator(".cell.choosable").count() > 0,
+        f"{page.locator('.cell.choosable').count()} marked, engine offered {len(found.get('eligible') or [])}",
+    )
+    check(
+        "the marks match the ids the engine named",
+        set(page.eval_on_selector_all(".cell.choosable .pc", "ns => ns.map(n => n.dataset.id)"))
+        == set(found.get("eligible") or []),
+        f"board={page.eval_on_selector_all('.cell.choosable .pc', 'ns => ns.map(n => n.dataset.id)')}",
+    )
+    page.screenshot(path=str(SHOTS / "choice.png"), full_page=True)
+
+    # A click on the board while a question is pending must not fire an action —
+    # the engine would refuse it, and the coach would see an error they did not
+    # cause. Clicking one of their OWN players is the natural first thing to try.
+    mine = page.locator(".cell.choosable .pc").first
+    mine.click()
+    page.wait_for_timeout(400)
+    check("clicking a player while a question is open does not throw", not problems, "; ".join(problems[:2]))
+
+    if found["choice"] == "high_kick":
+        answered = page.evaluate("""async () => (await (await fetch("/api/plugins/bloodbowl/game")).json()).match""")
+        still = str(answered.get("pending"))
+        check("picking a player answers a High Kick outright", not answered.get("pending"), still)
+    else:
+        check(
+            "picking a player is visibly staged, not silently swallowed",
+            page.locator(".cell.picking").count() == 1,
+            f"{page.locator('.cell.picking').count()} marked; bar says {page.locator('#choicePicked').inner_text()!r}",
+        )
+        # Stage a destination, then send. The staged square must be visibly
+        # different from a merely-eligible one, or the coach cannot tell what
+        # they have already decided.
+        here = page.locator(".cell.choosable").first
+        box = here.bounding_box()
+        page.mouse.click(box["x"] + box["width"] / 2, box["y"] - box["height"] / 2)
+        page.wait_for_timeout(300)
+        check("the staged square is marked distinctly", page.locator(".cell.chosen").count() > 0)
+        page.locator("#choiceConfirm").click()
+        page.wait_for_timeout(700)
+        state = page.evaluate("""async () => (await (await fetch("/api/plugins/bloodbowl/game")).json()).match""")
+        check("confirming answers the question", not state.get("pending"), str(state.get("pending"))[:80])
+
+    check("the bar goes away once the question is answered", not page.locator("#choice").is_visible())
+    check("no page errors while answering", not problems, "; ".join(problems[:2]))
+    print(f"  shot: {(SHOTS / 'choice.png').relative_to(ROOT)}")
     page.close()
 
 

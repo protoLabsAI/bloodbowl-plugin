@@ -50,13 +50,14 @@ KICKOFF_EVENTS: dict[int, tuple[str, str, bool]] = {
     4: (
         "Solid Defence",
         "The Coach of the kicking team selects up to D3+3 Open players on their team. The selected "
-        "players are then removed from the pitch and can be set up again.",
-        False,  # Needs a coach's re-setup choice.
+        "players are then removed from the pitch and can be set up again following all the usual "
+        "restrictions for setting up the team.",
+        True,  # Asked of the coach; see _ask.
     ),
     5: (
         "High Kick",
         "One Open player on the receiving team may immediately be placed in the square the ball is going to land in.",
-        False,  # Needs a coach's choice of which player.
+        True,  # Asked of the coach; see _ask.
     ),
     6: (
         "Cheering Fans",
@@ -78,15 +79,21 @@ KICKOFF_EVENTS: dict[int, tuple[str, str, bool]] = {
         True,  # Weather is modelled now.
     ),
     9: (
-        "Quick Snap",
-        "The Coach of the receiving team selects Open players on their team, who may each immediately move one square.",
-        False,  # Needs a coach's choice.
+        "Quick Snap!",
+        "The Coach of the receiving team selects up to D3+3 Open players on their team. The "
+        "selected players may immediately move one square in any direction, even if this takes "
+        "them into the opposition's half.",
+        True,  # Asked of the coach; see _ask.
     ),
     10: (
-        "Blitz!",
-        "The Coach of the kicking team may immediately activate selected Open players for a free "
-        "Turn. If a selected player Falls Over or is Knocked Down, the Charge ends.",
-        False,  # A whole free turn, driven by choices.
+        "Charge!",
+        "The Coach of the kicking team selects up to D3+3 Open players on their team. The selected "
+        "players may then be activated one at a time, exactly as if it was their team's Turn, and "
+        "perform a free Move Action. One of the selected players may instead perform a free Blitz "
+        "Action, one may perform a free Throw Team-mate Action, and one may perform a free Kick "
+        "Team-mate Action. If a selected player Falls Over or is Knocked Down during their "
+        "activation, no further selected players can be activated and the Charge ends.",
+        False,  # A whole free turn, driven by choices — its own piece of work.
     ),
     11: (
         "Dodgy Snack",
@@ -166,6 +173,33 @@ def kick(match, dice, receiving: str, aim: tuple[int, int] | None = None) -> lis
     return events
 
 
+def _open_ids(match, side: str) -> list[str]:
+    from .rules import is_open
+
+    return sorted(p.id for p in match.on_pitch(side) if is_open(match, p))
+
+
+def _ask(match, kind: str, side: str, text: str, detail: dict, rolls=()) -> list[Event]:
+    """Stop and record what the engine is waiting for.
+
+    The alternative is choosing on the coach's behalf, which for these events
+    would be inventing a formation — so the Drive pauses here and `bb_game_choose`
+    resumes it. Declining is always a legal answer.
+    """
+    # The question travels IN the pending state, not only in the log line: the
+    # coach answers in a separate call, by which time the Match has been rebuilt
+    # from disk, and a board that has to go digging in the log to say what it is
+    # waiting for will eventually say the wrong thing.
+    ev = Event(
+        kind="choice_pending",
+        detail={"choice": kind, "side": side, "text": text, **detail},
+        rolls=list(rolls),
+        text=text + " Answer with bb_game_choose, or decline.",
+    )
+    match.apply(ev)
+    return [ev]
+
+
 def _random_player(match, side: str, dice, exclude=()):
     """ "randomly selects one of their players on the pitch."
 
@@ -243,7 +277,45 @@ def kickoff_event(match, dice, receiving: str) -> list[Event]:
     ]
     match.apply(events[0])
 
-    if name == "Brilliant Coaching":
+    if name == "High Kick":
+        # "ONE Open player on the receiving team MAY immediately be placed in the
+        # square the ball is going to land in." One player, and "may" — declining
+        # is a real answer, so this is offered rather than taken.
+        events.extend(
+            _ask(
+                match,
+                kind="high_kick",
+                side=receiving,
+                text=f"High Kick: one Open {receiving} player may be placed where the ball will land.",
+                detail={"square": [match.ball.x, match.ball.y], "eligible": _open_ids(match, receiving)},
+            )
+        )
+
+    elif name in ("Quick Snap!", "Solid Defence"):
+        # Both open the same way — "selects UP TO D3+3 Open players on their team"
+        # — so the number is rolled now and the choice asked after. (Charge! opens
+        # identically; what follows it is a free turn, which is why it is not here.)
+        quick = name.startswith("Quick")
+        side = receiving if quick else match.opponent(receiving)
+        n = dice.dn(3) + 3
+        roll = Roll(kind=name, dice=[n - 3], total=n, note="D3+3 players")
+        dice.rolls.append(roll)
+        events.extend(
+            _ask(
+                match,
+                kind="quick_snap" if quick else "solid_defence",
+                side=side,
+                rolls=[roll],
+                text=(
+                    f"Quick Snap: up to {n} Open {side} players may each move one square, in any direction."
+                    if quick
+                    else f"Solid Defence: up to {n} Open {side} players may be set up again."
+                ),
+                detail={"limit": n, "eligible": _open_ids(match, side)},
+            )
+        )
+
+    elif name == "Brilliant Coaching":
         # "Both Coaches roll a D6 and add the number of Assistant Coaches on their
         # Team Roster. The Coach with the highest total gains a free Team Re-roll
         # FOR THE DRIVE AHEAD." A tie gives nobody anything — "the Coach with the

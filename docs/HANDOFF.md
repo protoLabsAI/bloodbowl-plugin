@@ -479,6 +479,23 @@ Casualty) and Thick Skull then ADJUSTS the result. Reversed, a 7 comes out
 Knocked-out when the rules say Stunned. `test_stunty_and_thick_skull_together`
 fails if they are ever swapped.
 
+**THE ENGINE CAN ASK NOW, AND IT STOPS THE WORLD WHILE IT WAITS.** Three Kick-off
+Events give a Coach a real choice, and the Kick-off Event is resolved *before the
+ball lands* — so the engine cannot pick for them and cannot carry on. It records
+the question in `Match.pending`, refuses every other action with the question
+attached, and `bb_game_choose` answers it. Three things worth knowing:
+
+- **Declining is always legal** — all three say the Coach "may" — and it is a real
+  answer, not a no-op, because nothing else can happen until one is given.
+- **The question travels in the STATE, not just the log.** The coach answers in a
+  separate call, by which time the Match has been rebuilt from disk.
+- **An illegal answer is not an answer.** The question stands and nobody moves —
+  half a formation committed is a formation nobody chose.
+
+Whether to ASK or to state a policy is now a live judgement call, not a missing
+capability. Sidestep and Stand Firm still take a policy on purpose (`partial=`
+says so); Argue the Call does too. Ask when the choice can change the outcome.
+
 ### Next, roughly in order
 
 1. **The remaining 74 skills.** `data/skills.json` holds every one with its real
@@ -494,18 +511,25 @@ fails if they are ever swapped.
      Block Action" makes the engine take an action nobody asked for, and nothing
      in here does that yet.
    - The rest are ordinary hook registrations against machinery that exists.
-2. **Kick-off events that need a choice** (High Kick, Solid Defence, Quick Snap,
-   Blitz!) — these need a way for the engine to *ask* the coach mid-resolution,
-   which does not exist yet and is a genuine design question.
-3. **A setup phase**, so each drive can be set up afresh rather than reusing the
-   opening positions.
+2. **Charge! (Kick-off Event 10)** — the last unapplied event that is not a
+   League feature. "Up to D3+3 Open players … activated one at a time, exactly as
+   if it was their team's Turn … If a selected player Falls Over or is Knocked
+   Down … the Charge ends." The SELECTION is already the shape `_ask` handles; what
+   is missing is a free-turn MODE, because those activations must not advance the
+   Turn Marker and a fall must end the Charge rather than cause a Turnover.
+3. **A match started from a preset has statless players.** A shipped preset is a
+   SHAPE — labelled tokens with no position, no MA, no AG, no AV — which is right
+   for the practice board and wrong the moment `bb_game_new` builds a Match from
+   it: `PlayerState.movement()` reads `int("" or 0)` and every one of them is a
+   player who cannot move. Either refuse to start (with the reason) or fill from
+   the team roster. Found by looking at a harness screenshot, not by a test.
 
 ### Known simplifications, all deliberate and all stated in the code
 
-- Eight of the eleven Kick-off Events are reported rather than applied. Five need
-  a coach's choice mid-resolution (see below); the others need Inducements,
-  Weather, or a random player pick the dice protocol cannot yet make.
-- The drive setup is captured once, at the first kick-off, and reused.
+- Two of the eleven Kick-off Events are reported rather than applied: **Charge!**
+  needs a free-turn mode (above) and **Get the Ref** needs Inducements, which are
+  a League feature. The other nine are applied, three of them by ASKING — see
+  `Match.pending` and `bb_game_choose`.
 - A Blitz may be re-pointed at a different target until the player moves or
   blocks — declaring rolls nothing, so a mis-named target costs a coach nothing to
   correct, and the team's one Blitz is spent by the same player either way. The
@@ -515,9 +539,10 @@ fails if they are ever swapped.
 - Argue the Call is rolled for you rather than offered as a choice. The rules say
   a Coach "MAY attempt" it, but declining is never better: 2-5 changes nothing and
   only a 1 costs anything, and a 1 costs the same whether or not you argued this
-  particular call. If a Skill ever makes declining worthwhile, this becomes a
-  choice — which is the same design question as the kick-off events below.
-- No Weather, Inducements, Cheerleaders, Assistant Coaches or Fan Factor.
+  particular call. Now that `Match.pending` exists this COULD be asked; it is left
+  alone because asking a question with one sensible answer is noise, not fidelity.
+- No Inducements or Fan Factor. Cheerleaders and Assistant Coaches are inputs that
+  default to zero and say so in the log; Weather is modelled.
 - The Throw-in direction is thrown straight back in from the edge crossed; the real
   Throw-in Template is a diagram.
 - The version is `0.5.0` and the plugin has never been released or tagged.

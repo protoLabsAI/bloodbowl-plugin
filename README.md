@@ -100,6 +100,10 @@ Ten of the eleven kick-off events say plainly that they were rolled but not appl
 `bb_game_act` · `bb_game_end_turn` · `bb_game_kickoff` · `bb_game_log` ·
 `bb_game_abandon` · `bb_pass_ranges`
 
+**Choosing** — `bb_game_choose` answers a Kick-off Event that asks the Coach
+something (High Kick, Quick Snap!, Solid Defence). While one is pending the engine
+refuses everything else and says what it is waiting for; declining is legal.
+
 **Finishing** — `bb_game_setup` · `bb_game_apothecary` · `bb_game_extra_time` · `bb_game_penalties`
 
 `bb_game_legal` and `bb_game_odds` are free and side-effect-free — ask them as

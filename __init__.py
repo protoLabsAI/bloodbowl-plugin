@@ -456,6 +456,32 @@ def _tools(cfg: dict):
         return json.dumps({"ok": True, **describe()})
 
     @tool
+    def bb_game_choose(decline: bool = False, player: str = "", moves: list | None = None) -> str:
+        """Answer whatever the engine stopped to ask.
+
+        Several Kick-off Events say "the Coach selects…", and the engine will not
+        choose for you — it pauses the Drive, says what it is waiting for in
+        ``bb_game_state``'s ``pending``, and refuses other actions until you
+        answer. Nothing else can happen in between.
+
+          High Kick      ``player`` — one Open player, placed where the ball lands
+          Quick Snap     ``moves`` — [{"id","x","y"}], each Open player one square
+          Solid Defence  ``moves`` — up to D3+3 Open players re-placed in your half
+
+        ``decline=True`` is always a legal answer; every one of these says "may".
+        """
+        from .engine.game import dice_for, resolve_choice
+        from .store import load_match, save_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress"})
+        out = resolve_choice(m, {"decline": decline, "player": player, "moves": moves or []}, dice_for(m))
+        if out.get("ok"):
+            save_match(m)
+        return json.dumps(out)
+
+    @tool
     def bb_game_setup(side: str, players: list) -> str:
         """Set a team up for the coming Drive, and have it CHECKED.
 
@@ -797,6 +823,7 @@ def _tools(cfg: dict):
         bb_pass_ranges,
         bb_get_skill,
         bb_list_skills,
+        bb_game_choose,
         bb_game_setup,
         bb_game_apothecary,
         bb_game_extra_time,
