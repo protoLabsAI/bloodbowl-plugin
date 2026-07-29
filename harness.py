@@ -14,7 +14,10 @@ would serve.
 
     python harness.py                 # screenshot the board to shots/
     python harness.py --check         # assert the things that broke before
-    python harness.py --live          # point at the running agent instead (READ ONLY)
+    python harness.py --live          # photograph a RUNNING agent's board (read-only)
+
+`--live` needs BLOODBOWL_TOKEN for a token-gated agent: the VIEW is auth-exempt,
+but everything it fetches is not, so without one the page renders an empty board.
 """
 
 from __future__ import annotations
@@ -147,6 +150,18 @@ def check(name: str, ok: bool, detail: str = "") -> bool:
     return ok
 
 
+def _live_headers() -> dict:
+    """A bearer for a token-gated agent, from BLOODBOWL_TOKEN.
+
+    The VIEW is auth-exempt (the console iframes it with a plain navigation) but
+    everything it fetches is not — so against a real agent the page renders an
+    empty board and the data 401s. The throwaway server has no auth at all, which
+    is why this never came up until `--live` was pointed at a real game.
+    """
+    tok = os.environ.get("BLOODBOWL_TOKEN", "").strip()
+    return {"Authorization": f"Bearer {tok}"} if tok else {}
+
+
 def drive(base: str, *, do_checks: bool, live: bool) -> int:
     from playwright.sync_api import sync_playwright
 
@@ -154,8 +169,11 @@ def drive(base: str, *, do_checks: bool, live: bool) -> int:
     url = base + "/plugins/bloodbowl/view"
     with sync_playwright() as p:
         browser = p.chromium.launch()
+        headers = _live_headers()
+        if live and not headers:
+            print("  !! no BLOODBOWL_TOKEN — a gated agent will render an empty board", flush=True)
         for label, w, h in (("panel", 760, 900), ("wide", 1400, 900)):
-            page = browser.new_page(viewport={"width": w, "height": h})
+            page = browser.new_page(viewport={"width": w, "height": h}, extra_http_headers=headers)
             errors: list[str] = []
 
             def _pageerror(e, sink=errors):
@@ -296,10 +314,21 @@ def drive(base: str, *, do_checks: bool, live: bool) -> int:
             check("teams survived a page load", bool(state["home_team"]), f"home={state['home_team']!r}")
             page.close()
 
+            # `--live` DRIVES A REAL AGENT'S BOARD, and `_play` starts a NEW MATCH
+            # — it clicks #newMatch. Running it against a live instance would wipe
+            # a game in progress. The flag has always said "read-only"; it was only
+            # true of the section above until this guard. Found while wanting a
+            # screenshot of a match that was actually being played.
             _play(browser, url, w=1400, h=950)
-            if not live:
-                _choices(browser, url, w=1400, h=950)
-                _versus(browser, url, w=1400, h=950)
+            _choices(browser, url, w=1400, h=950)
+            _versus(browser, url, w=1400, h=950)
+
+        # …and the live path, which only LOOKS. It sits out here rather than in an
+        # `else` because the block above is already gated on `not live` — an else
+        # in there is unreachable, which is how the first attempt at this silently
+        # did nothing at all.
+        if live:
+            _watch(browser, url, w=1400, h=950)
         browser.close()
 
     failed = [c for c in CHECKS if c[1] == "FAIL"]
@@ -852,6 +881,40 @@ def _one_choice(page, kind: str, found: dict, problems: list) -> None:
 
     check(f"{kind}: the bar goes away once it is answered", not page.locator("#choice").is_visible())
     check(f"{kind}: no page errors while answering", not problems, "; ".join(problems[:2]))
+
+
+def _watch(browser, url: str, w: int, h: int) -> None:
+    """Photograph a LIVE board without touching it.
+
+    Everything else in this file drives the page. This only looks: no clicks, no
+    posts, no new match. It is what `--live` should have been doing all along.
+    """
+    page = browser.new_page(viewport={"width": w, "height": h}, extra_http_headers=_live_headers())
+    page.goto(url, wait_until="networkidle")
+    page.wait_for_selector(".cell", timeout=20000)
+    theme = ROOT / "harness_theme.css"
+    if theme.exists():
+        page.add_style_tag(content=theme.read_text())
+    page.locator("#modePlay").click()  # a view switch, not a board change
+    page.wait_for_timeout(1200)
+    print("  -- live board --")
+    state = page.evaluate("""async () => (await (await fetch("/api/plugins/bloodbowl/game")).json()).match""")
+    if not state:
+        check("there is a match to look at", False, "no match in progress")
+        page.close()
+        return
+    c = state.get("clock") or {}
+    check(
+        "a live match is on the board",
+        bool(state.get("players")),
+        f"half {c.get('half')} turn {c.get('turn')} · {c.get('active')} to act · "
+        f"{state.get('score')} · controllers {state.get('controllers')}",
+    )
+    page.mouse.move(4, 4)
+    page.wait_for_timeout(200)
+    page.screenshot(path=str(SHOTS / "live.png"), full_page=True)
+    print(f"  shot: {(SHOTS / 'live.png').relative_to(ROOT)}")
+    page.close()
 
 
 def _versus(browser, url: str, w: int, h: int) -> None:
