@@ -27,7 +27,7 @@ TURNS_PER_HALF = 8
 
 # Player flags a `skill_spent` event may set. An allowlist rather than a bare
 # setattr, so the log cannot reach into a player and set anything it likes.
-ONCE_PER_TURN_FLAGS = ("dodge_reroll_used", "break_tackle_used")
+ONCE_PER_TURN_FLAGS = ("dodge_reroll_used", "break_tackle_used", "rush_reroll_used")
 
 
 @dataclass
@@ -79,6 +79,7 @@ class PlayerState:
     # live object knows is state a folded match plays without.
     dodge_reroll_used: bool = False
     break_tackle_used: bool = False
+    rush_reroll_used: bool = False  # Sure Feet, "once per Turn"
 
     @property
     def side(self) -> str:
@@ -128,6 +129,7 @@ class PlayerState:
             "action": self.action,
             "dodge_reroll_used": self.dodge_reroll_used,
             "break_tackle_used": self.break_tackle_used,
+            "rush_reroll_used": self.rush_reroll_used,
             "distracted": self.distracted,
             "rooted": self.rooted,
             "chomped_by": self.chomped_by,
@@ -328,7 +330,11 @@ class Match:
                     p.ma_used = 0
                     p.acted = p.done = False
                     p.action = ""
-                    p.dodge_reroll_used = p.break_tackle_used = False
+                    # Through the list, not by hand: a Once-per-Turn Skill whose
+                    # flag a reset site forgot works once per MATCH, and nothing
+                    # says so. Adding `rush_reroll_used` found three such sites.
+                    for flag in ONCE_PER_TURN_FLAGS:
+                        setattr(p, flag, False)
 
         elif kind == "player_status":
             # Distracted and Rooted, the two standing-but-impaired states.
@@ -593,8 +599,9 @@ class Match:
                 p.move_to(int(row["x"]), int(row["y"]))
                 p.down = "standing"
                 p.place = "pitch"
-                p.ma_used, p.acted, p.done, p.dodge_reroll_used = 0, False, False, False
-                p.action, p.break_tackle_used = "", False
+                p.ma_used, p.acted, p.done, p.action = 0, False, False, ""
+                for flag in ONCE_PER_TURN_FLAGS:
+                    setattr(p, flag, False)
                 # "…stop being Rooted at the end of a Drive", and a Distracted
                 # player is set up afresh with everyone else.
                 p.rooted = p.distracted = False
@@ -733,11 +740,10 @@ class Match:
                     acted=bool(raw.get("acted")),
                     done=bool(raw.get("done")),
                     action=str(raw.get("action") or ""),
-                    dodge_reroll_used=bool(raw.get("dodge_reroll_used")),
-                    break_tackle_used=bool(raw.get("break_tackle_used")),
                     distracted=bool(raw.get("distracted")),
                     rooted=bool(raw.get("rooted")),
                     chomped_by=str(raw.get("chomped_by") or ""),
+                    **{f: bool(raw.get(f)) for f in ONCE_PER_TURN_FLAGS},
                 )
             )
 

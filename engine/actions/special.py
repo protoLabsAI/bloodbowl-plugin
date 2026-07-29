@@ -302,8 +302,16 @@ def _throw_bomb(match: Match, cmd: dict, dice, rec: Recorder):
 
     from ..actions.throw import _passing_target
     from ..dice import roll_target
+    from ..skills import roll_modifier
 
-    r = roll_target(dice, "Throw Bomb", _passing_target(p), reach[1], note=reach[0])
+    bctx = roll_modifier(match, p, "throw_bomb", base=reach[1], range=reach[0])
+    r = roll_target(
+        dice,
+        "Throw Bomb",
+        _passing_target(p),
+        bctx.value,
+        note=reach[0] + "".join(f" · {n}" for n in bctx.notes),
+    )
     rec.emit(Event(kind="note", actor=p.id, rolls=[r], text=f"{p.name()} lobs a bomb. {r.describe()}"))
     # "Should a bomb be fumbled by the thrower … it will not Bounce and will
     # instead explode in that player's square."

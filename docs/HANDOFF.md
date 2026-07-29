@@ -369,7 +369,7 @@ block, blitz, foul, hand-off, Secure the Ball, pass → injuries → touchdowns 
 drives → half-time → full time.
 
 Actions: `move`, `block`, `blitz`, `foul`, `handoff`, `secure`, `pass`.
-Skills modelled — **34 of 108**. The other 74 are reported as unmodelled *and can still be quoted* —
+Skills modelled — **54 of 108**. The other 74 are reported as unmodelled *and can still be quoted* —
 `bb_get_skill` returns the rulebook's text for all 108 whether or not the engine
 applies them.
 
@@ -389,6 +389,13 @@ context. Skills that span several tests then read as they are written — Nerves
 Steel says "to Catch the ball, or … to Pass the ball" and is one `in
 ("catch", "pass")`. Two conventions worth knowing before writing the next one:
 
+- A modifier that belongs to a THIRD player — not the roller, not the marker —
+  goes in `roll_modifier` itself, beside the weather, because the hook dispatch
+  walks the ROLLER's Skills and will never see it. Disturbing Presence is the
+  worked example: "-1 … for each player on your team with this Skill within 3
+  squares of them". Same for a Skill belonging to the player being rolled AGAINST
+  — Iron Hard Skin registers a bare marker hook and `skills.from_skills` asks for
+  it at the roll site.
 - `marking` arrives as the PENALTY (negative) and is already folded into `value`.
   Cancelling it means `value -= marking`. Adding it doubles the exact thing the
   Skill removes — which is the bug a test caught in Nerves of Steel and Stunty.
@@ -472,6 +479,12 @@ the roll is coming (`dauntless: true`) and resolve makes it; Horns is
 deterministic, so it is in both and the odds a coach is shown are the odds they
 get. Reporting odds that resolve then ignores would be worse than not reporting
 them at all.
+
+**A NEW ONCE-PER-TURN FLAG HAS THREE RESET SITES.** They used to name the flags by
+hand (turn start, drive start, and `from_dict`), so a forgotten one would make a
+Once-per-Turn Skill work once per MATCH — and nothing would say so. Adding Sure
+Feet's `rush_reroll_used` found all three; they go through `ONCE_PER_TURN_FLAGS`
+now, and a test asserts a new turn clears every flag in the list.
 
 **Injury hooks run in registration order and Stunty must go first**: it REPLACES
 the table (Stunty Injury Table: 2-6 Stunned · 7-8 KO · 9 Badly Hurt · 10-12

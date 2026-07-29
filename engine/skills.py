@@ -71,6 +71,13 @@ def hooks_for(hook: str) -> list[tuple[str, Callable]]:
     return list(_HOOKS.get(hook, ()))
 
 
+def from_skills(player, hook: str) -> bool:
+    """Does this player carry any Skill registered under ``hook``, and may they use
+    it? For marker hooks — the ones whose whole content is "this player has it" —
+    where the behaviour lives at the roll site rather than in the hook body."""
+    return any(can_use(player, skill) for skill, _fn in hooks_for(hook))
+
+
 @dataclass
 class SkillContext:
     """What a hook is allowed to look at. Deliberately narrow — a hook that can
@@ -146,6 +153,14 @@ def roll_modifier(match, player, test: str, base: int = 0, **flags) -> SkillCont
     if sky:
         ctx.value += sky
         ctx.notes.append(f"{name_of(match.weather)}: {sky} to the {test.replace('_', ' ')}")
+
+    # …and the opposition standing nearby. Disturbing Presence belongs to OTHER
+    # players, so it cannot be a hook on this one's Skills — same reason as the
+    # weather, and the same rail.
+    near = disturbing_presence(match, player, test)
+    if near:
+        ctx.value += near
+        ctx.notes.append(f"Disturbing Presence: {near} from {-near} opponent(s) within {DISTURBING_RANGE} squares")
     return ctx
 
 
@@ -368,6 +383,28 @@ def _dodge(ctx: SkillContext) -> None:
         ctx.notes.append("Dodge: re-rolling the failed Agility Test")
 
 
+@skill_hook("Sure Feet", "rush_reroll")
+def _sure_feet(ctx: SkillContext) -> None:
+    """S3: "Once per Turn, this player may re-roll a single D6 when attempting to
+    Rush." The Dodge Skill's twin, on the other roll a Move Action can fail — once
+    per TURN, not per activation, so the flag lives on the player."""
+    if not ctx.flags.get("rush_reroll_used"):
+        ctx.flags["may_reroll"] = True
+        ctx.notes.append("Sure Feet: re-rolling the failed Rush")
+
+
+@skill_hook("Sprint", "extra_rush")
+def _sprint(ctx: SkillContext) -> None:
+    """S3: "When this player performs a Move Action they may attempt to Rush ONE
+    ADDITIONAL TIME than they would normally be allowed to."
+
+    Three Rushes rather than two — and it says "attempt", so the extra one is a
+    third chance to trip, not a free square. Applied in move.validate, which is
+    the only place the cap is enforced.
+    """
+    ctx.value += 1
+
+
 @skill_hook("Prehensile Tail", "opponent_dodge_modifier")
 def _prehensile_tail(ctx: SkillContext) -> None:
     """S3: "When an opposition player attempts to Dodge, Jump or Leap away from a
@@ -537,6 +574,112 @@ def _accurate(ctx: SkillContext) -> None:
     if ctx.flags.get("test") == "pass" and ctx.flags.get("range") in ("Quick Pass", "Short Pass"):
         ctx.value += 1
         ctx.notes.append(f"Accurate: +1 on a {ctx.flags.get('range')}")
+
+
+@skill_hook("Two Heads", "roll_modifier")
+def _two_heads(ctx: SkillContext) -> None:
+    """S3: "This player may apply a +1 modifier to the Agility Test whenever they
+    attempt to Dodge." """
+    if ctx.flags.get("test") == "dodge":
+        ctx.value += 1
+        ctx.notes.append("Two Heads: +1 to the Dodge")
+
+
+@skill_hook("Cannoneer", "roll_modifier")
+def _cannoneer(ctx: SkillContext) -> None:
+    """S3: "When this player performs a Pass Action which is a LONG PASS or a LONG
+    BOMB, this player may apply a +1 modifier to the Passing Ability Test."
+
+    Accurate's mirror image: the same +1 at the other end of the ruler.
+    """
+    if ctx.flags.get("test") == "pass" and ctx.flags.get("range") in ("Long Pass", "Long Bomb"):
+        ctx.value += 1
+        ctx.notes.append(f"Cannoneer: +1 on a {ctx.flags.get('range')}")
+
+
+@skill_hook("Strong Arm", "roll_modifier")
+def _strong_arm(ctx: SkillContext) -> None:
+    """S3: "When this player performs a THROW TEAM-MATE Action, this player may
+    apply a +1 modifier to the Passing Ability Test."
+
+    Not a Pass Action — the two have separate tests and separate distance bands,
+    and a player with Strong Arm and no Throw Team-mate Trait cannot exist.
+    """
+    if ctx.flags.get("test") == "throwteam":
+        ctx.value += 1
+        ctx.notes.append("Strong Arm: +1 to the throw")
+
+
+@skill_hook(
+    "Very Long Legs",
+    "roll_modifier",
+    partial="the Cloud Burster clause — Cloud Burster is not modelled, so there is nothing to ignore",
+)
+def _very_long_legs(ctx: SkillContext) -> None:
+    """S3: "This player may apply a +1 modifier to the Agility Test whenever they
+    attempt to LEAP OR JUMP, and may apply a +2 modifier to the Agility Test
+    whenever they attempt to INTERCEPT the ball. Additionally, this player ignores
+    the Cloud Burster Skill."
+
+    Note the +2 — the Intercept clause is worth twice the other one, which is the
+    difference between a roll that almost never lands and one that sometimes does.
+    """
+    test = ctx.flags.get("test")
+    if test == "jump":
+        ctx.value += 1
+        ctx.notes.append("Very Long Legs: +1 to the Jump")
+    elif test == "intercept":
+        ctx.value += 2
+        ctx.notes.append("Very Long Legs: +2 to the Intercept")
+
+
+@skill_hook("Iron Hard Skin", "armour")
+def _iron_hard_skin(ctx: SkillContext) -> None:
+    """S3: "OPPOSITION PLAYERS CANNOT APPLY ANY MODIFIERS when making an Armour
+    Roll against this player. Additionally, THE CLAWS SKILL CANNOT BE USED against
+    this player."
+
+    Registered on `armour` rather than `roll_modifier` because it belongs to the
+    player being rolled AGAINST, and `roll_modifier` walks the roller's Skills.
+    Applied in injury.risk_injury, which is the only place an Armour Roll is made.
+    """
+
+
+# Skills whose modifier belongs to somebody OTHER than the player rolling. They
+# cannot be `roll_modifier` hooks — that walks the roller's own Skills — so they
+# are applied in `roll_modifier` itself, on the same rail as the weather, and
+# registered here so the catalogue reports them as modelled.
+
+
+@skill_hook("Disturbing Presence", "nearby")
+def _disturbing_presence(ctx: SkillContext) -> None:
+    """S3: "Any opposition player that performs a Pass Action, Throw Team-mate
+    Action or a Throw Bomb Special Action, or attempts to Intercept or Catch the
+    ball, applies a -1 modifier to their Passing Ability Test or Agility Test FOR
+    EACH PLAYER ON YOUR TEAM WITH THIS SKILL WITHIN 3 SQUARES of them."
+
+    Each — they stack — and three squares is a long way: a single Beastman in the
+    right place reaches most of a cage. Applied in `roll_modifier`.
+    """
+
+
+DISTURBING_TESTS = ("pass", "throwteam", "throw_bomb", "intercept", "catch")
+DISTURBING_RANGE = 3
+
+
+def disturbing_presence(match, player, test: str) -> int:
+    """How much nearby Disturbing Presence costs this player's roll — 0 if none."""
+    if test not in DISTURBING_TESTS or match is None:
+        return 0
+    n = 0
+    for q in getattr(match, "players", []):
+        if q.side == player.side or q.place != "pitch" or q.id == player.id:
+            continue
+        if not can_use(q, "Disturbing Presence"):
+            continue
+        if max(abs(q.x - player.x), abs(q.y - player.y)) <= DISTURBING_RANGE:
+            n += 1
+    return -n
 
 
 # --- Skills that grant a re-roll ------------------------------------------

@@ -51,7 +51,7 @@ from ..events import Event
 from ..injury import injure_by_crowd, knock_down
 from ..ruler import band
 from ..rules import adjacent, agility_target, markers_of_square
-from ..skills import unmodelled_skills
+from ..skills import roll_modifier, unmodelled_skills
 from ..state import Match
 from . import Legality, Outcome, Recorder, ended, refuse_if_spent, register
 
@@ -272,7 +272,16 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 )
 
     if not fumbled:
-        r = roll_target(dice, "Throw Team-mate", d["passing_target"], d["modifier"], note=d["range"])
+        # Through the hook: Strong Arm's +1 and any Disturbing Presence nearby are
+        # both modifiers on THIS test, and the rule names it specifically.
+        tctx = roll_modifier(match, p, "throwteam", base=d["modifier"], range=d["range"])
+        r = roll_target(
+            dice,
+            "Throw Team-mate",
+            d["passing_target"],
+            tctx.value,
+            note=d["range"] + "".join(f" · {n}" for n in tctx.notes),
+        )
         fumbled = r.dice[0] == 1 or (r.total is not None and r.total <= 1)
         superb = r.passed and not fumbled
         rec.emit(
