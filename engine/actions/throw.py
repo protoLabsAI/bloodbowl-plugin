@@ -39,7 +39,7 @@ from ..dice import roll_target
 from ..events import Event
 from ..ruler import band, in_corridor
 from ..rules import markers_of_square
-from ..skills import can_use, may_reroll, roll_modifier, unmodelled_skills
+from ..skills import can_use, may_reroll, pro_reroll, roll_modifier, unmodelled_skills
 from ..state import Match
 from ..weather import bands_allowed
 from ..weather import name_of as weather_name
@@ -169,6 +169,8 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         allowed, skill = may_reroll(match, p, "pass")
         if allowed:
             r = roll_target(dice, "Pass (re-roll)", d["target"], ctx.value, note=f"{skill} skill")
+        elif pro_reroll(match, p, "pass", dice, rec):
+            r = roll_target(dice, "Pass (Pro)", d["target"], ctx.value)
         elif cmd.get("team_reroll") and team_rerolls.spend(match, p, "Pass", dice, rec):
             r = roll_target(dice, "Pass (Team Re-roll)", d["target"], ctx.value)
     # "If the Passing Ability Test is a 1 after modifiers, or the roll is a natural

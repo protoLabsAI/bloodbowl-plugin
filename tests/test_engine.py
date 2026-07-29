@@ -13,18 +13,20 @@ import pytest
 
 
 def _unmodelled_pair():
-    """Two Skills the engine does not model, chosen from the catalogue at run time.
+    """Two Skills the engine does not model.
 
-    Hard-coding names here has gone stale three times — Really Stupid, then Always
-    Hungry — because the whole point of the project is that the list shrinks. The
-    fixtures below are about the REPORTING mechanism, not about which Skill it
-    names, so they ask.
+    This used to ask the CATALOGUE for real unmodelled Skills, and said in its own
+    assertion that it would need rewriting once there were fewer than two left.
+    That day arrived: the catalogue is down to one. So it names two Skills that do
+    not exist at all — which is the honest way to keep testing the REPORTING
+    mechanism now that there is almost nothing real for it to report.
+
+    `unmodelled_skills` compares against `modelled()`, so an unknown name is
+    reported exactly as an unimplemented real one was: a plugin, a fork or a
+    hand-edited roster can all put a name on a player that this engine has never
+    heard of, and reporting it is the whole point.
     """
-    from bloodbowl.engine.skills import find_skills
-
-    names = [s["name"].title() for s in find_skills(only_unmodelled=True)]
-    assert len(names) >= 2, "everything is modelled — these fixtures need rewriting, happily"
-    return names[0], names[1]
+    return "Prehensile Moustache", "Devastating Yodel"
 
 
 def _match(*players, active="home"):
@@ -386,14 +388,16 @@ def test_an_unmodelled_skill_is_announced_once_per_match_not_once_per_step():
 
     m = _match(("home", 7, 13, 6, "3+", list(_unmodelled_pair())))
     first = act(m, "move", {"player": "h00", "x": 7, "y": 14})
-    assert first["unmodelled_skills"] == list(_unmodelled_pair())
+    # Sorted, because `unmodelled_skills` returns a sorted set — the old fixture
+    # happened to hand back names that were already in order.
+    assert first["unmodelled_skills"] == sorted(_unmodelled_pair())
 
     again = act(m, "move", {"player": "h00", "x": 7, "y": 15})
     assert again["unmodelled_skills"] == []
     # …but the raw list is untouched, so nothing has become invisible.
     from bloodbowl.engine.skills import unmodelled_skills
 
-    assert unmodelled_skills(m.by_id("h00")) == list(_unmodelled_pair())
+    assert unmodelled_skills(m.by_id("h00")) == sorted(_unmodelled_pair())
 
 
 def test_the_first_mention_lands_in_the_log_not_only_in_the_reply():
@@ -5849,3 +5853,177 @@ def test_hit_and_run_retreats_to_a_square_where_nobody_is_adjacent():
     plain = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
     _block(plain, "h00", "a01", _dice([4] * 8, block=[["push_back"]]), follow_up=False)
     assert (plain.by_id("h00").x, plain.by_id("h00").y) == (7, 13), "…which is not what happens without it"
+
+
+# --- Pro, Hatred, Saboteur ---------------------------------------------------
+
+
+def test_pro_is_a_re_roll_that_can_fail_and_only_one_per_activation():
+    """S3: "…they may attempt to re-roll a single dice … the player must roll a D6:
+    ON A 3+ the dice may be re-rolled, on a 1-2 the dice may not … Once a player
+    has ATTEMPTED to use this Skill, they cannot use a re-roll from any other
+    source to re-roll the dice." A re-roll that can fail."""
+    from bloodbowl.engine.ball import pick_up
+
+    made = _match(("home", 7, 13, 6, "4+", ["Pro"]), ("away", 2, 20))
+    made.ball.in_play, made.ball.x, made.ball.y = True, 7, 13
+    events, turned = pick_up(made, made.by_id("h00"), _dice([2, 5, 5, 4, 4]))  # fail, Pro 5, then 5
+    kinds = [r.kind for e in events for r in e.rolls]
+    assert "Pro" in kinds and "Pick up (Pro)" in kinds, kinds
+    assert turned is False, "the re-roll made it"
+
+    failed = _match(("home", 7, 13, 6, "4+", ["Pro"]), ("away", 2, 20))
+    failed.ball.in_play, failed.ball.x, failed.ball.y = True, 7, 13
+    events2, turned2 = pick_up(failed, failed.by_id("h00"), _dice([2, 1, 5, 4, 4]))  # Pro rolls a 1
+    kinds2 = [r.kind for e in events2 for r in e.rolls]
+    assert "Pro" in kinds2 and "Pick up (Pro)" not in kinds2, kinds2
+    assert turned2 is True, "a failed Pro leaves the failure standing"
+
+
+def test_pro_will_not_touch_an_armour_or_injury_roll():
+    """ "The Skill CANNOT be used to re-roll a dice made as part of an ARMOUR ROLL,
+    INJURY ROLL, CASUALTY roll, a roll made outside of the player's activation, or
+    any dice roll not made on the player's behalf." """
+    from bloodbowl.engine.skills import pro_reroll
+
+    m = _match(("home", 7, 13, 6, "3+", ["Pro"]), ("away", 2, 20))
+    rec = _rec(m)
+    for banned in ("armour", "injury", "casualty", "argue the call"):
+        assert pro_reroll(m, m.by_id("h00"), banned, _dice([6, 6, 6]), rec) is False, banned
+
+
+def test_hatred_re_rolls_a_player_down_the_way_brawler_re_rolls_a_both_down():
+    """ "…this player may re-roll a single PLAYER DOWN result." Free, like
+    Brawler's, so it goes before any Team Re-roll is considered."""
+    m = _match(("home", 7, 13, 6, "3+", ["Hatred (Elf)"]), ("away", 7, 14), ("away", 2, 20))
+    out = _block(m, "h00", "a01", _dice([4] * 10, block=[["player_down"], ["push_back"]]))
+    assert out.ok, out.text
+    assert [r for e in out.events for r in e.rolls if r.kind == "Block (re-roll)"], "it should have gone again"
+    assert m.by_id("h00").down == "standing"
+
+    plain = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
+    out2 = _block(plain, "h00", "a01", _dice([4] * 10, block=[["player_down"], ["push_back"]]))
+    assert out2.turnover is True and plain.by_id("h00").down != "standing"
+
+
+def test_saboteur_trades_its_owner_for_the_blockers_feet():
+    """ "…BEFORE THE ARMOUR ROLL IS MADE, they may roll a D6 … On a 4+ … THE
+    OPPOSITION PLAYER IS ALSO KNOCKED DOWN … this player is AUTOMATICALLY KNOCKED
+    OUT and the Armour Roll is NOT MADE for them." A trade, not a save — and it is
+    the DEFENDER's Skill firing on the attacker's success."""
+    # A POW, so the SABOTEUR is the one being knocked down — which is the case the
+    # rule is written for: "when THIS PLAYER is Knocked Down as a result of AN
+    # OPPOSITION PLAYER'S Block Action".
+    m = _match(("home", 7, 13), ("away", 7, 14, 6, "3+", ["Saboteur", "Secret Weapon"]), ("away", 2, 20))
+    out = _block(m, "h00", "a01", _dice([5, 4, 4, 4, 4, 4], block=[["pow"]]), follow_up=False)
+    assert m.by_id("h00").down != "standing", "the blocker goes down too"
+    assert m.by_id("a01").place == "knocked_out", "and the saboteur is Knocked Out"
+    assert not [r for e in out.events for r in e.rolls if r.kind == "Armour" and e.actor == "a01"], (
+        "no Armour Roll is made for them"
+    )
+
+    missed = _match(("home", 7, 13), ("away", 7, 14, 6, "3+", ["Saboteur", "Secret Weapon"]), ("away", 2, 20))
+    _block(missed, "h00", "a01", _dice([2, 4, 4, 4, 4, 4], block=[["pow"]]), follow_up=False)
+    assert missed.by_id("a01").place == "pitch", "a 2 does nothing"
+    assert missed.by_id("h00").down == "standing", "…and the blocker stays up"
+
+
+# --- The last six ------------------------------------------------------------
+
+
+def test_trickster_moves_before_the_dice_are_counted_and_changes_them():
+    """S3: "BEFORE DETERMINING HOW MANY DICE ARE ROLLED, this player may be removed
+    from the pitch and placed in any other unoccupied square adjacent to the player
+    performing the Action."
+
+    Before they are COUNTED, so it is a way of shedding assists rather than of
+    escaping — they are still adjacent, still Blocked, just somewhere better."""
+    # Two home players Marking the target: two assists, so two dice. Moving to a
+    # square only the blocker reaches drops it to one.
+    m = _match(
+        ("home", 7, 13),
+        ("home", 6, 13),
+        ("home", 8, 13),
+        ("away", 7, 14, 6, "3+", ["Trickster"]),
+        ("away", 2, 20),
+    )
+    out = _block(m, "h00", "a03", _dice([4] * 8, block=[["push_back"], ["push_back"]]), follow_up=False)
+    assert any((e.detail or {}).get("skill") == "Trickster" for e in out.events), [e.text for e in out.events]
+    rolled = next(r for e in out.events for r in e.rolls if r.kind == "Block")
+    assert len(rolled.dice) == 1, f"the assists should have been shed: {rolled.describe()}"
+
+    plain = _match(("home", 7, 13), ("home", 6, 13), ("home", 8, 13), ("away", 7, 14), ("away", 2, 20))
+    out2 = _block(plain, "h00", "a03", _dice([4] * 8, block=[["push_back"] * 2]), follow_up=False)
+    assert len(next(r for e in out2.events for r in e.rolls if r.kind == "Block").dice) == 2
+
+
+def test_dump_off_gets_the_ball_away_before_the_hit_lands():
+    """ "…this player may immediately perform a QUICK PASS BEFORE the Action
+    targeting them is resolved. This Quick Pass CANNOT CAUSE A TURNOVER … Once the
+    Quick Pass has been resolved, this Action targeting this player CONTINUES." """
+    m = _match(("home", 7, 13), ("away", 7, 14, 6, "2+", ["Dump-off"]), ("away", 8, 15))
+    m.by_id("a01").player.PA = "2+"
+    m.ball.carrier, m.ball.in_play = "a01", True
+    out = _block(m, "h00", "a01", _dice([5] * 10, block=[["pow"]]), follow_up=False)
+    assert any((e.detail or {}).get("skill") == "Dump-off" for e in out.events), [e.text for e in out.events]
+    assert m.ball.carrier == "a02", "the ball should be with the team-mate"
+    assert m.by_id("a01").down != "standing", "…and the Block still happened"
+    assert out.ok or out.turnover is False
+
+
+def test_pick_me_up_hauls_prone_team_mates_up_between_turns():
+    """ "At the end of each of the OPPOSITION'S Turns, roll a D6 for each PRONE
+    TEAM-MATE WITHIN 3 SQUARES of one or more STANDING players with this Trait. On
+    a 5+, the Prone player may immediately stand up." """
+    from bloodbowl.engine.game import end_turn
+
+    m = _match(("home", 7, 13), ("away", 7, 20, 6, "3+", ["Pick-me-up"]), ("away", 8, 20), ("away", 2, 2))
+    for who in ("a02", "a03"):
+        m.by_id(who).down = "prone"
+    end_turn(m, dice=_dice([5, 2, 4, 4, 4, 4]))  # home's turn ends, so AWAY get the roll
+    assert m.by_id("a02").down == "standing", "the one within 3 squares is hauled up"
+    assert m.by_id("a03").down == "prone", "the one across the pitch is not"
+
+
+def test_on_the_ball_moves_a_receiver_before_the_kickoff_event_is_rolled():
+    """ "…AFTER THE KICK DEVIATES but BEFORE THE KICK-OFF EVENT IS ROLLED, a single
+    OPEN player on the receiving team with this Skill may move up to 3 squares …
+    they cannot Rush … may not move into the opposition half." """
+    from bloodbowl.engine.kickoff import kick
+
+    m = _match(("home", 7, 3, 6, "3+", ["On the Ball"]), ("away", 7, 20))
+    dice = _dice([2, 1, 1, 3, 2] + [4] * 12)
+    kick(m, dice, receiving="home")
+    p = m.by_id("h00")
+    assert (p.x, p.y) != (7, 3), "they should have read the kick"
+    assert p.y <= 13, "and stayed in their own half"
+    moved = [e for e in m.events if "On the Ball" in (e.text or "")]
+    kicked = [i for i, e in enumerate(m.events) if e.kind == "kickoff_event"]
+    assert moved and m.events.index(moved[0]) < kicked[0], "before the event is rolled"
+
+
+def test_a_punt_clears_the_half_and_only_costs_a_turnover_if_it_goes_wrong():
+    """ "NO TURNOVER is caused if the ball comes to rest ON THE GROUND; however, if
+    after the Punt Special Action is resolved the ball is in possession of AN
+    OPPOSITION PLAYER, or IN THE CROWD, a Turnover IS caused." """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 8, 6, "3+", ["Punt"]), ("away", 2, 20))
+    m.ball.carrier, m.ball.in_play = "h00", True
+    out = actions.get("punt")["resolve"](m, {"player": "h00"}, _dice([1, 4, 4, 4, 4, 4]))
+    assert out.turnover is False, "a ball on the ground costs nothing"
+    assert not m.ball.carrier and m.ball.in_play
+
+
+def test_swoop_replaces_the_scatter_with_one_long_glide():
+    """ "…they may choose NOT TO SCATTER before landing as normal. If they do …
+    roll a D6 to determine the direction … and then a second die to determine how
+    many squares." One roll of each, not three D8 steps."""
+    from bloodbowl.engine.actions.throwteam import _scatter_player
+
+    m = _match(("home", 7, 8, 6, "3+", ["Swoop", "Right Stuff"]), ("away", 2, 20))
+    rec = _rec(m)
+    _scatter_player(m, m.by_id("h00"), _dice([1, 4]), rec)
+    assert any((e.detail or {}).get("skill") == "Swoop" for e in rec.events), [e.text for e in rec.events]
+    assert len([r for e in rec.events for r in e.rolls if r.kind == "Scatter"]) == 0, "no D8 staggering"

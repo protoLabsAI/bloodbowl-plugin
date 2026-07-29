@@ -369,9 +369,14 @@ block, blitz, foul, hand-off, Secure the Ball, pass → injuries → touchdowns 
 drives → half-time → full time.
 
 Actions: `move`, `block`, `blitz`, `foul`, `handoff`, `secure`, `pass`.
-Skills modelled — **94 of 108**. The other 74 are reported as unmodelled *and can still be quoted* —
-`bb_get_skill` returns the rulebook's text for all 108 whether or not the engine
-applies them.
+Skills modelled — **108 of 108**. `bb_get_skill` returns the rulebook's text for all
+of them, which was always a separate job from applying them: quoting is what a
+coach asks for, applying is what the board does.
+
+**18 carry a `partial=`**, and that is the number to watch now rather than the
+modelled count. See `docs/PARITY.md` for the four groups they fall into — a
+diagram with no numbers, a coach's choice the engine takes, a roster fact the data
+lacks, and a League ledger the engine does not keep.
 
 **"Modelled" is not binary, and pretending it is flatters.** A Skill with two
 clauses of which one is applied would report as modelled and quietly do half its
@@ -553,19 +558,13 @@ says so); Argue the Call does too. Ask when the choice can change the outcome.
 
 ### Next, roughly in order
 
-1. **The remaining 74 skills.** `data/skills.json` holds every one with its real
-   text; quote it into the docstring beside the hook and the catalogue's
-   `modelled` flag flips on its own. What is left is no longer a long tail of
-   one-liners — it groups:
-   - **Special Actions** (Stab, Chainsaw, Breathe Fire, Projectile Vomit,
-     Bombardier). Each is a new module in `actions/`, and Foul is the template:
-     declared, once per turn, its own roll, its own consequence.
-   - **Throw Team-mate** and its retinue (Right Stuff, Always Hungry, Bombardier,
-     Bullseye) — a subsystem, not a skill.
-   - ~~**Frenzy**~~ — done. "They MUST perform a second Block Action" makes the
-     engine take an Action nobody asked for; `resolve` recurses exactly once, and
-     `_frenzied` is what stops it being a chain.
-   - The rest are ordinary hook registrations against machinery that exists.
+1. ~~The remaining skills.~~ **All 108 are modelled.** What is left is the 18
+   `partial=` clauses, and each names its own missing half — start with
+   `bb_list_skills(partly=True)` or grep `partial=` in `engine/skills.py`. The two
+   most worth closing, because both are DATA rather than design:
+   - **Team keywords** would finish Hatred and Animosity. The source tables do not
+     print a keyword column, so it would need a second scrape or a hand-built map.
+   - **A Thrall Lineman on the roster** would finish Bloodlust's bite.
 2. ~~A match started from a preset has statless players.~~ Fixed — `state.flesh_out`
    gives every statless token the team's LINEMAN (cheapest positional, the only
    0-16 on every roster) at match start and says in the log that it did. The label

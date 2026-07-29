@@ -28,6 +28,9 @@ TURNS_PER_HALF = 8
 # Player flags a `skill_spent` event may set. An allowlist rather than a bare
 # setattr, so the log cannot reach into a player and set anything it likes.
 ONCE_PER_TURN_FLAGS = ("dodge_reroll_used", "break_tackle_used", "rush_reroll_used")
+# …and the one that is once per ACTIVATION. Same allowlist mechanism, different
+# lifetime: cleared by `activation_ended` rather than by `turn_started`.
+ONCE_PER_ACTIVATION_FLAGS = ("pro_used",)
 
 
 @dataclass
@@ -80,6 +83,9 @@ class PlayerState:
     dodge_reroll_used: bool = False
     break_tackle_used: bool = False
     rush_reroll_used: bool = False  # Sure Feet, "once per Turn"
+    # Pro is once per ACTIVATION rather than once per Turn, so it is cleared when
+    # an activation ends rather than when a turn starts.
+    pro_used: bool = False
 
     @property
     def side(self) -> str:
@@ -130,6 +136,7 @@ class PlayerState:
             "dodge_reroll_used": self.dodge_reroll_used,
             "break_tackle_used": self.break_tackle_used,
             "rush_reroll_used": self.rush_reroll_used,
+            "pro_used": self.pro_used,
             "distracted": self.distracted,
             "rooted": self.rooted,
             "chomped_by": self.chomped_by,
@@ -516,7 +523,7 @@ class Match:
             # an arbitrary attribute onto a player.
             p = self.by_id(event.actor)
             flag = str(d.get("flag") or "")
-            if p is not None and flag in ONCE_PER_TURN_FLAGS:
+            if p is not None and flag in ONCE_PER_TURN_FLAGS + ONCE_PER_ACTIVATION_FLAGS:
                 setattr(p, flag, True)
 
         elif kind == "activation_ended":
@@ -529,6 +536,10 @@ class Match:
                 p.acted = p.done = True
                 if d.get("action"):
                     p.action = str(d["action"])
+                # Once per ACTIVATION, so this is where they come back — not at
+                # the start of a turn, which is a different and longer lifetime.
+                for flag in ONCE_PER_ACTIVATION_FLAGS:
+                    setattr(p, flag, False)
             # No judgement here: the ACTION module decided whether its Action is
             # capped at one per turn and said so in the event.
             if d.get("once_per_turn") and d.get("action"):
@@ -755,7 +766,7 @@ class Match:
                     distracted=bool(raw.get("distracted")),
                     rooted=bool(raw.get("rooted")),
                     chomped_by=str(raw.get("chomped_by") or ""),
-                    **{f: bool(raw.get(f)) for f in ONCE_PER_TURN_FLAGS},
+                    **{f: bool(raw.get(f)) for f in ONCE_PER_TURN_FLAGS + ONCE_PER_ACTIVATION_FLAGS},
                 )
             )
 

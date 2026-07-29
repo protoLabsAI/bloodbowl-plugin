@@ -516,6 +516,56 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             )
         )
 
+    # TRICKSTER: "BEFORE DETERMINING HOW MANY DICE ARE ROLLED, this player may be
+    # removed from the pitch and placed in ANY OTHER UNOCCUPIED SQUARE ADJACENT TO
+    # THE PLAYER PERFORMING THE ACTION." Before the dice are COUNTED, so it changes
+    # the assists rather than escaping the Block — they are still adjacent, still
+    # Blocked, just somewhere better. Which is why it has to happen up here, above
+    # the strength comparison, rather than beside the other reactions.
+    if can_use(t, "Trickster"):
+        spot = _fewest_assists(match, p, t)
+        if spot is not None:
+            rec.emit(
+                Event(
+                    kind="player_pushed",
+                    actor=t.id,
+                    detail={"x": spot[0], "y": spot[1], "skill": "Trickster"},
+                    text=f"{t.name()} slips round to ({spot[0]},{spot[1]}) before the dice are counted.",
+                )
+            )
+            # Re-count from the new square: that is the entire point of the move.
+            fresh = validate(match, {**cmd, "_multi": True})
+            if fresh.ok:
+                n, chooser = fresh.detail["dice"], fresh.detail["chooser"]
+
+    # DUMP-OFF: "this player may immediately perform a QUICK PASS BEFORE the Action
+    # targeting them is resolved. This Quick Pass CANNOT CAUSE A TURNOVER … Once
+    # the Quick Pass has been resolved, this Action targeting this player
+    # CONTINUES." The ball leaving before the hit lands is the whole point.
+    if can_use(t, "Dump-off") and match.ball.carrier == t.id:
+        mate = _dump_off_target(match, t)
+        if mate is not None:
+            from . import get as _get
+
+            rec.emit(
+                Event(
+                    kind="note",
+                    actor=t.id,
+                    detail={"skill": "Dump-off", "target": mate.id},
+                    text=f"{t.name()} dumps the ball off to {mate.name()} before the hit lands.",
+                )
+            )
+            was_active = match.clock.active
+            try:
+                # The Pass is thrown by the player being Blocked, on the opponent's
+                # turn — so the clock has to say so for the Action's own checks, and
+                # is put straight back.
+                match.clock.active = t.side
+                dumped = _get("pass")["resolve"](match, {"player": t.id, "x": mate.x, "y": mate.y}, dice)
+            finally:
+                match.clock.active = was_active
+            rec.absorb(dumped.events)  # "cannot cause a Turnover" — so its turnover is dropped
+
     # FOUL APPEARANCE: "Whenever an opposition player attempts to perform a Block
     # Action against this player … they must roll a D6 BEFORE ANY OTHER DICE ARE
     # ROLLED. On a 2+, the Block Action continues as normal. On a 1, the Block
@@ -561,6 +611,17 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         again = Roll(kind="Block (re-roll)", dice=list(faces), note="Brawler, a single Both Down")
         dice.rolls.append(again)
         rolls.append(again)
+    # HATRED: "…this player may re-roll A SINGLE PLAYER DOWN RESULT." Brawler's
+    # twin on the other bad face, and free like Brawler is — so it goes before any
+    # Team Re-roll is considered.
+    elif face == "player_down" and can_use(p, "Hatred") and not cmd.get("_hated"):
+        faces = dice.block(n)
+        face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"))]
+        again = Roll(kind="Block (re-roll)", dice=list(faces), note="Hatred, a single Player Down")
+        dice.rolls.append(again)
+        rolls.append(again)
+        cmd = {**cmd, "_hated": True}
+
     elif _bad_for_us(face, match, p) and cmd.get("team_reroll") and team_rerolls.spend(match, p, "Block", dice, rec):
         # "When a Team Re-roll is used to re-roll a dice pool, ALL THE DICE IN THE
         # POOL must be re-rolled" — so the whole handful goes again, not the one
@@ -607,9 +668,15 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         # Follow-up." The bounce is deferred to the end of this function for
         # exactly that reason — it is one of the few orderings the rules spell out.
         stripped = had_ball and t.place == "pitch" and can_use(p, "Strip Ball")
-        if knock_after and t.place == "pitch":
-            # "Apply the Push Back result. The target is then Knocked Down in the
-            # square they are now in" — so the Armour Roll happens where they land.
+        # "Apply the Push Back result. The target is then Knocked Down in the
+        # square they are now in" — so the Armour Roll happens where they land.
+        #
+        # SABOTEUR goes first: "When THIS PLAYER IS KNOCKED DOWN as a result of AN
+        # OPPOSITION PLAYER'S Block Action, BEFORE THE ARMOUR ROLL IS MADE … On a
+        # 4+ … the opposition player is ALSO Knocked Down … this player is
+        # AUTOMATICALLY KNOCKED OUT and the Armour Roll is NOT MADE for them." A
+        # trade, not a save.
+        if knock_after and t.place == "pitch" and not _saboteur(match, t, p, dice, rec):
             rec.absorb(knock_down(match, t, dice, by=p))
         # FEND: "When a player with this Skill is Pushed Back as a result of a
         # Block Action performed against them, then the opposition player MAY NOT
@@ -704,7 +771,11 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         _push_and_follow(knock_after=True)
 
     elif face == "player_down":
-        rec.absorb(knock_down(match, p, dice, by=t))
+        # The BLOCKER goes down. Saboteur is not here: it fires when a player is
+        # knocked down "as a result of AN OPPOSITION PLAYER'S Block Action", and a
+        # Player Down is the blocker falling over their own Block.
+        if not _saboteur(match, p, t, dice, rec):
+            rec.absorb(knock_down(match, p, dice, by=t))
         turnover = True
 
     elif face == "both_down":
@@ -884,6 +955,91 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         text=first.text,
         unmodelled=unmodelled,
     )
+
+
+def _fewest_assists(match: Match, blocker, p) -> tuple[int, int] | None:
+    """Trickster's landing square: adjacent to the blocker, unoccupied, and with as
+    few opposition assists reaching it as possible.
+
+    "Any other unoccupied square" is a coach's choice with no rule to guide it, so
+    the engine states a policy — fewest assists is the only thing about the square
+    that changes the Block, which is what the Trait is for.
+    """
+    from ...pitch import in_bounds as _in
+
+    best, chosen = None, None
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            if not dx and not dy:
+                continue
+            x, y = blocker.x + dx, blocker.y + dy
+            if not _in(x, y) or match.at(x, y) is not None or (x, y) == (p.x, p.y):
+                continue
+            helpers = sum(
+                1
+                for q in match.on_pitch(blocker.side)
+                if q.id != blocker.id and has_tackle_zone(q) and adjacent(q.x, q.y, x, y)
+            )
+            if best is None or helpers < best:
+                best, chosen = helpers, (x, y)
+    return chosen
+
+
+def _dump_off_target(match: Match, carrier):
+    """Who the Dump-off goes to: the nearest team-mate within a Quick Pass who is
+    Standing and free to catch. None if there is nobody, in which case the Skill
+    simply does not fire."""
+    mates = [
+        q
+        for q in match.on_pitch(carrier.side)
+        if q.id != carrier.id and q.down == "standing" and not getattr(q, "distracted", False)
+    ]
+    if not mates:
+        return None
+    near = min(mates, key=lambda q: (max(abs(q.x - carrier.x), abs(q.y - carrier.y)), q.id))
+    return near if max(abs(near.x - carrier.x), abs(near.y - carrier.y)) <= 3 else None
+
+
+def _saboteur(match: Match, victim, opponent, dice, rec: Recorder) -> bool:
+    """The rigged weapon of the player who is ABOUT TO BE knocked down.
+
+    Whose Skill it is, is the thing to get right: `victim` is the player going to
+    the floor, `opponent` is the one who put them there. On a 4+ the opponent goes
+    down too and the victim is Knocked Out with no Armour Roll — a trade, not a
+    save, and the only way to spend a player deliberately.
+
+    Returns True if it went off, in which case the caller must NOT knock the victim
+    down as well: "the Armour Roll is not made for them".
+    """
+    from ..dice import Roll as _Roll
+
+    if not can_use(victim, "Saboteur"):
+        return False
+    d = dice.d6()
+    roll = _Roll(kind="Saboteur", dice=[d], total=d, target=4, passed=d >= 4)
+    dice.rolls.append(roll)
+    rec.emit(
+        Event(
+            kind="note",
+            actor=victim.id,
+            rolls=[roll],
+            detail={"skill": "Saboteur"},
+            text=f"{victim.name()}'s rigged weapon. {roll.describe()}"
+            + (" It goes off." if roll.passed else " Nothing happens."),
+        )
+    )
+    if not roll.passed:
+        return False
+    rec.absorb(knock_down(match, opponent, dice, by=victim, cause="caught by the sabotaged weapon"))
+    rec.emit(
+        Event(
+            kind="player_condition",
+            actor=victim.id,
+            detail={"outcome": "knocked_out", "skill": "Saboteur"},
+            text=f"{victim.name()} is Knocked Out by their own weapon — no Armour Roll.",
+        )
+    )
+    return True
 
 
 def _multiple_block(match: Match, cmd: dict, dice) -> Outcome:

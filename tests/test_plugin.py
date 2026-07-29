@@ -1170,3 +1170,31 @@ def test_the_fumblerooski_flag_survives_the_whole_tool_path(registry):
     assert out["ok"], out
     after = load_match()
     assert not after.ball.carrier and (after.ball.x, after.ball.y) == where, (after.ball.x, after.ball.y)
+
+
+def test_every_skill_in_the_catalogue_is_modelled(registry):
+    """Parity with the full S3 ruleset means every Skill and Trait, not most of
+    them. This is the line that says so, and it will fail the moment one is added
+    to `data/skills.json` without an implementation behind it.
+
+    It does NOT assert that every one is complete — 18 carry a `partial=` naming
+    the clause they leave out, and `test_a_partial_skill_names_what_it_leaves_out`
+    is what keeps those honest."""
+    from bloodbowl.engine.skills import catalogue, modelled
+
+    known = modelled()
+    missing = sorted(n for n in catalogue() if n not in known)
+    assert not missing, f"{len(missing)} Skill(s) with no implementation: {missing}"
+
+
+def test_a_partial_skill_names_what_it_leaves_out(registry):
+    """A `partial=` with no text would be worse than none: it would report a gap
+    without saying what the gap is, which is the failure mode the whole
+    partly-modelled mechanism exists to prevent."""
+    from bloodbowl.engine.skills import describe_skill, partial_skills
+
+    partials = sorted(partial_skills())
+    assert partials, "the mechanism is unused — check it still works before deleting it"
+    for name in partials:
+        note = (describe_skill(name) or {}).get("partial") or ""
+        assert len(note) > 20, f"{name}'s partial says nothing useful: {note!r}"

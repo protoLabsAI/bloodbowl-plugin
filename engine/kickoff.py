@@ -185,6 +185,16 @@ def kick(match, dice, receiving: str, aim: tuple[int, int] | None = None) -> lis
     )
     match.apply(events[-1])
 
+    # ON THE BALL, the half the engine can apply: "during the Start of Drive
+    # Sequence, AFTER THE KICK DEVIATES but BEFORE THE KICK-OFF EVENT IS ROLLED, a
+    # single OPEN player on the RECEIVING team with this Skill may move UP TO 3
+    # SQUARES … they cannot Rush … may not move into the opposition half."
+    #
+    # The window is exactly one step wide and it is here. A single player, so the
+    # engine takes the one with the furthest to go: it moves them toward where the
+    # ball is about to land, which is the only thing anybody would use it for.
+    events.extend(_on_the_ball(match, receiving, (nx, ny)))
+
     events.extend(kickoff_event(match, dice, receiving))
 
     # "At this point the ball is still HIGH UP IN THE AIR and cannot be caught
@@ -199,6 +209,42 @@ def kick(match, dice, receiving: str, aim: tuple[int, int] | None = None) -> lis
     # "Once the Kick-off Event has been fully resolved, the ball will land."
     events.extend(land(match, dice, receiving))
     return events
+
+
+def _on_the_ball(match, receiving: str, where: tuple[int, int]) -> list[Event]:
+    """The kick-off half of On the Ball. See the quote in `kick`."""
+    from .rules import is_open
+
+    if not in_bounds(*where) or not in_own_half(receiving, where[1]):
+        # "A player may not use this Skill IF A TOUCHBACK IS CAUSED."
+        return []
+    runners = [p for p in match.on_pitch(receiving) if p.has_skill("On the Ball") and is_open(match, p)]
+    if not runners:
+        return []
+    p = min(runners, key=lambda q: (max(abs(q.x - where[0]), abs(q.y - where[1])), q.id))
+
+    # Up to three squares toward the ball, one step at a time, stopping at the
+    # halfway line and at anybody in the way. No Rush, so three is the hard cap.
+    x, y = p.x, p.y
+    for _ in range(3):
+        step = (x + _sign(where[0] - x), y + _sign(where[1] - y))
+        if step == (x, y) or match.at(*step) is not None or not in_own_half(receiving, step[1]):
+            break
+        x, y = step
+    if (x, y) == (p.x, p.y):
+        return []
+    ev = Event(
+        kind="player_pushed",
+        actor=p.id,
+        detail={"x": x, "y": y, "skill": "On the Ball"},
+        text=f"On the Ball: {p.name()} reads the kick and moves to ({x},{y}) before the event is rolled.",
+    )
+    match.apply(ev)
+    return [ev]
+
+
+def _sign(n: int) -> int:
+    return (n > 0) - (n < 0)
 
 
 def _open_ids(match, side: str) -> list[str]:

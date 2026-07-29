@@ -44,7 +44,15 @@ from ..rules import (
     jump_over,
     markers_of_square,
 )
-from ..skills import SkillContext, apply_value_hook, can_use, hooks_for, roll_modifier, unmodelled_skills
+from ..skills import (
+    SkillContext,
+    apply_value_hook,
+    can_use,
+    hooks_for,
+    pro_reroll,
+    roll_modifier,
+    unmodelled_skills,
+)
 from ..state import Match
 from . import Legality, Outcome, Recorder, ended, register
 
@@ -245,6 +253,8 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 )
             )
             r = roll_target(dice, "Rush (Sure Feet)", 2, rush.value)
+        elif not r.passed and pro_reroll(match, p, "rush", dice, rec):
+            r = roll_target(dice, "Rush (Pro)", 2, rush.value)
         elif not r.passed and want_reroll and team_rerolls.spend(match, p, "Rush", dice, rec):
             r = roll_target(dice, "Rush (Team Re-roll)", 2, rush.value)
         if not r.passed:
@@ -403,6 +413,9 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             # A Skill re-roll is FREE, so it is always tried first and a Team
             # Re-roll only steps in when there was none — and never on a die that
             # is already a re-roll: "they may still never re-roll a re-roll".
+            elif pro_reroll(match, p, "dodge", dice, rec):
+                r = roll_target(dice, "Dodge (Pro)", agility_target(p), modifier)
+                dodge_rolls.append(r)
             elif want_reroll and team_rerolls.spend(match, p, "Dodge", dice, rec):
                 r = roll_target(dice, "Dodge (Team Re-roll)", agility_target(p), modifier)
                 dodge_rolls.append(r)
