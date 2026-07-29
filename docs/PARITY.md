@@ -21,15 +21,15 @@ Three verdicts, and the middle one is the important one:
 | A GAME OF TWO HALVES! | yes | two halves of eight turns each |
 | SETTING UP THE GAME | yes | `bb_game_setup` is strict; the practice board stays permissive on purpose |
 | YOUR FIRST FEW GAMES | n/a | advice, not a rule |
-| PRE-GAME SEQUENCE | no | a league-and-inducements sequence |
-| THE FANS · FAN FACTOR | partly | an input, defaulting to zero; Pitch Invasion uses it |
+| PRE-GAME SEQUENCE | yes | all five steps; the rulebook scopes two of them to League Play in its own words |
+| THE FANS · FAN FACTOR | yes | rolled: D3 Fair-weather + Dedicated Fans (1 unless bought up) |
 | THE WEATHER · WEATHER TABLE · WEATHER CONDITION | yes | rolled at kick-off; rides the same modifier hook as Skills |
 | DETERMINE KICKING TEAM | yes | rolled off unless a side is named |
 | START OF A DRIVE! · START OF DRIVE SEQUENCE | yes | a declared set-up wins; the reused one is the fallback |
 | SET-UP · TOO MANY PLAYERS | yes | all four rules enforced, every violation reported at once |
 | THE KICK-OFF · NOMINATE KICKING PLAYER · PLACE THE KICK | yes | |
 | THE KICK DEVIATES | yes | D6 distance, D8 direction |
-| THE KICK-OFF EVENT · KICK-OFF EVENT TABLE | partly | all 11 rolled and quoted; 10 applied — only Get the Ref (Inducements) is not |
+| THE KICK-OFF EVENT · KICK-OFF EVENT TABLE | yes | all 11 rolled, quoted and applied |
 | TOUCHBACKS | yes | including a bounce that crosses back |
 | A TEAM'S TURN! · ROUNDS · TURNS | yes | |
 | PLAYER ACTIVATIONS | yes | `acted` begins one, `done` ends it |
@@ -69,7 +69,7 @@ Three verdicts, and the middle one is the important one:
 | FOUL ACTIONS! · PERFORMING A FOUL ACTION | yes | |
 | BEING SENT-OFF · ARGUE THE CALL | yes | the Argue roll is made for you — see §6 |
 | PASS ACTIONS! · PERFORMING A PASS ACTION | yes | |
-| DECLARE TARGET SQUARE · MEASURE RANGE | partly | the ruler is measured, not quoted |
+| DECLARE TARGET SQUARE · MEASURE RANGE | yes | every stated rule applied; the ruler's GEOMETRY is calibrated from the diagram (see below) and configurable |
 | TEST FOR ACCURACY · ACCURATE PASS · INACCURATE PASS · FUMBLED PASS | yes | |
 | INTERCEPTIONS · RESOLVE PASS ACTION · CATCHING THE BALL | yes | |
 | THROW-INS | yes | D6 across the template's three arrows, then 2D6 squares |
@@ -110,6 +110,26 @@ groups, and none of them is a gap in something that exists:
 * **A League ledger the engine does not keep** — Star Player Points (Violent
   Innovator), the Team Draft List (Insignificant), the post-game hire (Plague
   Ridden).
+
+## The Range Ruler, and why it is `yes`
+
+Every rule the book STATES about measuring range is applied: the four sections and
+their modifiers, "if a square is only PARTIALLY underneath the Range Ruler, then it
+cannot be the target square", and the interception corridor ("the Tomb Kings
+Blitzer is underneath the Range Ruler … and so now gets to attempt to Intercept").
+
+What the book never states is a NUMBER. The Range Ruler is a physical template —
+"position the circle at the end of the Range Ruler over the centre of the square
+occupied by the player performing the Pass Action" — and the two worked examples
+both settle their range by pointing at a picture. There is nothing to quote, so
+`engine/ruler.py` calibrates the four bands from the published diagram, says in its
+own docstring that this is the one un-quoted number in the engine, and exposes the
+bands as CONFIG so an operator who measures differently can say so.
+
+The same is true of the Throw-in Template, which Swoop and Punt use.
+
+Marking these `partly` would say the engine skips a rule. It does not. It
+implements a rule whose last input is a drawing.
 
 ## What blocks the rest
 

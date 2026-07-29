@@ -946,9 +946,12 @@ def test_the_parity_table_agrees_with_the_engine_about_the_kickoff_events():
 
     applied = sum(1 for _n, _t, ok in KICKOFF_EVENTS.values() if ok)
     parity = (ROOT / "docs" / "PARITY.md").read_text()
-    claim = re.search(r"all 11 rolled and quoted; (\d+) applied", parity)
-    assert claim, "the Kick-off Event row lost its count"
-    assert int(claim.group(1)) == applied, f"PARITY.md says {claim.group(1)}, the engine applies {applied}"
+    row = re.search(r"\| THE KICK-OFF EVENT .*\|.*\|(.*)\|", parity)
+    assert row, "the Kick-off Event row went missing"
+    # The row claims all eleven are applied. If that ever stops being true the
+    # count has to come back into the row — which is what this asserts.
+    assert "all 11 rolled, quoted and applied" in row.group(1), row.group(1)
+    assert applied == len(KICKOFF_EVENTS) == 11, f"the engine applies {applied} of {len(KICKOFF_EVENTS)}"
 
 
 def test_a_pending_kickoff_choice_is_answerable_over_http_and_blocks_play_until_it_is(client):

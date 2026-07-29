@@ -1288,16 +1288,29 @@ def test_every_kickoff_event_result_is_named_with_its_real_text():
 
 
 def test_an_unapplied_kickoff_event_says_so_rather_than_pretending():
-    """A coach told 'Blitz!' who sees nothing move would reasonably conclude the
-    engine is broken. Say which ones are narrative only."""
-    from bloodbowl.engine.kickoff import KICKOFF_EVENTS
+    """A coach told an event who sees nothing move would reasonably conclude the
+    engine is broken, so an unapplied one has to SAY it was not applied.
 
-    unapplied = [n for n, (_name, _t, applied) in KICKOFF_EVENTS.items() if not applied]
-    assert unapplied, "if everything were applied this guard is pointless"
-    m = _kicked()
+    ALL ELEVEN ARE APPLIED NOW, so this guards the mechanism with a table entry
+    that does not exist rather than with a real event — the same move as
+    `_unmodelled_pair`. The mechanism still has to work: a fork can add an event,
+    and the honest failure is to announce it and do nothing, not to do nothing
+    quietly."""
+    from bloodbowl.engine import kickoff
+
+    real = dict(kickoff.KICKOFF_EVENTS)
+    assert all(applied for _n, _t, applied in real.values()), "all eleven should be applied"
+
+    m = _match(("home", 7, 11), ("away", 7, 20))
+    patched = {**real, 7: ("Streaker", "A streaker delays the game. Nothing else happens.", False)}
+    try:
+        kickoff.KICKOFF_EVENTS = patched
+        kickoff.kickoff_event(m, _dice([3, 4] + [4] * 10), "home")  # 3+4 = 7
+    finally:
+        kickoff.KICKOFF_EVENTS = real
     ev = next(e for e in m.events if e.kind == "kickoff_event")
-    if not ev.detail["applied"]:
-        assert "NOT applied" in ev.text
+    assert ev.detail["applied"] is False
+    assert "NOT applied" in ev.text, ev.text
 
 
 def test_time_out_moves_the_turn_marker_and_is_actually_applied():
@@ -6027,3 +6040,84 @@ def test_swoop_replaces_the_scatter_with_one_long_glide():
     _scatter_player(m, m.by_id("h00"), _dice([1, 4]), rec)
     assert any((e.detail or {}).get("skill") == "Swoop" for e in rec.events), [e.text for e in rec.events]
     assert len([r for e in rec.events for r in e.rolls if r.kind == "Scatter"]) == 0, "no D8 staggering"
+
+
+# --- The Pre-game Sequence, Fan Factor and Bribes ----------------------------
+
+
+def test_fan_factor_is_rolled_rather_than_defaulted_to_nothing():
+    """S3: "roll a D3 [for Fair-weather Fans] … add … your Dedicated Fans
+    Characteristic". And: "When you draft a team, it will AUTOMATICALLY have a
+    Dedicated Fans Characteristic of 1."
+
+    It used to default to zero, which is not a neutral default — Pitch Invasion
+    adds Fan Factor to a D6, so a zero made that event quietly milder."""
+    from bloodbowl.engine.pregame import DEFAULT_DEDICATED_FANS, fan_factor
+
+    assert DEFAULT_DEDICATED_FANS == 1, "the rules say a drafted team starts with 1"
+    total, roll = fan_factor(_dice([2]), 4)
+    assert total == 6, roll.describe()  # the rulebook's own worked example
+    assert fan_factor(_dice([1]), DEFAULT_DEDICATED_FANS)[0] == 2
+
+
+def test_the_pregame_sequence_runs_all_five_steps_and_says_which_are_league_only():
+    """ "There are FIVE simple steps … however, SOME OF THESE ARE ONLY RELEVANT TO
+    LEAGUE PLAY." The rulebook scopes two of them out of a game like this, in those
+    words — so reporting them as League-only is completing the sequence, not
+    skipping it."""
+    from bloodbowl.engine.pregame import steps
+
+    exhibition = steps(league=False)
+    assert [s["step"] for s in exhibition] == [
+        "The Fans",
+        "The Weather",
+        "Take On Journeymen",
+        "Inducements",
+        "Determine Kicking Team",
+    ]
+    skipped = [s["step"] for s in exhibition if not s["applies"]]
+    assert skipped == ["Take On Journeymen", "Inducements"]
+    assert all("League Play" in s["why"] for s in exhibition if not s["applies"])
+    assert all(s["applies"] for s in steps(league=True)), "a League game runs all five"
+
+
+def test_get_the_ref_hands_both_teams_a_bribe():
+    """ "EACH TEAM immediately receives ONE FREE Bribe Inducement." Free is what
+    lets an exhibition match hold an Inducement it never bought."""
+    from bloodbowl.engine.kickoff import kickoff_event
+
+    m = _match(("home", 7, 11), ("away", 7, 20))
+    kickoff_event(m, _dice([1, 1] + [4] * 10), "home")  # 1+1 = 2: Get the Ref
+    assert m.bribes == {"home": 1, "away": 1}, m.bribes
+
+
+def test_a_bribe_undoes_a_sending_off_and_the_turnover_with_it():
+    """ "When a player is Sent-off, AFTER any attempt to Argue the Call has been
+    made, you may use a Bribe … On a 2+, the player is NOT Sent-off (AND NO
+    TURNOVER IS CAUSED). On a NATURAL 1, the referee pockets the Bribe but sends
+    the player off anyway."
+
+    The no-Turnover clause makes it strictly better than arguing — the only thing
+    in the game that undoes a Foul completely."""
+    from bloodbowl.engine.events import Event
+
+    m = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
+    m.apply(Event(kind="bribes_awarded", detail={"home": 1, "away": 0}))
+    m.by_id("a01").down = "prone"
+    m.by_id("a01").player.AV = "11+"
+    # A natural double on the Armour Roll is the sending-off; then Argue (a 3,
+    # which fails), then the Bribe (a 5, which works).
+    out = _foul(m, "h00", "a01", _dice([4, 4, 3, 5] + [4] * 8))
+    assert m.by_id("h00").place == "pitch", "the Bribe should have kept them on"
+    assert out.turnover is False, "…and no Turnover is caused"
+    assert m.bribes["home"] == 0, "spent"
+
+    # A natural 1: pocketed, and they go anyway.
+    n = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
+    n.apply(Event(kind="bribes_awarded", detail={"home": 1, "away": 0}))
+    n.by_id("a01").down = "prone"
+    n.by_id("a01").player.AV = "11+"
+    out2 = _foul(n, "h00", "a01", _dice([4, 4, 3, 1] + [4] * 8))
+    assert n.by_id("h00").place == "sent_off"
+    assert out2.turnover is True
+    assert n.bribes["home"] == 0, "lost either way"

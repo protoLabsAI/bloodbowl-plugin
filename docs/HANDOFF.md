@@ -572,10 +572,11 @@ says so); Argue the Call does too. Ask when the choice can change the outcome.
 
 ### Known simplifications, all deliberate and all stated in the code
 
-- One of the eleven Kick-off Events is reported rather than applied: **Get the
-  Ref**, which needs Inducements — a League feature. The other ten are applied,
-  four of them by ASKING (`Match.pending` + `bb_game_choose`), one of which —
-  **Charge!** — is a free turn rather than a question (`engine/charge.py`).
+- ~~One of the eleven Kick-off Events is reported rather than applied.~~ All
+  eleven are applied. **Get the Ref** was the last, and it needed only the one
+  Inducement an exhibition match can hold — a BRIBE, which the event itself hands
+  out free. Four of the eleven work by ASKING (`Match.pending` + `bb_game_choose`),
+  one of which — **Charge!** — is a free turn rather than a question.
 - A Blitz may be re-pointed at a different target until the player moves or
   blocks — declaring rolls nothing, so a mis-named target costs a coach nothing to
   correct, and the team's one Blitz is spent by the same player either way. The
@@ -587,8 +588,16 @@ says so); Argue the Call does too. Ask when the choice can change the outcome.
   only a 1 costs anything, and a 1 costs the same whether or not you argued this
   particular call. Now that `Match.pending` exists this COULD be asked; it is left
   alone because asking a question with one sensible answer is noise, not fidelity.
-- No Inducements or Fan Factor. Cheerleaders and Assistant Coaches are inputs that
-  default to zero and say so in the log; Weather is modelled.
+- **Fan Factor is rolled**, not defaulted: "a D3 [for Fair-weather Fans] plus your
+  Dedicated Fans Characteristic", and a drafted team "automatically" has 1 of
+  those. It used to default to ZERO, which is not a neutral default — Pitch
+  Invasion adds Fan Factor to a D6.
+- The PRE-GAME SEQUENCE runs all five steps (`engine/pregame.py`). Two of them,
+  Take On Journeymen and Inducements, are reported as League-only IN THE
+  RULEBOOK'S OWN WORDS ("this step is only used in League Play") rather than as
+  gaps. Cheerleaders and Assistant Coaches remain inputs that say what they used.
+- Inducements beyond the free Bribe are League play, and a League needs a Treasury,
+  a Team Value and a Draft List — none of which an exhibition match has.
 - The Throw-in direction is thrown straight back in from the edge crossed; the real
   Throw-in Template is a diagram.
 - The version is `0.5.0` and the plugin has never been released or tagged.

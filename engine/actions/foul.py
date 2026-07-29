@@ -311,16 +311,29 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         )
     )
     stayed = _argue_the_call(match, p, dice, rec)
+    # "When a player is Sent-off, AFTER ANY ATTEMPT TO ARGUE THE CALL HAS BEEN
+    # MADE, you may use a Bribe … On a 2+, the player is not Sent-off AND NO
+    # TURNOVER IS CAUSED." Strictly better than arguing, and the only thing in the
+    # game that undoes a Foul completely — which is why it is asked second and
+    # why `bribed` is tracked separately from `stayed`.
+    bribed = False
+    if not stayed:
+        from ..pregame import bribe
+
+        bribed = bribe(match, p, dice, rec)
     rec.emit(ended(p.id, "foul"))
 
     # "When a player on the active team is Sent-off, a Turnover is caused", and on
-    # a successful argument "a Turnover is still caused". Either way the turn ends.
+    # a successful argument "a Turnover is still caused". A successful BRIBE is the
+    # exception the rules spell out: "and no Turnover is caused".
     return Outcome(
-        ok=False,
+        ok=bribed,
         events=rec.events,
-        turnover=True,
+        turnover=not bribed,
         text=(
-            f"{p.name()} was caught fouling but argued their way out of it — turnover."
+            f"{p.name()} was caught fouling, and the referee was bought off — no Turnover."
+            if bribed
+            else f"{p.name()} was caught fouling but argued their way out of it — turnover."
             if stayed
             else f"{p.name()} was caught fouling and is Sent off — turnover."
         ),

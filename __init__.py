@@ -218,7 +218,7 @@ def _tools(cfg: dict):
         rerolls: int = -1,
         assistant_coaches: int = 0,
         cheerleaders: int = 0,
-        fan_factor: int = 0,
+        dedicated_fans: int = 1,
         weather: str = "",
         apothecary: bool = False,
     ) -> str:
@@ -240,8 +240,12 @@ def _tools(cfg: dict):
         ``assistant_coaches`` and ``cheerleaders`` are the same kind of number, and
         the Kick-off Event Table asks for both: Brilliant Coaching adds Assistant
         Coaches to a D6 for a free Team Re-roll, Cheering Fans adds Cheerleaders
-        for a free Offensive Assist, and Pitch Invasion adds ``fan_factor``. Both
-        sides get whatever you pass.
+        for a free Offensive Assist. Both sides get whatever you pass.
+
+        ``dedicated_fans`` feeds the Pre-game Sequence's first step: Fan Factor is
+        ROLLED as "a D3 [for Fair-weather Fans] plus your Dedicated Fans
+        Characteristic", and a drafted team "automatically" has 1 of those. Pitch
+        Invasion adds the total to a D6, so this is not decoration.
 
         ``weather`` forces a condition for a drill — one of ``sweltering_heat``,
         ``very_sunny``, ``perfect``, ``pouring_rain``, ``blizzard``. Left out, it
@@ -264,7 +268,7 @@ def _tools(cfg: dict):
                 side: {
                     "assistant_coaches": int(assistant_coaches),
                     "cheerleaders": int(cheerleaders),
-                    "fan_factor": int(fan_factor),
+                    "dedicated_fans": int(dedicated_fans),
                 }
                 for side in ("home", "away")
             },
