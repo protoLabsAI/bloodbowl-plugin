@@ -86,6 +86,9 @@ older edition — or a language model — would say:
 | **Placed Prone risks no harm** — no Armour Roll at all | it's a knock-down |
 | A Crowd push makes **no Armour Roll**, and Stunned = the Reserves Box | armour then stunned on the pitch |
 | Dauntless **matches** the stronger player, never exceeds | beats them |
+| **As many Team Re-rolls per turn as you like** | one per team turn |
+| Unused Team Re-rolls **do not carry over** — the count RESETS both ways | they accumulate |
+| A failed Loner **still costs** the Team Re-roll | you keep it |
 | Foul assists modify the **Armour Roll**, not Strength | Strength, as in a Block |
 | A **natural double on either roll** sends the fouler off | only on a break |
 | A successful Argue the Call **still causes a Turnover** | it undoes everything |
@@ -361,7 +364,7 @@ block, blitz, foul, hand-off, Secure the Ball, pass → injuries → touchdowns 
 drives → half-time → full time.
 
 Actions: `move`, `block`, `blitz`, `foul`, `handoff`, `secure`, `pass`.
-Skills modelled — **33 of 108**. The other 75 are reported as unmodelled *and can still be quoted* —
+Skills modelled — **34 of 108**. The other 74 are reported as unmodelled *and can still be quoted* —
 `bb_get_skill` returns the rulebook's text for all 108 whether or not the engine
 applies them.
 
@@ -387,6 +390,27 @@ Steel says "to Catch the ball, or … to Pass the ball" and is one `in
 - A modifier that belongs to the MARKER, not the roller, goes in `rules`, not a
   hook. Titchy's "will not apply a -1 … for Marking" is never applied at all, so
   there is nothing for a hook on the dodger to cancel.
+
+**TEAM RE-ROLLS ARE NOT CAPPED PER TURN.** "A Coach may use AS MANY Team Re-rolls
+as they want during their turn, though they may still never re-roll a re-roll." A
+previous edition allowed one per team turn and that is what most people will tell
+you. The only limits are how many were bought and that a die which is already a
+re-roll cannot be re-rolled.
+
+How many a team HAS is a drafting decision, and a practice board was never
+drafted — so it is an INPUT with a stated default (`bb_game_new(rerolls=N)`,
+`rerolls.DEFAULT_REROLLS` otherwise) and the number rides in every state report.
+Same discipline as the Range Ruler: where the source cannot say, take it as input,
+default it, and tell the user what was assumed.
+
+**The coach PRE-COMMITS with `team_reroll=True`**, like `choice`, `follow_up` and
+`push_to` before it. The engine cannot stop mid-resolution to ask, and spending a
+finite resource unasked is not a decision it should make. A free Skill re-roll is
+always tried first; the team's only steps in when there was none.
+
+**Half-time resets the count BOTH WAYS** — "replenished at half-time" and "unused
+Team Re-rolls do not carry over" are one assignment, up for the team that spent
+them and down for the team that hoarded.
 
 **FIVE TRAITS ARE ONE MECHANISM.** Bone Head, Really Stupid, Take Root, Animal
 Savagery and Unchannelled Fury all say "Whenever this player is activated, after
@@ -434,19 +458,23 @@ fails if they are ever swapped.
 
 ### Next, roughly in order
 
-1. **The remaining ~100 skills** as hook registrations. The registry is built for
-   this: a new skill is one decorated function, not an edit to an action.
-   `data/skills.json` already holds every one with its real text — copy it into the
-   docstring beside the hook, the way the seven modelled ones do, and the
-   catalogue's `modelled` flag flips on its own because it is derived from the
-   registry. Start with the hooks that already exist, then the re-roll skills
-   (Sure Hands, Catch, Pass) and the dodge modifiers (Break Tackle, Stunty,
-   Tackle), which need one new hook each.
+1. **The remaining 74 skills.** `data/skills.json` holds every one with its real
+   text; quote it into the docstring beside the hook and the catalogue's
+   `modelled` flag flips on its own. What is left is no longer a long tail of
+   one-liners — it groups:
+   - **Special Actions** (Stab, Chainsaw, Breathe Fire, Projectile Vomit,
+     Bombardier). Each is a new module in `actions/`, and Foul is the template:
+     declared, once per turn, its own roll, its own consequence.
+   - **Throw Team-mate** and its retinue (Right Stuff, Always Hungry, Bombardier,
+     Bullseye) — a subsystem, not a skill.
+   - **Frenzy**, which is the genuinely hard one: "they MUST perform a second
+     Block Action" makes the engine take an action nobody asked for, and nothing
+     in here does that yet.
+   - The rest are ordinary hook registrations against machinery that exists.
 2. **Kick-off events that need a choice** (High Kick, Solid Defence, Quick Snap,
    Blitz!) — these need a way for the engine to *ask* the coach mid-resolution,
    which does not exist yet and is a genuine design question.
-3. **Team Re-rolls**, which several kick-off events and much of real play depend on.
-4. **A setup phase**, so each drive can be set up afresh rather than reusing the
+3. **A setup phase**, so each drive can be set up afresh rather than reusing the
    opening positions.
 
 ### Known simplifications, all deliberate and all stated in the code

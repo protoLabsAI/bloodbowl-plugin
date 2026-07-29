@@ -10,6 +10,7 @@ from __future__ import annotations
 from . import actions
 from .dice import SeededDice
 from .events import Event
+from .rerolls import DEFAULT_REROLLS
 from .skills import NOTED, activation_gates, first_mentions, partly_modelled_on_pitch, unmodelled_on_pitch
 from .state import Match, starting_positions
 
@@ -19,7 +20,7 @@ TURNOVER_TEXT = {
 }
 
 
-def new_match(scenario, seed: int = 0, kicking_to: str = "home") -> Match:
+def new_match(scenario, seed: int = 0, kicking_to: str = "home", rerolls: int | None = None) -> Match:
     """Start a match from a set-up board.
 
     The seed is stored so the match can be regenerated; the log is what lets it be
@@ -29,11 +30,15 @@ def new_match(scenario, seed: int = 0, kicking_to: str = "home") -> Match:
     takes the first turn.
     """
     m = starting_positions(scenario, seed=seed)
+    # How many Team Re-rolls a team has is a DRAFTING decision, and a practice
+    # board was never drafted — so it is an input with a stated default rather
+    # than a number invented from the roster. See engine/rerolls.py.
+    n = DEFAULT_REROLLS if rerolls is None else max(0, int(rerolls))
     m.apply(
         Event(
             kind="match_started",
-            detail={"kicking_to": kicking_to, "seed": seed},
-            text=f"Match begins. {m.home_team or 'Home'} vs {m.away_team or 'Away'}.",
+            detail={"kicking_to": kicking_to, "seed": seed, "rerolls": {"home": n, "away": n}},
+            text=f"Match begins. {m.home_team or 'Home'} vs {m.away_team or 'Away'}. {n} Team Re-roll(s) each.",
         )
     )
     start_drive(m, receiving=kicking_to, dice=dice_for(m))
@@ -331,6 +336,7 @@ def end_turn(match: Match, forced: bool = False, start_next: bool = True) -> dic
                 )
             )
     was = match.clock.active
+    before = match.clock.half
     match.apply(
         Event(
             kind="turn_ended",
@@ -338,6 +344,17 @@ def end_turn(match: Match, forced: bool = False, start_next: bool = True) -> dic
             text=("Turnover ends " if forced else "") + f"{was}'s turn.",
         )
     )
+    if match.clock.half != before and not match.over:
+        # Say so in the log, and put the Team Re-rolls back: a coach who spent all
+        # three in the first half needs to know they have them again.
+        match.apply(
+            Event(
+                kind="half_time",
+                detail={"half": match.clock.half, "rerolls": dict(match.rerolls_max)},
+                text="Half time. Team Re-rolls are replenished — "
+                + ", ".join(f"{side} {n}" for side, n in sorted(match.rerolls_max.items())),
+            )
+        )
     if match.over or not start_next:
         if match.over:
             match.apply(Event(kind="match_over", text="Full time."))
@@ -501,10 +518,15 @@ def legal_moves(match: Match, player_id: str) -> dict:
             if legal.ok:
                 ball_actions.append({"action": name, "x": match.ball.x, "y": match.ball.y, **legal.detail})
 
+    from .rerolls import _loner_target, available
+
     return {
         "ok": True,
         "player": p.to_dict(),
         "movement_left": max(0, p.movement() - p.ma_used),
+        # Free to ask, so the coach can see the cost before committing. `loner`
+        # is the D6 they would first have to pass to spend one.
+        "team_rerolls": {"left": available(match, p), "loner": _loner_target(p)},
         "squares": squares,
         "blocks": blocks,
         "blitz": blitz,

@@ -25,11 +25,26 @@ Read from the S3 source, with the passages quoted where they decide something:
 from __future__ import annotations
 
 from ..pitch import in_bounds
+from . import rerolls as team_rerolls
 from .dice import roll_target
 from .events import Event
 from .rules import agility_target, markers_of_square
 from .skills import may_reroll, roll_modifier
 from .state import touchdown_row
+
+
+class _sink:
+    """A Recorder-shaped shim for the ball helpers, which apply as they go and
+    hand their events back rather than holding a Recorder."""
+
+    def __init__(self, match, events):
+        self.match, self.events = match, events
+
+    def emit(self, event):
+        self.match.apply(event)
+        self.events.append(event)
+        return event
+
 
 # The Random Direction Template: D8 -> one of the eight directions.
 #
@@ -104,8 +119,13 @@ def bounce(match, dice, depth: int = 0) -> list[Event]:
     return events
 
 
-def catch(match, player, dice, depth: int = 0, modifier: int = 0) -> list[Event]:
-    """A player tries to catch the ball in their square."""
+def catch(match, player, dice, depth: int = 0, modifier: int = 0, team_reroll: bool = False) -> list[Event]:
+    """A player tries to catch the ball in their square.
+
+    ``team_reroll`` is threaded from the ACTION that caused this rather than read
+    off the match: a catch after a bounce or a kick-off is nobody's declared
+    action, and a Team Re-roll is only ever spent on a choice the coach made.
+    """
     events: list[Event] = []
     if player.down != "standing" or getattr(player, "distracted", False):
         events.append(
@@ -131,6 +151,9 @@ def catch(match, player, dice, depth: int = 0, modifier: int = 0) -> list[Event]
         allowed, skill = may_reroll(match, player, "catch")
         if allowed:
             r = roll_target(dice, "Catch (re-roll)", agility_target(player), mod, note=f"{skill} skill")
+            rolls.append(r)
+        elif team_reroll and team_rerolls.spend(match, player, "Catch", dice, _sink(match, events)):
+            r = roll_target(dice, "Catch (Team Re-roll)", agility_target(player), mod)
             rolls.append(r)
     if r.passed:
         events.append(
@@ -158,12 +181,13 @@ def catch(match, player, dice, depth: int = 0, modifier: int = 0) -> list[Event]
     return events
 
 
-def pick_up(match, player, dice) -> tuple[list[Event], bool]:
+def pick_up(match, player, dice, team_reroll: bool = False) -> tuple[list[Event], bool]:
     """A voluntary move onto the ball. Returns (events, turnover).
 
     Failing is a Turnover — which is what makes an unprotected pickup the most
     expensive routine decision in the game.
     """
+    events: list[Event] = []
     marking = -len(markers_of_square(match, player.side, player.x, player.y))
     ctx = roll_modifier(match, player, "pick_up", base=marking, marking=marking)
     mod = ctx.value
@@ -174,6 +198,9 @@ def pick_up(match, player, dice) -> tuple[list[Event], bool]:
         if allowed:
             r = roll_target(dice, "Pick up (re-roll)", agility_target(player), mod, note=f"{skill} skill")
             rolls.append(r)
+        elif team_reroll and team_rerolls.spend(match, player, "Pick up", dice, _sink(match, events)):
+            r = roll_target(dice, "Pick up (Team Re-roll)", agility_target(player), mod)
+            rolls.append(r)
     if r.passed:
         ev = Event(
             kind="ball_picked_up",
@@ -182,7 +209,7 @@ def pick_up(match, player, dice) -> tuple[list[Event], bool]:
             text=f"{player.name()} picks the ball up. {r.describe()}",
         )
         match.apply(ev)
-        return [ev, *check_touchdown(match, player)], False
+        return [*events, ev, *check_touchdown(match, player)], False
 
     ev = Event(
         kind="note",
@@ -191,7 +218,7 @@ def pick_up(match, player, dice) -> tuple[list[Event], bool]:
         text=f"{player.name()} fumbles the pick-up — turnover. {r.describe()}",
     )
     match.apply(ev)
-    return [ev, *bounce(match, dice)], True
+    return [*events, ev, *bounce(match, dice)], True
 
 
 def drop(match, player, dice, reason: str = "goes down") -> list[Event]:

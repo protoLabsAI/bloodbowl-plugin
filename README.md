@@ -47,6 +47,8 @@ Start a match from the board and play it. The engine owns the rules:
 - **Injury** — armour, the injury table, Stunned / Knocked-out / Casualty
 - **The ball** — pick up, Secure the Ball, hand-off, passing with ranges and
   interceptions, bounces, catches, touchdowns
+- **Team Re-rolls** — as many per turn as you have left, replenished at half-time,
+  with Loner's roll and its cost when it fails
 - **The game** — kick-off with the full event table, drives, half-time, full time
 
 Every roll lands in an event log with its arithmetic shown, and that log is what
@@ -66,7 +68,7 @@ template — the derived number is isolated in one file that says so, cross-chec
 against an independent source, made configurable, and reported to the user as
 measured rather than quoted.
 
-Thirty-three skills are modelled, and where one is applied only in part the engine
+Thirty-four skills are modelled, and where one is applied only in part the engine
 says which half it left out. A skill the engine does not model can still be **quoted**: `bb_get_skill` returns
 the rulebook's own words plus whether this engine applies it. That split matters —
 modelling a skill changes the game, quoting it changes what can honestly be said

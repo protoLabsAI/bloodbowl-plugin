@@ -26,6 +26,7 @@ every roll individually attributable in the log.
 from __future__ import annotations
 
 from ...pitch import in_bounds
+from .. import rerolls as team_rerolls
 from ..ball import check_touchdown, pick_up
 from ..dice import roll_target
 from ..events import Event
@@ -163,6 +164,11 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     x, y = int(cmd["x"]), int(cmd["y"])
     rec = Recorder(match)
     unmodelled = unmodelled_skills(p)
+    # The coach pre-commits, the same way they already do for `choice`,
+    # `follow_up` and `push_to`. The engine cannot stop mid-resolution to ask, and
+    # spending a Team Re-roll on somebody's behalf is not a decision it should be
+    # making — `bb_game_legal` says how many are left before any of this.
+    want_reroll = bool(cmd.get("team_reroll"))
 
     # 1. Stand up, if Prone. Must happen before anything else.
     if p.down == "prone":
@@ -182,6 +188,8 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     if needs_rush:
         rush = roll_modifier(match, p, "rush")
         r = roll_target(dice, "Rush", 2, rush.value, note=" ".join(rush.notes))
+        if not r.passed and want_reroll and team_rerolls.spend(match, p, "Rush", dice, rec):
+            r = roll_target(dice, "Rush (Team Re-roll)", 2, rush.value)
         if not r.passed:
             rec.emit(
                 Event(
@@ -271,6 +279,12 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 )
                 r = roll_target(dice, "Dodge (re-roll)", agility_target(p), modifier, note="Dodge skill")
                 dodge_rolls.append(r)
+            # A Skill re-roll is FREE, so it is always tried first and a Team
+            # Re-roll only steps in when there was none — and never on a die that
+            # is already a re-roll: "they may still never re-roll a re-roll".
+            elif want_reroll and team_rerolls.spend(match, p, "Dodge", dice, rec):
+                r = roll_target(dice, "Dodge (Team Re-roll)", agility_target(p), modifier)
+                dodge_rolls.append(r)
 
         if not r.passed:
             # A failed Dodge still moves the player — they land in the square and
@@ -307,7 +321,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     # that got you into the square (Rush, Dodge) and before anything else — which
     # is why this sits at the bottom rather than beside them.
     if match.ball.in_play and not match.ball.carrier and (match.ball.x, match.ball.y) == (x, y):
-        events, turned_over = pick_up(match, p, dice)
+        events, turned_over = pick_up(match, p, dice, team_reroll=want_reroll)
         rec.absorb(events)
         if turned_over:
             return Outcome(

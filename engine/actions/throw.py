@@ -33,6 +33,7 @@ from __future__ import annotations
 import re
 
 from ...pitch import in_bounds
+from .. import rerolls as team_rerolls
 from ..ball import bounce, catch, scatter
 from ..dice import roll_target
 from ..events import Event
@@ -133,6 +134,8 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         allowed, skill = may_reroll(match, p, "pass")
         if allowed:
             r = roll_target(dice, "Pass (re-roll)", d["target"], ctx.value, note=f"{skill} skill")
+        elif cmd.get("team_reroll") and team_rerolls.spend(match, p, "Pass", dice, rec):
+            r = roll_target(dice, "Pass (Team Re-roll)", d["target"], ctx.value)
     # "If the Passing Ability Test is a 1 after modifiers, or the roll is a natural
     # 1" — so a heavily modified pass can fumble on a die that was not a 1.
     fumbled = r.dice[0] == 1 or (r.total is not None and r.total <= 1)
@@ -217,7 +220,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         if landed is None:
             rec.absorb(bounce(match, dice))
         else:
-            rec.absorb(catch(match, landed, dice))
+            rec.absorb(catch(match, landed, dice, team_reroll=bool(cmd.get("team_reroll"))))
 
     rec.emit(ended(p.id, "pass"))
     holder = match.by_id(match.ball.carrier) if match.ball.carrier else None
