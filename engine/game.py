@@ -664,7 +664,17 @@ def _end_of_game(match: Match, dice) -> None:
     vital to have a definitive winner", which is a decision about the fixture
     rather than about the match. The engine says the game is drawn and that Extra
     Time is available; `bb_game_extra_time` starts it.
+
+    IDEMPOTENT, because `end_turn` calls this whenever the match is already over
+    and ending an over match's turn twice is the NORMAL case: a Touchdown's
+    Turnover ends the turn, and then the coach ends the turn they think they are
+    still in. Without the guard the whole sequence runs again — a live game
+    finished 2-2 having awarded four MVPs, one player taking the award twice for
+    8 SPP. Read off the events rather than a flag so it survives a fold: a match
+    rebuilt from its log has to reach the same conclusion.
     """
+    if any(e.kind == "post_game" for e in match.events):
+        return
     # "At the end of each game you will need to determine who your Most Valuable
     # Player for the game was … The player that is given the MVP award generates
     # 4 SPP." The last thing that happens, and the only SPP award that is not a
