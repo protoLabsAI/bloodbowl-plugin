@@ -51,12 +51,25 @@ Start a match from the board and play it. The engine owns the rules:
   with Loner's roll and its cost when it fails
 - **The weather** — rolled at kick-off, and it changes the odds: rain penalises
   every ball roll, a Blizzard forbids a Long Pass outright
-- **The game** — kick-off with the full event table (six of the eleven results
-  applied, the rest reported), drives, half-time, full time — and, on a draw,
-  Extra Time and a Penalty Shoot-out
+- **The game** — kick-off with the full event table, all eleven results rolled,
+  quoted and applied, drives, half-time, full time — and, on a draw, Extra Time
+  and a Penalty Shoot-out
 
 Every roll lands in an event log with its arithmetic shown, and that log is what
 the agent narrates from.
+
+**You play it by dragging.** Pick a player up and the engine says where they may
+go and what it costs; drag across several squares and the whole run is walked a
+step at a time, stopping the moment a Dodge or a Rush fails. Distance decides the
+verb — drop on an opponent you are already touching to Block them, drag across the
+pitch onto one to Blitz (declare, run, hit), drop on a team-mate to hand it off.
+Clicking a player and then a square does the same things and always will: it is
+the keyboard-reachable path, not a legacy one.
+
+The squares beside your player carry the engine's **real** odds. The trail beyond
+them is numbered and claims nothing — a move is a sequence of single squares, and
+step two's Dodge cannot be costed until step one's dice have been rolled. A board
+that guessed at it would be inventing the one number you are reading it for.
 
 ### Why it's built this way
 
