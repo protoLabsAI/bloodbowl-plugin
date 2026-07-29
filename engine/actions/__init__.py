@@ -24,13 +24,27 @@ _ACTIONS: dict[str, dict[str, Callable]] = {}
 # Hand-off, Secure the Ball, Blitz, Foul and Throw Team-mate. The two exceptions
 # are stated just as plainly — "There is no limit to the number of players that
 # can declare a Move Action each Turn", and the same for Block.
-ONCE_PER_TURN = ("blitz", "pass", "handoff", "secure", "foul")
+ONCE_PER_TURN = ("blitz", "pass", "handoff", "secure", "foul", "throwteam")
+
+# What to call an Action in a sentence. `action.title()` turns "throwteam" into
+# "Throwteam", which is the sort of thing a coach reads twice.
+DISPLAY = {
+    "blitz": "Blitz",
+    "pass": "Pass",
+    "handoff": "Hand-off",
+    "secure": "Secure the Ball",
+    "foul": "Foul",
+    "throwteam": "Throw Team-mate",
+    "block": "Block",
+    "move": "Move",
+    "forego": "Forego",
+}
 
 # Actions that begin with a free Move: "A player that declares a Pass Action may
 # also make a free Move Action before making the pass, but may not continue moving
 # after the pass has been made." Hand-off, Secure the Ball, Foul and Throw
 # Team-mate all carry the same clause.
-FREE_MOVE_FIRST = ("pass", "handoff", "secure", "foul")
+FREE_MOVE_FIRST = ("pass", "handoff", "secure", "foul", "throwteam")
 
 
 def refuse_if_spent(match, p, action: str) -> str:
@@ -49,12 +63,13 @@ def refuse_if_spent(match, p, action: str) -> str:
     if p.done:
         return f"{p.name()}'s activation is over"
     if p.action and p.action != action:
-        return f"{p.name()} has already declared a {p.action.title()} Action this activation"
+        return f"{p.name()} has already declared a {DISPLAY.get(p.action, p.action.title())} Action this activation"
     used = match.turn_actions.get(action)
     if used and used != p.id:
         who = match.by_id(used)
-        return f"{match.clock.active} have already used their one {action.title()} Action this turn" + (
-            f" — {who.name()} did" if who is not None else ""
+        return (
+            f"{match.clock.active} have already used their one {DISPLAY.get(action, action.title())} Action this turn"
+            + (f" — {who.name()} did" if who is not None else "")
         )
     return ""
 
@@ -170,4 +185,4 @@ def load_all() -> None:
     depend on what happens to be on disk, and an action that silently fails to
     import would look like an action that does not exist.
     """
-    from . import blitz, block, forego, foul, handoff, move, secure, throw  # noqa: F401
+    from . import blitz, block, forego, foul, handoff, move, secure, throw, throwteam  # noqa: F401

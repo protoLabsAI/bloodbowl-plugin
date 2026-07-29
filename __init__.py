@@ -337,6 +337,10 @@ def _tools(cfg: dict):
                       and causes a turnover — the engine then rolls Argue the
                       Call for you
           "handoff" — with ``target``, an ADJACENT team-mate who must Catch it
+          "throwteam" — with ``target`` (an ADJACENT team-mate with Right Stuff)
+                      and ``x``/``y``. Only a Quick or Short Throw — a team-mate
+                      does not go as far as a ball. Dropping them is NOT a
+                      turnover unless they were holding the ball
           "pass"    — with ``x``/``y``, the target SQUARE. Check bb_game_legal
                       first: it gives the range band and the modifier
           "forego"  — this player will not be activated at all, and cannot be
@@ -378,7 +382,7 @@ def _tools(cfg: dict):
         cmd = {"player": player, "x": int(x), "y": int(y), "team_reroll": bool(team_reroll)}
         if action == "block":
             cmd.update({"target": target, "choice": int(choice), "follow_up": bool(follow_up)})
-        elif action in ("handoff", "blitz", "foul"):
+        elif action in ("handoff", "blitz", "foul", "throwteam"):
             cmd["target"] = target
         before = len(m.events)
         report = act(m, action, cmd)
