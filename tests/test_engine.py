@@ -5181,3 +5181,117 @@ def test_only_one_opponent_may_use_each_of_these_skills():
     leaving.shadowing(m, m.by_id("h00"), markers, _dice([5, 5, 5]), rec, (7, 13))
     followed = [q for q in markers if (q.x, q.y) == (7, 13)]
     assert len(followed) == 1, f"{len(followed)} shadows moved into one square"
+
+
+# --- The Foul Action's own Skills --------------------------------------------
+
+
+def _foul(m, pid, tid, dice):
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    return actions.get("foul")["resolve"](m, {"player": pid, "target": tid}, dice)
+
+
+def test_dirty_player_spends_its_plus_one_on_whichever_roll_needs_it():
+    """S3: "+1 modifier to EITHER the Armour Roll or Injury Roll. This modifier may
+    be applied AFTER the roll has been made." Same shape as Mighty Blow, so it is
+    spent the same way — on the Armour Roll only when that is what breaks it."""
+    m = _match(("home", 7, 13, 6, "3+", ["Dirty Player"]), ("away", 7, 14))
+    m.by_id("a01").down = "prone"
+    m.by_id("a01").player.AV = "9+"
+    out = _foul(m, "h00", "a01", _dice([4, 4, 3, 3, 4, 4, 4, 4]))
+    armour = next(r for e in out.events for r in e.rolls if r.kind == "Armour")
+    assert armour.passed is True, f"8 plus the Dirty Player +1 breaks a 9+: {armour.describe()}"
+
+    # Without the Skill, the identical roll bounces off — which is what makes the
+    # check above about the Skill rather than about the dice.
+    clean = _match(("home", 7, 13), ("away", 7, 14))
+    clean.by_id("a01").down = "prone"
+    clean.by_id("a01").player.AV = "9+"
+    out2 = _foul(clean, "h00", "a01", _dice([4, 4, 3, 3, 4, 4, 4, 4]))
+    assert next(r for e in out2.events for r in e.rolls if r.kind == "Armour").passed is False
+
+
+def test_lone_fouler_re_rolls_only_when_nobody_at_all_is_helping():
+    """ "…if there are NO players providing an Offensive or Defensive Assist."
+    Nobody at all, on either side — a Foul with a friend watching does not
+    qualify, and that is the half worth testing."""
+    alone = _match(("home", 7, 13, 6, "3+", ["Lone Fouler"]), ("away", 7, 14))
+    alone.by_id("a01").down = "prone"
+    alone.by_id("a01").player.AV = "9+"
+    out = _foul(alone, "h00", "a01", _dice([2, 2, 5, 5, 4, 4, 4, 4]))
+    armours = [r for e in out.events for r in e.rolls if r.kind == "Armour"]
+    assert len(armours) == 2, f"the failed Armour Roll should have been re-rolled: {[r.describe() for r in armours]}"
+
+    # A team-mate Marking the target is an Offensive Assist, and that is enough.
+    helped = _match(("home", 7, 13, 6, "3+", ["Lone Fouler"]), ("home", 8, 13), ("away", 7, 14))
+    helped.by_id("a02").down = "prone"
+    helped.by_id("a02").player.AV = "9+"
+    out2 = _foul(helped, "h00", "a02", _dice([2, 2, 5, 5, 4, 4, 4, 4]))
+    assert len([r for e in out2.events for r in e.rolls if r.kind == "Armour"]) == 1, "an assist voids it"
+
+
+def test_sneaky_git_is_only_safe_when_the_armour_held():
+    """ "…not Sent-off … if a natural double is rolled for the ARMOUR Roll, SO LONG
+    AS THE TARGET PLAYER'S ARMOUR IS NOT BROKEN. If the target player's Armour is
+    broken, this player will still be sent off as normal."
+
+    Both halves. The second is what stops it being a free Foul: it protects
+    exactly the Fouls that achieved nothing."""
+    held = _match(("home", 7, 13, 6, "3+", ["Sneaky Git"]), ("away", 7, 14))
+    held.by_id("a01").down = "prone"
+    held.by_id("a01").player.AV = "11+"
+    out = _foul(held, "h00", "a01", _dice([3, 3, 4, 4, 4, 4]))  # a double, and 6 is under 11+
+    assert out.ok, "a double that broke nothing should go unpunished"
+    assert held.by_id("h00").place == "pitch"
+
+    broke = _match(("home", 7, 13, 6, "3+", ["Sneaky Git"]), ("away", 7, 14))
+    broke.by_id("a01").down = "prone"
+    broke.by_id("a01").player.AV = "7+"
+    out2 = _foul(broke, "h00", "a01", _dice([4, 4, 3, 3, 4, 4, 4, 4]))  # a double that BREAKS
+    assert out2.ok is False and broke.by_id("h00").place == "sent_off", "the armour broke — no protection"
+
+
+def test_quick_foul_leaves_the_player_able_to_carry_on():
+    """ "This player's activation DOES NOT END after performing a Foul Action, and
+    they may continue with their Move Action with any movement they have
+    remaining." A Foul normally ends it outright."""
+    m = _match(("home", 7, 13, 6, "3+", ["Quick Foul"]), ("away", 7, 14))
+    m.by_id("a01").down = "prone"
+    m.by_id("a01").player.AV = "11+"
+    out = _foul(m, "h00", "a01", _dice([2, 3, 4, 4, 4, 4]))
+    assert out.ok, out.text
+    assert not m.by_id("h00").done, "their activation should still be open"
+
+    plain = _match(("home", 7, 13), ("away", 7, 14))
+    plain.by_id("a01").down = "prone"
+    plain.by_id("a01").player.AV = "11+"
+    _foul(plain, "h00", "a01", _dice([2, 3, 4, 4, 4, 4]))
+    assert plain.by_id("h00").done, "…which is not what an ordinary Foul does"
+
+
+def test_put_the_boot_in_assists_a_foul_through_a_tackle_zone_and_nothing_else():
+    """ "This player can provide OFFENSIVE Assists when a team-mate performs a Foul
+    Action REGARDLESS OF HOW MANY OPPOSITION PLAYERS ARE MARKING THIS PLAYER."
+
+    Guard's cousin, narrowed to one Action and one direction."""
+    from bloodbowl.engine.rules import assist_count
+
+    # h01 is Marking the victim but is itself Marked by a02 — normally no assist.
+    m = _match(
+        ("home", 7, 13),  # the fouler
+        ("home", 8, 14, 6, "3+", ["Put the Boot In"]),
+        ("away", 7, 14),  # the victim, Prone
+        ("away", 9, 14),  # marking h01
+    )
+    m.by_id("a02").down = "prone"
+    victim = m.by_id("a02")
+    assert assist_count(m, "home", victim, exclude={"h00"}) == 0, "Marked, so no ordinary assist"
+    assert assist_count(m, "home", victim, exclude={"h00"}, fouling=True) == 1, "…but it assists a Foul"
+
+    # And it is OFFENSIVE only: it does nothing for the side being fouled.
+    d = _match(("home", 7, 13), ("home", 8, 13, 6, "3+", ["Put the Boot In"]), ("away", 7, 14), ("away", 8, 14))
+    assert assist_count(d, "away", d.by_id("h00"), exclude={"a02"}, fouling=True) == assist_count(
+        d, "away", d.by_id("h00"), exclude={"a02"}
+    )

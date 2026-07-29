@@ -46,7 +46,7 @@ from ..dice import Roll
 from ..events import Event
 from ..injury import risk_injury
 from ..rules import adjacent, assist_count
-from ..skills import unmodelled_skills
+from ..skills import can_use, unmodelled_skills
 from ..state import Match
 from . import Legality, Outcome, Recorder, ended, refuse_if_spent, register
 
@@ -58,7 +58,12 @@ def _assists(match: Match, p, t) -> tuple[int, int]:
     """Offensive and Defensive Assists, "in the same manner as a Block Action" —
     so literally the same function, and the same exclusion of the two
     participants."""
-    return assist_count(match, p.side, t, exclude={p.id}), assist_count(match, t.side, p, exclude={t.id})
+    # `fouling` is what lets Put the Boot In assist through a Tackle Zone, and it
+    # is Offensive only — the side being fouled gets no such help.
+    return (
+        assist_count(match, p.side, t, exclude={p.id}, fouling=True),
+        assist_count(match, t.side, p, exclude={t.id}),
+    )
 
 
 def validate(match: Match, cmd: dict) -> Legality:
@@ -126,6 +131,15 @@ def _natural_double(events) -> Event | None:
             if len(r.dice) == 2 and r.dice[0] == r.dice[1]:
                 return e
     return None
+
+
+def _armour_broke(events) -> bool:
+    """Did the Armour Roll break? Two Skills turn on it and neither can ask the
+    player, because a broken armour leaves no mark on them."""
+    for e in events:
+        if e.kind == "armour_roll":
+            return any(r.passed for r in e.rolls)
+    return False
 
 
 def _argue_the_call(match: Match, p, dice, rec: Recorder) -> bool:
@@ -211,13 +225,76 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         )
     )
 
+    # DIRTY PLAYER: "+1 modifier to EITHER the Armour Roll or Injury Roll. This
+    # modifier may be applied AFTER the roll has been made" — the same shape as
+    # Mighty Blow, so it is spent the same way and rides the same parameter.
+    boot = 1 if can_use(p, "Dirty Player") else 0
+    if boot:
+        rec.emit(
+            Event(
+                kind="note",
+                actor=p.id,
+                detail={"skill": "Dirty Player"},
+                text=f"{p.name()} puts the boot in — +1 to the Armour or Injury Roll.",
+            )
+        )
+
+    # LONE FOULER: "if there are NO players providing an Offensive or Defensive
+    # Assist, then this player may re-roll a failed Armour Roll." Nobody at all,
+    # on either side — a Foul with a friend watching does not qualify.
+    alone = can_use(p, "Lone Fouler") and not d["offensive_assists"] and not d["defensive_assists"]
+
     # No `by`: Mighty Blow is a Block Action Skill and must not ride along here.
-    hurt = risk_injury(match, t, dice, by=None, armour_modifier=mod)
+    hurt = risk_injury(match, t, dice, by=None, armour_modifier=mod, bonus=boot)
     rec.absorb(hurt)
 
+    if alone and not _armour_broke(hurt):
+        rec.emit(
+            Event(
+                kind="note",
+                actor=p.id,
+                detail={"skill": "Lone Fouler"},
+                text=f"Nobody else is anywhere near. {p.name()} tries again.",
+            )
+        )
+        second = risk_injury(match, t, dice, by=None, armour_modifier=mod, bonus=boot)
+        rec.absorb(second)
+        # The re-roll REPLACES the first attempt, so it is the one the referee
+        # reads: a double on a roll that no longer stands cannot send anybody off.
+        hurt = second
+
     caught = _natural_double(hurt)
+    # SNEAKY GIT: "not Sent-off … if a natural double is rolled for the ARMOUR
+    # Roll, so long as the target player's Armour is NOT BROKEN. If the target
+    # player's Armour is broken, this player will still be sent off as normal."
+    # Both halves matter, and the second is what stops it being a free Foul.
+    if caught is not None and caught.kind == "armour_roll" and not _armour_broke(hurt) and can_use(p, "Sneaky Git"):
+        rec.emit(
+            Event(
+                kind="note",
+                actor=p.id,
+                detail={"skill": "Sneaky Git"},
+                text=f"{p.name()} is a sneaky git — the referee's eye was elsewhere, and the armour held.",
+            )
+        )
+        caught = None
+
     if caught is None:
-        rec.emit(ended(p.id, "foul", f"{p.name()} gets away with it. Their activation ends."))
+        # QUICK FOUL: "This player's activation DOES NOT END after performing a
+        # Foul Action, and they may continue with their Move Action with any
+        # movement they have remaining." A Foul normally ends it outright, so this
+        # is the one Skill that makes fouling something you do on the way past.
+        if can_use(p, "Quick Foul"):
+            rec.emit(
+                Event(
+                    kind="note",
+                    actor=p.id,
+                    detail={"skill": "Quick Foul"},
+                    text=f"{p.name()} fouls on the move and carries on.",
+                )
+            )
+        else:
+            rec.emit(ended(p.id, "foul", f"{p.name()} gets away with it. Their activation ends."))
         return Outcome(
             ok=True,
             events=rec.events,

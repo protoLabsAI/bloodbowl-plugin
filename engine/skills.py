@@ -1101,6 +1101,60 @@ def _guard(ctx: SkillContext) -> None:
     ctx.flags["assists_anyway"] = True
 
 
+# --- The Foul Action's own Skills ----------------------------------------
+#
+# Five Devious Skills, all applied in engine/actions/foul.py. They register here
+# so the catalogue reports them as modelled and so this file stays the one list of
+# what the engine applies.
+
+
+@skill_hook("Dirty Player", "foul")
+def _dirty_player(ctx: SkillContext) -> None:
+    """S3: "When this player performs a Foul Action, they may apply a +1 modifier
+    to EITHER the Armour Roll or Injury Roll. This modifier MAY BE APPLIED AFTER
+    THE ROLL HAS BEEN MADE."
+
+    The same shape as Mighty Blow, so it is spent the same way: on the Armour Roll
+    only when that is what breaks it, and on the Injury Roll otherwise.
+    """
+
+
+@skill_hook("Lone Fouler", "foul")
+def _lone_fouler(ctx: SkillContext) -> None:
+    """S3: "When this player performs a Foul Action, IF THERE ARE NO PLAYERS
+    PROVIDING AN OFFENSIVE OR DEFENSIVE ASSIST, then this player may re-roll a
+    failed Armour Roll." Nobody at all, on either side."""
+
+
+@skill_hook("Sneaky Git", "foul")
+def _sneaky_git(ctx: SkillContext) -> None:
+    """S3: "This player is not Sent-off when performing a Foul Action if a natural
+    double is rolled for the ARMOUR Roll, SO LONG AS THE TARGET PLAYER'S ARMOUR IS
+    NOT BROKEN. If the target player's Armour is broken, this player will still be
+    sent off as normal."
+
+    Both halves matter. The second is what stops it being a free Foul: it protects
+    exactly the Fouls that achieved nothing.
+    """
+
+
+@skill_hook("Quick Foul", "foul")
+def _quick_foul(ctx: SkillContext) -> None:
+    """S3: "This player's activation DOES NOT END after performing a Foul Action,
+    and they may continue with their Move Action with any movement they have
+    remaining." A Foul normally ends the activation outright."""
+
+
+@skill_hook("Put the Boot In", "may_assist_a_foul")
+def _put_the_boot_in(ctx: SkillContext) -> None:
+    """S3: "This player can provide OFFENSIVE Assists when a team-mate performs a
+    Foul Action REGARDLESS OF HOW MANY OPPOSITION PLAYERS ARE MARKING THIS PLAYER."
+
+    Guard's cousin, narrowed to one Action and one direction — it does nothing for
+    the side being fouled, and nothing on a Block. Applied in rules.assist_count.
+    """
+
+
 # --- The Skills that fire when an opponent leaves your Tackle Zone --------
 #
 # One mechanism seen from four angles, implemented in engine/leaving.py and

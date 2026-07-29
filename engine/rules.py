@@ -274,6 +274,7 @@ def assist_count(
     assisting_side: str,
     around: PlayerState,
     exclude: frozenset | set | tuple = (),
+    fouling: bool = False,
 ) -> int:
     """Assists for a Block, from ``assisting_side``'s point of view.
 
@@ -309,6 +310,12 @@ def assist_count(
             # Guard ignores being Marked. Asked as a hook so a Skill that changes
             # who may assist is a registration, not a branch in here.
             free = any(p.has_skill(skill) for skill, _fn in hooks_for("may_assist_while_marked"))
+            # PUT THE BOOT IN does the same thing, but ONLY for a Foul: "can
+            # provide Offensive Assists when a TEAM-MATE PERFORMS A FOUL ACTION
+            # regardless of how many opposition players are Marking this player."
+            # Offensive only, so it does nothing for the side being fouled.
+            if fouling and assisting_side != around.side:
+                free = free or any(p.has_skill(skill) for skill, _fn in hooks_for("may_assist_a_foul"))
             if not free:
                 continue
         total += 1
