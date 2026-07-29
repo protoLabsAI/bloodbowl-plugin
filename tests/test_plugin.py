@@ -1392,3 +1392,23 @@ def test_each_handover_gets_its_own_job_id(registry, monkeypatch):
     jobs = [j for _s, j in sent]
     assert len(set(jobs)) == 2, f"two turns must not share a job id: {jobs}"
     assert all("h1t" in j and "away" in j for j in jobs), jobs
+
+
+def test_a_lost_nudge_can_be_re_sent_without_throwing_the_game_away(client):
+    """A nudge can be lost — the agent restarts mid-turn, a job is cancelled. The
+    board is then correct, it is genuinely somebody's move, and nothing happens,
+    which looks exactly like the agent thinking.
+
+    Without a way back the only remedy is a NEW MATCH: throwing a game away to fix
+    a lost message. It is unconditional on purpose — a repeat is what is being
+    asked for, and `announce` suppresses repeats by design."""
+    base = "/api/plugins/bloodbowl"
+    client.post(f"{base}/place", json={"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    client.post(f"{base}/place", json={"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+    client.post(f"{base}/game/new", json={"seed": 4, "kicking_to": "home", "you": "home"})
+    client.post(f"{base}/game/choose", json={"decline": True})
+
+    out = client.post(f"{base}/game/nudge", json={}).json()
+    assert out["ok"] and out["nudged"]["side"] == "home", out
+    # Twice in a row: the whole point is that it does NOT suppress a repeat.
+    assert client.post(f"{base}/game/nudge", json={}).json()["ok"]

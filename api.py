@@ -366,6 +366,30 @@ def build_game_router(cfg: dict | None = None, announce=None):
         out["match"] = m.to_dict(include_log=False)
         return out
 
+    @r.post("/game/nudge")
+    async def _nudge() -> dict:
+        """Tell the agent it is their move — again.
+
+        The handover is normally automatic and this should never be needed. It is
+        here because a nudge CAN be lost: the agent restarts mid-turn, the job is
+        cancelled, a bus hiccup. When that happens the board is correct, it is
+        genuinely the agent's move, and nothing is going to happen — which looks
+        exactly like the agent thinking. Without this the only way out is a new
+        match, which throws the game away to fix a lost message.
+
+        Unconditional on purpose: `announce` normally suppresses a repeat of the
+        same handover, and a repeat is precisely what is being asked for.
+        """
+        m = _need_match()
+        from .engine import handover
+
+        owed = handover.owed(m)
+        if not owed:
+            return {"ok": False, "error": "nobody is waiting on a move"}
+        if announce is not None:
+            announce({}, owed)
+        return {"ok": True, "nudged": owed}
+
     @r.post("/game/end-turn")
     async def _end_turn() -> dict:
         m = _need_match()

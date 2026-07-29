@@ -425,6 +425,27 @@ def _tools(cfg: dict):
         return json.dumps(out)
 
     @tool
+    def bb_game_nudge() -> str:
+        """Re-send the "it is your move" signal for whoever the match is waiting on.
+
+        The handover is automatic and this should never be needed. It exists
+        because a nudge can be LOST — an agent restart mid-turn, a cancelled job —
+        and when that happens the board is correct, it is genuinely somebody's
+        move, and nothing happens. That looks exactly like thinking.
+        """
+        from .engine import handover
+        from .store import load_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress"})
+        owed = handover.owed(m)
+        if not owed:
+            return json.dumps({"ok": False, "error": "nobody is waiting on a move"})
+        announce({}, owed)
+        return json.dumps({"ok": True, "nudged": owed})
+
+    @tool
     def bb_game_here(state: _Injected = None) -> str:
         """Play the current match HERE — in this conversation.
 
@@ -1115,6 +1136,7 @@ def _tools(cfg: dict):
         bb_list_skills,
         bb_game_choose,
         bb_game_here,
+        bb_game_nudge,
         bb_game_setup,
         bb_game_apothecary,
         bb_game_extra_time,

@@ -111,6 +111,10 @@ A match you start with `bb_game_new` is bound to the chat you started it in. One
 started **from the board** has no conversation behind it, so its turns land in the
 Activity thread until you say `bb_game_here` — "play it here".
 
+If the board is waiting and nothing is happening, `bb_game_nudge` (or
+`POST /game/nudge`) re-sends the signal. A nudge *can* be lost — an agent restart
+mid-turn, a cancelled job — and a lost one looks exactly like the agent thinking.
+
 **The agent is paced** (`bloodbowl.agent_pace_s`, default 2s between its actions).
 A model can take eight activations in under a second, which is a diff rather than a
 game — the pace is what makes a turn something you can watch happen. Your own
@@ -128,7 +132,7 @@ Charge! is the odd one out: answering it starts a free turn the selected players
 play through `bb_game_act`, and `bb_game_choose` again ends it. The Apothecary's
 Casualty branch asks the same way — two Casualty Rolls, and the Coach picks.
 
-**Finishing** — `bb_game_here` · `bb_game_setup` · `bb_game_apothecary` · `bb_game_extra_time` · `bb_game_penalties`
+**Finishing** — `bb_game_here` · `bb_game_nudge` · `bb_game_setup` · `bb_game_apothecary` · `bb_game_extra_time` · `bb_game_penalties`
 
 `bb_game_legal` and `bb_game_odds` are free and side-effect-free — ask them as
 often as you like. They exist so the coach never has to work out a dodge modifier
