@@ -322,10 +322,11 @@ async function walkPath(p, squares) {
 /**
  * Light the square under the pointer.
  *
- * Tracks its own cell rather than calling `clearMarks("droptarget")`, because
- * `clearMarks` REMOVES EVERY ODDS BADGE whatever classes it is handed — read it
- * before using it. Called on every pointer move, it stripped the Dodge, Rush and
- * dice tags off the whole board mid-drag: the marks a coach is dragging BY.
+ * Keeps its own cell reference rather than calling `clearMarks("droptarget")`,
+ * which now walks all ~390 squares — cheap once, but this runs on every pointer
+ * move. (It also used to strip every odds badge on the board whatever classes it
+ * was handed, which is what originally forced the reference; that trap is fixed
+ * in `board.js`, and this stays for the cost rather than the correctness.)
  */
 function markDropTarget(sq) {
   if (lastDropTarget) lastDropTarget.classList.remove("droptarget");

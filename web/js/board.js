@@ -106,9 +106,23 @@ function hot(x, y) {
   onHover && onHover(x, y);
 }
 
+/**
+ * Remove `classes` from every square, and the odds badge from the squares that
+ * had one of them.
+ *
+ * IT USED TO REMOVE EVERY BADGE ON THE BOARD whatever classes it was handed,
+ * which is a trap rather than a convenience: the badges belong to the marks, so a
+ * caller clearing ONE mark silently stripped the Dodge modifiers, dice counts and
+ * blitz distances belonging to all the others. It cost an afternoon during the
+ * drag work — clearing the drop-target highlight on each pointer move wiped the
+ * numbers a coach was dragging BY, and the board looked merely quiet rather than
+ * wrong. Scoped to the squares actually being cleared, the two can no longer come
+ * apart.
+ */
 export function clearMarks(...classes) {
-  for (const c of CELLS) c.classList.remove(...classes);
   for (const c of CELLS) {
+    if (!classes.some((k) => c.classList.contains(k))) continue;
+    c.classList.remove(...classes);
     const o = c.querySelector(".odds");
     if (o) o.remove();
   }
