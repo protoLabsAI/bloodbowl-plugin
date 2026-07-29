@@ -22,6 +22,15 @@ TURNOVER_TEXT = {
 }
 
 
+def _roll_off(dice) -> str:
+    """A simple roll-off, ties re-rolled. Returns the RECEIVING side, because that
+    is what the rest of the engine asks for."""
+    while True:
+        h, a = dice.d6(), dice.d6()
+        if h != a:
+            return "away" if h > a else "home"
+
+
 def roll_weather(dice) -> str:
     """S3: "each Coach rolls a D6 and adds the two rolls together"."""
     return _weather_from_roll(dice.d6() + dice.d6())[0]
@@ -30,7 +39,7 @@ def roll_weather(dice) -> str:
 def new_match(
     scenario,
     seed: int = 0,
-    kicking_to: str = "home",
+    kicking_to: str = "",
     rerolls: int | None = None,
     staff: dict | None = None,
     weather: str | None = None,
@@ -53,11 +62,14 @@ def new_match(
     # match seed so it is reproducible, or forced outright for a drill.
     sky = SeededDice(seed=seed)
     condition = weather if weather else roll_weather(sky)
+    # "this is done with a simple coin toss … The Coach who rolls highest decides
+    # which team is kicking and which team is receiving." Rolled when nobody said.
+    receiving = kicking_to if kicking_to in ("home", "away") else _roll_off(sky)
     m.apply(
         Event(
             kind="match_started",
             detail={
-                "kicking_to": kicking_to,
+                "kicking_to": receiving,
                 "seed": seed,
                 "rerolls": {"home": n, "away": n},
                 # Assistant Coaches, Cheerleaders, Fan Factor — the Kick-off Event
@@ -71,7 +83,7 @@ def new_match(
             f"{n} Team Re-roll(s) each. Weather: {weather_name(condition)}.",
         )
     )
-    start_drive(m, receiving=kicking_to, dice=dice_for(m))
+    start_drive(m, receiving=receiving, dice=dice_for(m))
     return m
 
 
@@ -104,7 +116,14 @@ def start_drive(match: Match, receiving: str, dice=None, aim=None) -> list[Event
     # the honest simplification while there is no setup PHASE to do it in — the
     # operator can always rearrange the board and start a fresh match.)
     _deal_with_secret_weapons(match, dice)
-    setup = match.setup or [{"id": p.id, "x": p.x, "y": p.y} for p in match.players if p.place in ("pitch", "reserves")]
+    # A set-up DECLARED for this Drive wins over the captured opening one. The
+    # captured one is the fallback documented below, not the rule.
+    declared = [row for side in ("home", "away") for row in match.setups.get(side, ())]
+    setup = (
+        declared
+        or match.setup
+        or [{"id": p.id, "x": p.x, "y": p.y} for p in match.players if p.place in ("pitch", "reserves")]
+    )
     gone = ("casualty", "sent_off")
     setup = [row for row in setup if (match.by_id(str(row["id"])) or _gone()).place not in gone]
     events = [
@@ -153,6 +172,66 @@ def _deal_with_secret_weapons(match: Match, dice) -> None:
             )
         )
         _argue_the_call(match, p, dice, sink)
+
+
+def declare_setup(match: Match, side: str, squares: list[dict]) -> dict:
+    """One team's Set-up for the coming Drive, checked against all four rules.
+
+    Strict, unlike the practice board — "an illegal position is a legitimate thing
+    to want while working a shape out" applies to `pitch.Scenario`, and a Match
+    refuses with a reason. Every violation is returned at once rather than the
+    first, because a coach fixing a formation wants the whole list.
+    """
+    from .setup import violations
+
+    if side not in ("home", "away"):
+        return {"ok": False, "error": f"unknown side {side!r}"}
+    rows, seen = [], set()
+    for row in squares or []:
+        p = match.by_id(str(row.get("id") or ""))
+        if p is None:
+            return {"ok": False, "error": f"no player with id {row.get('id')!r}"}
+        if p.side != side:
+            return {"ok": False, "error": f"{p.name()} is {p.side}, not {side}"}
+        if p.place in ("casualty", "sent_off"):
+            return {"ok": False, "error": f"{p.name()} is {p.place.replace('_', ' ')} and takes no further part"}
+        if p.id in seen:
+            return {"ok": False, "error": f"{p.name()} is set up twice"}
+        seen.add(p.id)
+        rows.append({"id": p.id, "x": int(row["x"]), "y": int(row["y"])})
+
+    available = len([p for p in match.players if p.side == side and p.place not in ("casualty", "sent_off")])
+    problems = violations(side, [(r["x"], r["y"]) for r in rows], available)
+    if problems:
+        return {"ok": False, "error": "; ".join(problems), "violations": problems}
+
+    match.apply(
+        Event(
+            kind="drive_setup",
+            detail={"side": side, "squares": rows},
+            text=f"{side} set up {len(rows)} players for the next Drive.",
+        )
+    )
+    other = "away" if side == "home" else "home"
+    return {"ok": True, "side": side, "players": len(rows), "waiting_on": other if other not in match.setups else ""}
+
+
+def enforce_squad_size(match: Match) -> list:
+    """TOO MANY PLAYERS, once the Turn has begun."""
+    from .setup import too_many
+
+    out = []
+    for side in ("home", "away"):
+        for p in too_many(match, side):
+            ev = Event(
+                kind="player_status",
+                actor=p.id,
+                detail={"reserves": True},
+                text=f"{p.name()} is one player too many and is sent to the Reserves Box.",
+            )
+            match.apply(ev)
+            out.append(ev)
+    return out
 
 
 def dice_for(match: Match):

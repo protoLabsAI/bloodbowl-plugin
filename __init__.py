@@ -214,7 +214,7 @@ def _tools(cfg: dict):
     @tool
     def bb_game_new(
         seed: int = 0,
-        kicking_to: str = "home",
+        kicking_to: str = "",
         rerolls: int = -1,
         assistant_coaches: int = 0,
         cheerleaders: int = 0,
@@ -227,6 +227,10 @@ def _tools(cfg: dict):
         Every player set up on the board takes the field. Pass a ``seed`` to make
         the match reproducible — the same seed and the same moves replay to the
         same game. The practice board is left untouched.
+
+        ``kicking_to`` names the RECEIVING side. Leave it out and the engine rolls
+        off for it, which is what the rules do — "The Coach who rolls highest
+        decides which team is kicking and which team is receiving."
 
         ``rerolls`` is how many Team Re-rolls EACH side gets; leave it out for the
         default. How many a team really has is a drafting decision and a practice
@@ -254,7 +258,7 @@ def _tools(cfg: dict):
         m = new_match(
             sc,
             seed=int(seed or 0),
-            kicking_to=("away" if kicking_to == "away" else "home"),
+            kicking_to=kicking_to if kicking_to in ("home", "away") else "",
             rerolls=None if int(rerolls) < 0 else int(rerolls),
             staff={
                 side: {
@@ -444,6 +448,34 @@ def _tools(cfg: dict):
         from .engine.ruler import describe
 
         return json.dumps({"ok": True, **describe()})
+
+    @tool
+    def bb_game_setup(side: str, players: list) -> str:
+        """Set a team up for the coming Drive, and have it CHECKED.
+
+        ``players`` is a list of ``{"id": "h03", "x": 7, "y": 13}``. Unlike the
+        practice board, this is strict — a Match refuses an illegal formation with
+        every reason at once, so you can fix them all in one go:
+
+          · in your own half, not beyond the Line of Scrimmage
+          · at least three in the Centre Field on the Line
+          · no more than two in either Wide Zone
+          · as many players as you can field, up to eleven
+
+        The kicking team sets up first. Anyone left out goes to the Reserves Box.
+        Skip it and the engine reuses the opening set-up, which is the documented
+        simplification rather than the rule.
+        """
+        from .engine.game import declare_setup
+        from .store import load_match, save_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress"})
+        out = declare_setup(m, side, list(players or []))
+        if out.get("ok"):
+            save_match(m)
+        return json.dumps(out)
 
     @tool
     def bb_game_apothecary(player: str) -> str:
@@ -759,6 +791,7 @@ def _tools(cfg: dict):
         bb_pass_ranges,
         bb_get_skill,
         bb_list_skills,
+        bb_game_setup,
         bb_game_apothecary,
         bb_game_extra_time,
         bb_game_penalties,
