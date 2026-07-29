@@ -5404,3 +5404,143 @@ def test_fumblerooski_leaves_the_ball_behind_without_a_turnover():
     keep.ball.x, keep.ball.y = 7, 13
     _move(keep, "h00", 7, 12, _dice([4, 4, 4, 4]))
     assert keep.ball.carrier == "h00"
+
+
+# --- Traits that decide who may hold a ball, and who stays on their feet ------
+
+
+def test_extra_arms_helps_all_three_ball_tests_and_nothing_else():
+    """S3: "+1 modifier to the Agility Test whenever they attempt to CATCH, PICK UP
+    or INTERCEPT the ball." """
+    from bloodbowl.engine.skills import roll_modifier
+
+    m = _match(("home", 7, 13, 6, "3+", ["Extra Arms"]))
+    p = m.by_id("h00")
+    assert [roll_modifier(m, p, t).value for t in ("catch", "pick_up", "intercept")] == [1, 1, 1]
+    assert roll_modifier(m, p, "dodge").value == 0
+
+
+def test_timmm_ber_is_hauled_up_by_open_team_mates_but_a_natural_one_still_fails():
+    """ "…apply a +1 modifier to the roll for standing up FOR EACH OPEN STANDING
+    TEAM-MATE ADJACENT to this player. A roll of A NATURAL 1 WILL STILL FAIL as
+    normal." Open — a team-mate pinned by a Tackle Zone is busy."""
+    m = _match(
+        ("home", 7, 13, 2, "3+", ["Timmm-ber!"]),
+        ("home", 8, 13),  # adjacent and Open
+        ("home", 6, 13),  # adjacent and Open
+        ("away", 2, 20),
+    )
+    m.by_id("h00").down = "prone"
+    out = _move(m, "h00", 7, 12, _dice([2, 4, 4, 4, 4, 4]))  # a 2 +2 clears the 4+
+    up = next(r for e in out.events for r in e.rolls if r.kind == "stand up")
+    assert up.modifier == 2 and up.passed, up.describe()
+
+    natural_one = _match(("home", 7, 13, 2, "3+", ["Timmm-ber!"]), ("home", 8, 13), ("home", 6, 13), ("away", 2, 20))
+    natural_one.by_id("h00").down = "prone"
+    out2 = _move(natural_one, "h00", 7, 12, _dice([1, 4, 4, 4, 4, 4]))
+    assert next(r for e in out2.events for r in e.rolls if r.kind == "stand up").passed is False
+
+
+def test_steady_footing_means_the_knock_down_never_happens_at_all():
+    """ "On a 6, this player does NOT get Knocked Down or Fall Over." Not an Armour
+    Roll saved — no Injury Roll, no dropped ball, no Turnover."""
+    from bloodbowl.engine.injury import knock_down
+
+    m = _match(("home", 7, 13, 6, "3+", ["Steady Footing"]), ("away", 2, 20))
+    m.ball.carrier, m.ball.in_play = "h00", True
+    out = knock_down(m, m.by_id("h00"), _dice([6, 4, 4, 4, 4]))
+    assert m.by_id("h00").down == "standing"
+    assert m.ball.carrier == "h00", "they never went down, so they never dropped it"
+    assert not [r for e in out for r in e.rolls if r.kind == "Armour"], "and no Armour Roll was made"
+
+    fell = _match(("home", 7, 13, 6, "3+", ["Steady Footing"]), ("away", 2, 20))
+    out2 = knock_down(fell, fell.by_id("h00"), _dice([5, 4, 4, 4, 4]))
+    assert fell.by_id("h00").down == "prone", "a 5 is not a 6"
+    assert [r for e in out2 for r in e.rolls if r.kind == "Armour"]
+
+
+def test_regeneration_takes_a_casualty_back_to_the_reserves_box():
+    """ "…BEFORE MAKING THE CASUALTY ROLL … On a 4+, this player regenerates and
+    IGNORES the Casualty … and is instead placed in their team's RESERVES BOX." """
+    from bloodbowl.engine.injury import casualty_roll
+
+    m = _match(("home", 7, 13, 6, "3+", ["Regeneration"]), ("away", 2, 20))
+    out = casualty_roll(m, m.by_id("h00"), _dice([5]))
+    assert m.by_id("h00").place == "reserves", "they come back"
+    assert not [r for e in out for r in e.rolls if r.kind == "Casualty"], "the Casualty Roll is never made"
+
+    unlucky = _match(("home", 7, 13, 6, "3+", ["Regeneration"]), ("away", 2, 20))
+    out2 = casualty_roll(unlucky, unlucky.by_id("h00"), _dice([2, 9]))
+    assert [r for e in out2 for r in e.rolls if r.kind == "Casualty"], "a 1-3 and the roll happens"
+
+
+def test_decay_makes_every_casualty_roll_against_them_one_worse():
+    """ "Apply a +1 modifier to any Casualty Roll made AGAINST this player."
+    Theirs, not the knocker-down's — and a higher D16 is a worse result."""
+    from bloodbowl.engine.injury import casualty_roll
+
+    m = _match(("home", 7, 13, 6, "3+", ["Decay"]), ("away", 2, 20))
+    out = casualty_roll(m, m.by_id("h00"), _dice([8]))  # 8 is Badly Hurt; 9 is not
+    ev = next(e for e in out if e.kind == "casualty_roll")
+    assert ev.detail["result"] == "Seriously Hurt", ev.text
+
+    plain = _match(("home", 7, 13), ("away", 2, 20))
+    out2 = casualty_roll(plain, plain.by_id("h00"), _dice([8]))
+    assert next(e for e in out2 if e.kind == "casualty_roll").detail["result"] == "Badly Hurt"
+
+
+def test_cloud_burster_switches_the_interception_off_entirely():
+    """ "When this player performs a Pass Action, opposition players MAY NOT ATTEMPT
+    TO INTERCEPT the ball." """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 5, 6, "3+", ["Cloud Burster"]), ("home", 7, 11), ("away", 7, 8))
+    m.by_id("h00").player.PA = "2+"
+    m.ball.carrier, m.ball.in_play = "h00", True
+    out = actions.get("pass")["resolve"](m, {"player": "h00", "x": 7, "y": 11}, _dice([5, 5, 5, 5, 5]))
+    assert not [r for e in out.events for r in e.rolls if r.kind == "Intercept"], "nobody may try"
+
+    plain = _match(("home", 7, 5), ("home", 7, 11), ("away", 7, 8))
+    plain.by_id("h00").player.PA = "2+"
+    plain.ball.carrier, plain.ball.in_play = "h00", True
+    out2 = actions.get("pass")["resolve"](plain, {"player": "h00", "x": 7, "y": 11}, _dice([5, 5, 5, 5, 5]))
+    assert [r for e in out2.events for r in e.rolls if r.kind == "Intercept"], "…which is not the usual case"
+
+
+def test_my_ball_will_not_pass_or_hand_off_and_unsteady_will_not_secure():
+    """Three Traits that are refusals rather than rolls, so the place to test them
+    is the declaration."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 5, 6, "3+", ["My Ball"]), ("home", 8, 5))
+    m.ball.carrier, m.ball.in_play = "h00", True
+    for action in ("pass", "handoff"):
+        cmd = {"player": "h00", "x": 8, "y": 5, "target": "h01"}
+        legal = actions.get(action)["validate"](m, cmd)
+        assert legal.ok is False and "My Ball" in legal.reason, (action, legal.reason)
+
+    u = _match(("home", 7, 5, 6, "3+", ["Unsteady"]))
+    u.ball.in_play, u.ball.x, u.ball.y = True, 7, 6
+    legal = actions.get("secure")["validate"](u, {"player": "h00"})
+    assert legal.ok is False and "Unsteady" in legal.reason, legal.reason
+
+
+def test_no_ball_fails_automatically_and_no_re_roll_can_rescue_it():
+    """ "…they will AUTOMATICALLY FAIL to do so AS IF THEY HAD ROLLED A NATURAL 1."
+    A natural 1, not a hard target — which is why it returns before the roll."""
+    from bloodbowl.engine.ball import catch, pick_up
+
+    # Sure Hands would re-roll a failed pick-up. It cannot re-roll this.
+    m = _match(("home", 7, 13, 6, "2+", ["No Ball", "Sure Hands"]), ("away", 2, 20))
+    m.ball.in_play, m.ball.x, m.ball.y = True, 7, 13
+    events, turned = pick_up(m, m.by_id("h00"), _dice([4, 4, 4, 4]))
+    assert turned is True and m.ball.carrier != "h00"
+    assert not [r for e in events for r in e.rolls if r.kind.startswith("Pick")], "no roll should be made at all"
+
+    c = _match(("home", 7, 13, 6, "2+", ["No Ball", "Catch"]), ("away", 2, 20))
+    c.ball.in_play, c.ball.x, c.ball.y = True, 7, 13
+    caught = catch(c, c.by_id("h00"), _dice([4, 4, 4, 4]))
+    assert c.ball.carrier != "h00"
+    assert not [r for e in caught for r in e.rolls if r.kind.startswith("Catch")]

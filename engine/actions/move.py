@@ -152,7 +152,14 @@ def _stand_up(match: Match, p, dice, rec: Recorder) -> tuple[bool, int]:
     ctx = SkillContext(match=match, player=p, value=STAND_UP_COST)
     cost = apply_value_hook("stand_up_cost", ctx, p)
     if p.movement() <= 2 and cost > 0:
-        r = roll_target(dice, "stand up", STAND_UP_ROLL, note="MA 2 or less")
+        # Through the hook: Timmm-ber! adds +1 for each Open Standing team-mate
+        # adjacent, which is a modifier on this test like any other.
+        up = roll_modifier(match, p, "stand_up")
+        r = roll_target(dice, "stand up", STAND_UP_ROLL, up.value, note="MA 2 or less " + " ".join(up.notes))
+        # "A roll of A NATURAL 1 WILL STILL FAIL AS NORMAL" — however many friends
+        # are hauling, so the modifier cannot rescue the worst roll.
+        if r.dice[0] == 1:
+            r.passed = False
         if not r.passed:
             rec.emit(
                 Event(

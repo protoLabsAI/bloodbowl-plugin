@@ -65,6 +65,33 @@ def place_prone(match, player, dice, reason: str = "") -> list[Event]:
     return events
 
 
+def steady_footing(match, player, dice) -> list[Event] | None:
+    """S3: "Whenever this player would be Knocked Down or Fall Over, roll a D6. On
+    a 6, this player does NOT get Knocked Down or Fall Over."
+
+    Returns the events if they stayed up, None if they are going down. Not an
+    Armour Roll saved — the knock-down never happens at all, so there is no Injury
+    Roll, no dropped ball and (for their own activation) no Turnover.
+    """
+    from .skills import from_skills
+
+    if not from_skills(player, "footing"):
+        return None
+    d = dice.d6()
+    roll = Roll(kind="Steady Footing", dice=[d], total=d, target=6, passed=d == 6)
+    dice.rolls.append(roll)
+    ev = Event(
+        kind="note",
+        actor=player.id,
+        rolls=[roll],
+        detail={"skill": "Steady Footing", "stayed_up": roll.passed},
+        text=f"{player.name()} wobbles. {roll.describe()}"
+        + (" Steady Footing — they stay on their feet." if roll.passed else ""),
+    )
+    match.apply(ev)
+    return [ev] if roll.passed else None
+
+
 def knock_down(match, player, dice, by=None, cause: str = "Knocked Down", bonus: int = 0) -> list[Event]:
     """Put a player on the ground and resolve what it cost them.
 
@@ -75,6 +102,9 @@ def knock_down(match, player, dice, by=None, cause: str = "Knocked Down", bonus:
     than the knocker-down: Arm Bar, whose owner is a bystander to a failed Dodge
     rather than the cause of it. It is spent exactly as Mighty Blow's is.
     """
+    stayed = steady_footing(match, player, dice)
+    if stayed is not None:
+        return stayed
     events = [
         Event(
             kind="player_fell",
@@ -287,21 +317,54 @@ CASUALTY_TABLE = (
 def casualty_roll(match, player, dice) -> list[Event]:
     """The D16 Casualty Table. Reported, not applied — everything on it is a
     League consequence, and "in all instances the player will miss the rest of the
-    current game" either way."""
+    current game" either way.
+
+    REGENERATION comes first and is the exception to that: "on a 4+, this player
+    regenerates and IGNORES THE CASUALTY … and is instead placed in their team's
+    RESERVES BOX" — which does change this match, because they come back.
+    """
+    from .skills import can_use
+
+    events: list[Event] = []
+    if can_use(player, "Regeneration"):
+        d6 = dice.d6()
+        regen = Roll(kind="Regeneration", dice=[d6], total=d6, target=4, passed=d6 >= 4)
+        dice.rolls.append(regen)
+        _emit(
+            match,
+            events,
+            Event(
+                kind="player_status",
+                actor=player.id,
+                rolls=[regen],
+                # `reserves` is the key `apply` honours — a `place` key here is
+                # silently ignored, which is the bug class that shipped four times
+                # (an event emitted, declared, and never applied).
+                detail={"reserves": True} if regen.passed else {},
+                text=f"{player.name()} knits back together. {regen.describe()}"
+                + (" Regeneration — they go to the Reserves Box." if regen.passed else " No luck."),
+            ),
+        )
+        if regen.passed:
+            return events
+
     d = dice.dn(16)
-    roll = Roll(kind="Casualty", dice=[d], total=d, note="D16")
+    # DECAY: "Apply a +1 modifier to any Casualty Roll made AGAINST this player" —
+    # theirs, not the knocker-down's, and a higher D16 is a worse result.
+    decayed = 1 if can_use(player, "Decay") else 0
+    roll = Roll(kind="Casualty", dice=[d], total=min(16, d + decayed), modifier=decayed, note="D16")
     dice.rolls.append(roll)
-    name, effect = next((n, e) for cap, n, e in CASUALTY_TABLE if d <= cap)
+    name, effect = next((n, e) for cap, n, e in CASUALTY_TABLE if (roll.total or d) <= cap)
     ev = Event(
         kind="casualty_roll",
         actor=player.id,
         rolls=[roll],
-        detail={"result": name, "roll": d, "league_only": True},
-        text=f"Casualty Roll for {player.name()}: {d} — {name.upper()} ({effect}). "
+        detail={"result": name, "roll": roll.total, "league_only": True},
+        text=f"Casualty Roll for {player.name()}: {roll.describe()} — {name.upper()} ({effect}). "
         "Beyond this match, so nothing here changes.",
     )
     match.apply(ev)
-    return [ev]
+    return [*events, ev]
 
 
 _INJURY_TEXT = {
