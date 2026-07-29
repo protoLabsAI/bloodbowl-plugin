@@ -530,7 +530,7 @@ def _tools(cfg: dict):
         x: int = 0,
         y: int = 0,
         target: str = "",
-        choice: int = -1,
+        prefer: str = "",
         follow_up: bool = True,
         team_reroll: bool = False,
         drop_ball: bool = False,
@@ -595,15 +595,33 @@ def _tools(cfg: dict):
         how many are left first. A free Skill re-roll is always tried before the
         team's, and a Loner must pass their own D6 or the re-roll is lost anyway.
 
-        For a Block, ``choice`` picks which of the rolled dice to apply — but only
-        when YOU are the one entitled to choose, which is when your player is the
-        stronger. Ask bb_game_odds first: it tells you how many dice you get and
-        who picks them. ``follow_up`` moves into the vacated square after a push.
+        For a Block, ``prefer`` says WHAT YOU ARE TRYING TO DO — and it only means
+        anything when you are the one entitled to choose the dice, which is when
+        your player is the stronger. Ask bb_game_odds first: it tells you how many
+        dice you get and who picks them. ``follow_up`` moves into the vacated
+        square after a push.
 
-        ``choice`` is WHICH BLOCK DIE to apply, indexed into the faces the roll
-        shows. Leave it out and the engine takes the best one for whoever is
-        choosing — it is not a hidden default, it is the engine playing the side
-        that is entitled to pick.
+            ""           leave it out. The engine applies the best face for
+                         whoever is choosing, which is the right answer nearly
+                         always — including preferring Both Down over a push when
+                         your blocker will not fall on it.
+            "push"       MOVE them rather than flatten them: into the crowd, off
+                         the ball, out of a lane. This is the one intent the
+                         engine cannot infer, because it is about the SQUARE
+                         rather than the player.
+            "knockdown"  put them down even at the cost of going down yourself.
+
+        THERE IS NO WAY TO NAME A DIE, and that is deliberate. The parameter here
+        used to be an INDEX into the rolled faces — which had to be sent before the
+        roll, so it named a die nobody had seen. Every value was a guess, and one
+        whole live game was played taking the first die every single time because
+        an integer parameter invites a 0. A preference is answerable at the moment
+        it is asked, which an index never was.
+
+        Like ``team_reroll``, it is a PRE-commitment: the engine cannot stop
+        mid-action to ask, and a Block can roll dice four times over (the roll
+        itself, plus the Brawler, Hatred and Team Re-roll re-rolls). Your stated
+        intent is applied to each of them.
 
         FOUR OF THESE BELONG TO THE DEFENDER, and all four say "may" in the rules,
         so the engine's policy is a default rather than the rule:
@@ -644,13 +662,12 @@ def _tools(cfg: dict):
         }
         if action == "block":
             cmd.update({"target": target, "follow_up": bool(follow_up)})
-            # ONLY when a choice was actually made. The default used to be 0, which
-            # the engine could not tell apart from "I pick the first die" — so an
-            # agent that simply did not answer the question got faces[0] and was
-            # told, in the log, that it had chosen. Absent means absent now, and
-            # the engine picks the best face for whoever is choosing.
-            if int(choice) >= 0:
-                cmd["choice"] = int(choice)
+            # Only when something was actually said. `prefer` is a word rather than
+            # an index precisely so that "I did not answer" and "I want the first
+            # die" can no longer arrive looking identical — the empty string is
+            # silence and the engine plays the side entitled to choose.
+            if str(prefer).strip():
+                cmd["prefer"] = str(prefer).strip().lower()
             if second_target:
                 cmd["second_target"] = second_target
             # The DEFENDER's choices. Each belongs to the coach being Blocked

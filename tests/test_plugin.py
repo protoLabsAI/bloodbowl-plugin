@@ -1557,7 +1557,14 @@ def test_not_choosing_a_block_die_is_not_the_same_as_choosing_the_first_one(regi
     tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home"})
 
     tools["bb_game_act"].invoke({"action": "block", "player": "h00", "target": "a00"})
-    assert "choice" not in seen[-1], f"an unanswered question reached the engine as an answer: {seen[-1]}"
+    assert "prefer" not in seen[-1], f"an unanswered question reached the engine as an answer: {seen[-1]}"
 
+    tools["bb_game_act"].invoke({"action": "block", "player": "h00", "target": "a00", "prefer": "push"})
+    assert seen[-1].get("prefer") == "push", "…and a stated intent still gets through"
+
+    # THE DIE INDEX IS GONE, and a stale caller must not be able to smuggle one
+    # back in. It was unanswerable by construction — sent before the roll, naming a
+    # face nobody had seen — and an integer parameter invites a 0, which is how a
+    # whole live game was played taking the first die every single time.
     tools["bb_game_act"].invoke({"action": "block", "player": "h00", "target": "a00", "choice": 0})
-    assert seen[-1].get("choice") == 0, "…and a real choice of the first die still gets through"
+    assert "choice" not in seen[-1], f"a die index reached the engine: {seen[-1]}"

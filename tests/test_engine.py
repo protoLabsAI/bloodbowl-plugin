@@ -6689,11 +6689,30 @@ def test_a_block_with_no_stated_choice_takes_the_best_face_not_the_first_die():
     rolled = next(r for e in out.events for r in e.rolls if r.kind == "Block")
     assert set(rolled.dice) == {"both_down", "push_back"}, "the dice are untouched — only the PICK changed"
 
-    # An explicit choice is still honoured, however bad it is: the coach's call.
-    chosen = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
-    out2 = _block(chosen, "h00", "a01", _dice([4] * 10, block=[["both_down", "push_back", "push_back"]]), choice=0)
-    assert chosen.by_id("h00").down != "standing", "an explicit Both Down is theirs to pick"
-    assert out2.turnover is True
+    # A STATED INTENT is honoured — and this is the case the engine cannot infer,
+    # because it is about the square rather than the player. POW is the better face
+    # by any general measure; a coach pushing somebody towards the sideline wants
+    # the push anyway, and only they know that.
+    pushing = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
+    _block(pushing, "h00", "a01", _dice([4] * 10, block=[["pow", "push_back"]]), prefer="push")
+    assert pushing.by_id("a01").down == "standing", "a push moves them; it does not put them down"
+    assert (pushing.by_id("a01").x, pushing.by_id("a01").y) != (7, 14), "…and it does move them"
+
+    # The opposite intent, on the same handful.
+    flattening = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
+    _block(flattening, "h00", "a01", _dice([4] * 10, block=[["push_back", "pow"]]), prefer="knockdown")
+    assert flattening.by_id("a01").down != "standing", "knockdown takes the POW over the push"
+
+
+def test_an_unknown_block_preference_is_read_as_silence_not_refused():
+    """`_choose` runs FOUR times inside one Block — the roll, plus the Brawler,
+    Hatred and Team Re-roll re-rolls. Refusing a word it does not know three
+    quarters of the way through would leave a half-resolved Block behind, so an
+    unrecognised preference is treated as no preference at all."""
+    m = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
+    out = _block(m, "h00", "a01", _dice([4] * 10, block=[["both_down", "push_back"]]), prefer="sideways")
+    assert out.turnover is not True
+    assert m.by_id("h00").down == "standing", "it falls back to the best face, not to faces[0]"
 
 
 def test_a_blocker_who_will_not_fall_prefers_the_both_down():
