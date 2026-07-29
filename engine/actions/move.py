@@ -38,6 +38,7 @@ from ..rules import (
     adjacent,
     agility_target,
     dodge_modifier,
+    is_chomped,
     is_marked,
     jump_over,
     markers_of_square,
@@ -65,6 +66,9 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, f"it is {match.clock.active}'s turn, and that player is {p.side}")
     if p.down == "stunned":
         return Legality(False, "a Stunned player cannot act; they recover to Prone at the end of the turn")
+    if is_chomped(match, p):
+        chomper = match.by_id(p.chomped_by)
+        return Legality(False, f"{p.name()} is Chomped by {chomper.name()} and cannot leave that square")
     if p.rooted:
         # Take Root: "Whilst Rooted, a player cannot perform Move Actions … and may
         # not leave their current square for any reason, with the exception of

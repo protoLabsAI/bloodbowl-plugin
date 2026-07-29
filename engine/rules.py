@@ -81,6 +81,20 @@ def occupied(match: Match, x: int, y: int) -> bool:
     return match.at(x, y) is not None
 
 
+def is_chomped(match: Match, player: PlayerState) -> bool:
+    """Monstrous Mouth: "Whilst Chomped, the opposition player cannot leave the
+    square they are in whilst this player remains Marking them. THIS CONDITION
+    ENDS IMMEDIATELY if this player is no longer Marking the opposition player for
+    any reason."
+
+    Asked of the live board rather than remembered, because "for any reason"
+    includes the chomper being knocked down, pushed away, or sent off — none of
+    which would think to clear a flag.
+    """
+    chomper = match.by_id(getattr(player, "chomped_by", "") or "")
+    return chomper is not None and has_tackle_zone(chomper) and adjacent(chomper.x, chomper.y, player.x, player.y)
+
+
 def jump_over(match: Match, player: PlayerState, x: int, y: int) -> PlayerState | None:
     """The Prone or Stunned player a Jump to (x, y) would go over, if any.
 

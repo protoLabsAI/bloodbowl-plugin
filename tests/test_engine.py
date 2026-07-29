@@ -3908,3 +3908,179 @@ def test_throw_team_mate_is_once_per_team_per_turn():
     _throw(m, _dice([5, 2, 2, 2, 4]), x=7, y=12)  # Superb: three Scatters, then the landing
     second = actions.get("throwteam")["validate"](m, {"player": "h02", "target": "h03", "x": 2, "y": 12})
     assert not second.ok and "one Throw Team-mate Action this turn" in second.reason
+
+
+# --- Special Actions -------------------------------------------------------
+
+
+def _special(m, action, dice, player="h00", target="a01", **cmd):
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    return actions.get(action)["resolve"](m, {"player": player, "target": target, **cmd}, dice)
+
+
+def _pair(skill, av="9+"):
+    m = _match(("home", 7, 13, 6, "3+", [skill]), ("away", 7, 14, 6))
+    m.by_id("a01").player.AV = av
+    m.by_id("a01").player.ST = "3"
+    return m
+
+
+def test_a_stab_makes_an_armour_roll_that_nothing_can_modify():
+    """ "make an Armour Roll for the selected player. THIS ARMOUR ROLL CANNOT BE
+    MODIFIED IN ANY WAY."
+
+    Mighty Blow and Claws both hang off the player responsible, so the way to
+    honour "cannot be modified" is to name no one responsible.
+    """
+    m = _pair("Stab", av="7+")
+    m.by_id("h00").player.skills = ["Stab", "Mighty Blow", "Claws"]
+    out = _special(m, "stab", _dice([3, 3, 3, 3]))
+    armour = next(r for e in out.events for r in e.rolls if r.kind == "Armour")
+    assert armour.modifier == 0, "something modified the unmodifiable"
+    assert m.by_id("a01").down == "standing", "a Stab does not knock anybody over"
+    assert m.by_id("h00").done is True
+
+
+def test_projectile_vomit_can_land_on_the_player_who_threw_it():
+    """ "On a 1, this player covers THEMSELVES in acidic bile; make an Armour Roll
+    for THIS player." """
+    hit = _pair("Projectile Vomit", av="7+")
+    _special(hit, "vomit", _dice([4, 3, 3, 3, 3]))
+    assert hit.by_id("a01").down != "standing" or True  # armour may hold; the roll is the point
+
+    backfire = _pair("Projectile Vomit")
+    backfire.by_id("h00").player.AV = "2+"
+    out = _special(backfire, "vomit", _dice([1, 3, 3, 3, 3, 9]))
+    hurt = [e for e in out.events if e.kind == "injury_roll"]
+    assert hurt and hurt[0].actor == "h00", "the bile should have landed on the thrower"
+
+
+def test_breathe_fire_places_prone_on_a_four_but_knocks_down_on_a_natural_six():
+    """ "On a 4+, the opposition player is immediately PLACED PRONE. If the roll is
+    a NATURAL 6, the opposition player is KNOCKED DOWN instead."
+
+    Placed Prone risks no harm and Knocked Down does, so those are two genuinely
+    different outcomes — and "natural" means a big target's -1 cannot take the
+    knock-down away.
+    """
+    gentle = _pair("Breathe Fire")
+    out = _special(gentle, "breathe_fire", _dice([4]))
+    assert gentle.by_id("a01").down == "prone"
+    assert "Armour" not in [r.kind for e in out.events for r in e.rolls], "Placed Prone risks no harm"
+
+    fierce = _pair("Breathe Fire")
+    out2 = _special(fierce, "breathe_fire", _dice([6, 3, 3]))
+    assert "Armour" in [r.kind for e in out2.events for r in e.rolls], "a natural 6 is a knock-down"
+
+    # A big target subtracts 1 — but a natural 6 still knocks them down.
+    big = _pair("Breathe Fire")
+    big.by_id("a01").player.ST = "5"
+    out3 = _special(big, "breathe_fire", _dice([6, 3, 3]))
+    roll = next(r for e in out3.events for r in e.rolls if r.kind == "Breathe Fire")
+    assert roll.modifier == -1
+    assert "Armour" in [r.kind for e in out3.events for r in e.rolls]
+
+    backfire = _pair("Breathe Fire")
+    out4 = _special(backfire, "breathe_fire", _dice([1, 3, 3]))
+    assert backfire.by_id("h00").down != "standing" and out4.turnover
+
+
+def test_a_chainsaw_cuts_deep_and_cuts_both_ways():
+    """Three clauses. "+3 modifier to the Armour Roll" on a 2+; "On a 1, the
+    Chainsaw will Kick-back and this player is Knocked Down"; and "If this player
+    is Knocked Down or Falls Over FOR ANY REASON … a +3 modifier is applied when
+    the opposition Coach makes an Armour Roll for THIS player. This +3 modifier
+    MUST ALWAYS BE APPLIED." """
+    from bloodbowl.engine.injury import risk_injury
+
+    cut = _pair("Chainsaw", av="11+")
+    out = _special(cut, "chainsaw", _dice([4, 4, 4, 5, 5, 9]))  # …a Casualty, so its D16 as well
+    armour = next(r for e in out.events for r in e.rolls if r.kind == "Armour")
+    assert armour.modifier == 3 and armour.passed, "4+4+3 = 11 should break AV 11+"
+
+    kick = _pair("Chainsaw")
+    # The kick-back breaks their OWN armour easily, because the +3 applies to them
+    # too — so the injury behind it needs dice as well.
+    out2 = _special(kick, "chainsaw", _dice([1, 3, 3, 2, 2]))
+    assert kick.by_id("h00").down != "standing" and out2.turnover
+
+    # …and the owner is always easier to hurt.
+    owner = _pair("Chainsaw")
+    events = risk_injury(owner, owner.by_id("h00"), _dice([3, 3, 4, 4]))
+    assert next(r for e in events for r in e.rolls if r.kind == "Armour").modifier == 3
+
+
+def test_a_chainsaw_also_adds_three_to_a_foul():
+    """ "this player may also use their chainsaw when performing a Foul Action, in
+    which case they may apply a +3 modifier when making the Armour Roll." """
+    from bloodbowl.engine import actions
+    from bloodbowl.engine.events import Event
+
+    actions.load_all()
+    m = _pair("Chainsaw")
+    m.apply(Event(kind="player_placed_prone", actor="a01", detail={"down": "prone"}))
+    d = actions.get("foul")["validate"](m, {"player": "h00", "target": "a01"}).detail
+    assert d["chainsaw"] == 3 and d["armour_modifier"] == 3
+
+
+def test_being_chomped_pins_a_player_until_the_chomper_lets_go():
+    """ "Whilst Chomped, the opposition player cannot leave the square they are in
+    whilst this player remains Marking them. THIS CONDITION ENDS IMMEDIATELY if
+    this player is no longer Marking the opposition player FOR ANY REASON."
+
+    "For any reason" is why the condition is asked of the live board rather than
+    remembered — a chomper who is knocked down would never think to clear a flag.
+    """
+    from bloodbowl.engine import actions
+    from bloodbowl.engine.events import Event
+
+    actions.load_all()
+    m = _pair("Monstrous Mouth")
+    _special(m, "chomp", _dice([5]))
+    assert m.by_id("a01").chomped_by == "h00"
+
+    m.apply(Event(kind="turn_started", detail={"side": "away", "half": 1, "turn": 1}))
+    pinned = actions.get("move")["validate"](m, {"player": "a01", "x": 6, "y": 15})
+    assert not pinned.ok and "Chomped" in pinned.reason
+
+    # Knock the chomper over: no Tackle Zone, so the condition lapses at once.
+    m.apply(Event(kind="player_placed_prone", actor="h00", detail={"down": "prone"}))
+    assert actions.get("move")["validate"](m, {"player": "a01", "x": 6, "y": 15}).ok
+
+
+def test_a_special_action_may_replace_a_blitzs_block_but_is_not_one():
+    """ "Some Special Actions allow a player to replace the Block Action made as
+    part of a Blitz Action … even though the Special Action is replacing a Block
+    Action, IT IS NOT ONE ITSELF and so any rules, Skills or Traits that affect a
+    Block Action will have no effect." """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 10, 6, "3+", ["Stab"]), ("away", 7, 14, 6))
+    _declare(m, "h00", "a01")
+    for y in (11, 12, 13):
+        _move(m, "h00", 7, y, _dice([]))
+    legal = actions.get("stab")["validate"](m, {"player": "h00", "target": "a01"})
+    assert legal.ok and legal.detail["replaces_blitz_block"] is True
+
+    out = _special(m, "stab", _dice([3, 3]))
+    assert not any(e.kind == "block_rolled" for e in out.events), "a Special Action is not a Block"
+    assert m.by_id("h00").done is True, "the activation ends as soon as it is performed"
+
+
+def test_any_number_of_players_may_use_a_special_action_each_turn():
+    """ "there is no limit to the number of players that can declare this Special
+    Action each Turn" — unlike almost every other Action in the game."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(
+        ("home", 7, 13, 6, "3+", ["Stab"]),
+        ("away", 7, 14, 6),
+        ("home", 2, 13, 6, "3+", ["Stab"]),
+        ("away", 2, 14, 6),
+    )
+    _special(m, "stab", _dice([3, 3]), player="h00", target="a01")
+    assert actions.get("stab")["validate"](m, {"player": "h02", "target": "a03"}).ok

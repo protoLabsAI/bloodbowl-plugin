@@ -343,6 +343,12 @@ def _tools(cfg: dict):
                       turnover unless they were holding the ball
           "pass"    — with ``x``/``y``, the target SQUARE. Check bb_game_legal
                       first: it gives the range band and the modifier
+          "stab" · "vomit" · "breathe_fire" · "chainsaw" · "chomp" — SPECIAL
+                      ACTIONS, each granted by a Skill of the same name and each
+                      taking an adjacent Standing ``target``. Any number of
+                      players may use one per turn, and one may REPLACE the Block
+                      of a Blitz — but a Special Action is not a Block, so nothing
+                      that affects a Block affects it
           "forego"  — this player will not be activated at all, and cannot be
                       later this turn. Use it to END an activation too: a player
                       who could have walked the ball in and did not is Stalling,

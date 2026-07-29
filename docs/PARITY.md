@@ -41,10 +41,10 @@ Three verdicts, and the middle one is the important one:
 | HAND-OFF ACTION | yes | |
 | THROW TEAM-MATE ACTION | yes | Quick and Short Throws only |
 | FOUL ACTION | yes | |
-| SPECIAL ACTION | no | Stab, Chainsaw, Breathe Fire, Projectile Vomit, Chomp, Bombardier |
+| SPECIAL ACTION | partly | Stab, Chainsaw, Breathe Fire, Projectile Vomit, Chomp; not Ball & Chain, Throw Bomb or Kick Team-mate |
 | FOREGO ACTIVATION | yes | and it still faces the crowd |
 | DECLARE VS PERFORM | yes | `block.declared_a_block` |
-| REPLACING ACTIONS | no | needs Special Actions first |
+| REPLACING ACTIONS | yes | a Special Action may replace a Blitz's Block, and is not a Block |
 | ACTIVATED PLAYERS | yes | |
 | MOVE ACTIONS! · STANDING UP · DODGING | yes | |
 | JUMPING OVER PLAYERS | yes | 2 MA, the worse of the two squares, natural 1 falls where they stood |
@@ -91,7 +91,7 @@ Three verdicts, and the middle one is the important one:
 
 ## Skills and Traits
 
-**38 of 108 modelled**, and all 108 quotable through `bb_get_skill` — see §2 for
+**43 of 108 modelled**, and all 108 quotable through `bb_get_skill` — see §2 for
 why those are two different jobs. `bb_list_skills(only_unmodelled=True)` is the
 live version of this count; the number above is only ever a snapshot.
 
@@ -107,5 +107,8 @@ Four things, and knowing which one a rule is waiting on is most of the work:
 3. **Roster facts a practice board never bought** — Fan Factor, Apothecaries,
    Inducements. The pattern is settled: take them as input, default them, and say
    what was assumed.
-4. **Whole subsystems** — Special Actions, Apothecaries, Inducements. Each is a piece of work of its own, not a gap in something that
+4. **Whole subsystems** — Apothecaries, Inducements, and the three remaining
+   Special Actions (Ball & Chain is a movement mode, Throw Bomb is a Pass whose
+   payload explodes, Kick Team-mate is a Throw Team-mate that does not consume
+   the team's one). Each is a piece of work of its own, not a gap in something that
    exists.
