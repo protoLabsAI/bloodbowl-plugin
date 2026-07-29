@@ -227,6 +227,9 @@ class Match:
     # The Weather Table result in force. Modifies named rolls through the same
     # hook Skills use, so nothing has to ask the sky twice.
     weather: str = "perfect"
+    # "they can use them ONCE PER GAME" — so this is a boolean per side, spent
+    # rather than counted, and never replenished at half-time.
+    apothecary: dict = field(default_factory=dict)
     # Cheering Fans: which side's next Turn gets a free Offensive Assist on its
     # first Block, and whether that Turn has begun yet.
     cheer: dict = field(default_factory=dict)
@@ -277,6 +280,8 @@ class Match:
             self.rerolls = dict(self.rerolls_max)
             self.staff = {side: dict(vals) for side, vals in (d.get("staff") or {}).items()}
             self.weather = str(d.get("weather") or "perfect")
+            apo = d.get("apothecary") or {}
+            self.apothecary = {"home": bool(apo.get("home")), "away": bool(apo.get("away"))}
 
         elif kind == "turn_started":
             self.clock.active = str(d.get("side") or self.clock.active)
@@ -351,8 +356,23 @@ class Match:
             elif side in self.rerolls:
                 self.rerolls[side] = max(0, self.rerolls[side] - 1)
 
+        elif kind == "apothecary_used":
+            p = self.by_id(event.actor)
+            side = str(d.get("side") or "")
+            self.apothecary[side] = False
+            if p is not None:
+                # "the player is NOT removed from the pitch … Instead, the player
+                # will become Stunned in the square they are in" — unless the crowd
+                # was what got them, in which case they are not on a square at all.
+                if d.get("crowd"):
+                    p.place, p.down = "reserves", "standing"
+                else:
+                    p.place, p.down = "pitch", "stunned"
+
         elif kind == "weather_changed":
             self.weather = str(d.get("weather") or "perfect")
+            apo = d.get("apothecary") or {}
+            self.apothecary = {"home": bool(apo.get("home")), "away": bool(apo.get("away"))}
 
         elif kind == "kickoff_bonus":
             side = str(d.get("side") or "")
@@ -519,6 +539,15 @@ class Match:
         elif kind == "match_over":
             self.over = True
 
+        elif kind == "extra_time":
+            # "Extra Time is played exactly like a normal half" — a third half, so
+            # the clock restarts — "however, Team Re-rolls will not be replenished
+            # like they would be at half-time." Which is why this is NOT half_time.
+            self.over = False
+            self.clock.half += 1
+            self.clock.turn = 1
+            self.clock.active = str(d.get("receiving") or self.clock.active)
+
         elif kind == "touchdown":
             # Scoring is a Turnover and the end of a Drive. The ball leaves play
             # until the next kick-off, so nothing downstream can keep scoring with
@@ -580,6 +609,7 @@ class Match:
             "drive_rerolls": dict(self.drive_rerolls),
             "staff": {k: dict(v) for k, v in self.staff.items()},
             "weather": self.weather,
+            "apothecary": dict(self.apothecary),
             "cheer": dict(self.cheer),
             "argue_banned": list(self.argue_banned),
             "turn_actions": dict(self.turn_actions),

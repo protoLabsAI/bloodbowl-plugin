@@ -34,6 +34,7 @@ def new_match(
     rerolls: int | None = None,
     staff: dict | None = None,
     weather: str | None = None,
+    apothecary: bool = False,
 ) -> Match:
     """Start a match from a set-up board.
 
@@ -64,6 +65,7 @@ def new_match(
                 # them. Zero unless told otherwise, and reported either way.
                 "staff": {side: dict((staff or {}).get(side) or {}) for side in ("home", "away")},
                 "weather": condition,
+                "apothecary": {"home": bool(apothecary), "away": bool(apothecary)},
             },
             text=f"Match begins. {m.home_team or 'Home'} vs {m.away_team or 'Away'}. "
             f"{n} Team Re-roll(s) each. Weather: {weather_name(condition)}.",
@@ -101,6 +103,7 @@ def start_drive(match: Match, receiving: str, dice=None, aim=None) -> list[Event
     # (S3 lets each team set up afresh every drive. Reusing the opening setup is
     # the honest simplification while there is no setup PHASE to do it in — the
     # operator can always rearrange the board and start a fresh match.)
+    _deal_with_secret_weapons(match, dice)
     setup = match.setup or [{"id": p.id, "x": p.x, "y": p.y} for p in match.players if p.place in ("pitch", "reserves")]
     gone = ("casualty", "sent_off")
     setup = [row for row in setup if (match.by_id(str(row["id"])) or _gone()).place not in gone]
@@ -122,6 +125,34 @@ def start_drive(match: Match, receiving: str, dice=None, aim=None) -> list[Event
     )
     match.apply(events[-1])
     return events
+
+
+def _deal_with_secret_weapons(match: Match, dice) -> None:
+    """S3, at the end of a Drive: "If a Coach fielded any players with the Secret
+    Weapon Trait during the current Drive, then they will immediately be Sent-off
+    AS IF THEY HAD COMMITTED A FOUL ACTION, EVEN IF THEY WERE NOT ON THE PITCH at
+    the end of the Drive. Players Sent-off in this way may still Argue the Call."
+
+    Reusing the Foul's own sending-off is the point of that phrasing — the
+    Argue-the-Call roll, the ejected-Coach ban and all — so it calls the same
+    helper rather than a second implementation that agrees until it doesn't.
+    """
+    from .actions.foul import _argue_the_call
+
+    weapons = [p for p in match.players if p.place in ("pitch", "reserves") and p.has_skill("Secret Weapon")]
+    if not weapons:
+        return
+    sink = _Sink(match)
+    for p in weapons:
+        sink.emit(
+            Event(
+                kind="player_sent_off",
+                actor=p.id,
+                detail={"reason": "secret weapon"},
+                text=f"The referee confiscates {p.name()}'s Secret Weapon and sends them off.",
+            )
+        )
+        _argue_the_call(match, p, dice, sink)
 
 
 def dice_for(match: Match):
@@ -198,6 +229,130 @@ def act(match: Match, action: str, cmd: dict, dice=None) -> dict:
         end_turn(match, forced=True)
 
     return _report(match, outcome, noted)
+
+
+def _end_of_game(match: Match, dice) -> None:
+    """Full time — and, if the scores are level, what the rules do about it.
+
+    EXTRA TIME: "should a game end in a draw, a period of Extra Time will be
+    played … an extra eight-Turn period … however, TEAM RE-ROLLS WILL NOT BE
+    REPLENISHED like they would be at half-time. Any Team Re-rolls not spent at
+    the end of the game may carry over."
+
+    PENALTIES: "both Coaches will roll off against each other five times … rolling
+    a D6 (RE-ROLLING ANY TIES, though no other re-rolls from any source can be
+    used), with the Coach that wins the most roll-offs winning."
+
+    Extra Time is not started automatically — it is "in instances where it is
+    vital to have a definitive winner", which is a decision about the fixture
+    rather than about the match. The engine says the game is drawn and that Extra
+    Time is available; `bb_game_extra_time` starts it.
+    """
+    drawn = match.score.get("home", 0) == match.score.get("away", 0)
+    match.apply(
+        Event(
+            kind="match_over",
+            detail={"score": dict(match.score), "drawn": drawn},
+            text="Full time. "
+            + ("The scores are level — Extra Time is available." if drawn else "")
+            + f" {match.score.get('home', 0)}-{match.score.get('away', 0)}.",
+        )
+    )
+
+
+def use_apothecary(match: Match, player_id: str, dice) -> dict:
+    """S3: "If a team has an Apothecary, then they can use them ONCE PER GAME in
+    order to attempt to Patch-up a player on their team that has either been
+    Knocked-out or suffered a Casualty. If an Apothecary is used to Patch-up a
+    Knocked-out player then the player is NOT removed from the pitch … Instead,
+    the player will become STUNNED IN THE SQUARE THEY ARE IN. If the player was
+    Knocked-out as a result of an INJURY BY THE CROWD, they are placed in the
+    Reserves Box instead."
+
+    Applied after the fact rather than offered mid-resolution: the engine has no
+    way to stop and ask, and this is one of the few choices where doing it
+    afterwards lands in the same place. The exception is the Casualty branch,
+    where the rules give the Coach a choice between two rolls — that half is
+    reported as not modelled rather than decided on their behalf.
+    """
+    p = match.by_id(player_id)
+    if p is None:
+        return {"ok": False, "error": f"no player with id {player_id!r}"}
+    if not match.apothecary.get(p.side):
+        return {"ok": False, "error": f"{p.side} have no Apothecary left — they are once per game"}
+    if p.place not in ("knocked_out", "casualty"):
+        return {"ok": False, "error": f"{p.name()} is {p.place.replace('_', ' ')}, and needs no patching up"}
+
+    crowd = any(e.kind == "player_left_pitch" and e.actor == p.id for e in match.events)
+    was = p.place
+    match.apply(
+        Event(
+            kind="apothecary_used",
+            actor=p.id,
+            detail={"side": p.side, "was": was, "crowd": crowd},
+            text=f"The {p.side} Apothecary patches {p.name()} up"
+            + (" — back in the Reserves Box." if crowd else " — Stunned, but still on the pitch."),
+        )
+    )
+    note = ""
+    if was == "casualty":
+        note = (
+            "The Casualty branch gives the Coach a choice between two Casualty Rolls, which this "
+            "engine does not offer — the player is returned, and the second roll is not made."
+        )
+    return {"ok": True, "player": p.to_dict(), "note": note}
+
+
+def penalty_shootout(match: Match, dice) -> dict:
+    """ "both Coaches will roll off against each other five times … re-rolling any
+    ties, though no other re-rolls from any source can be used"."""
+    from .dice import Roll
+
+    wins = {"home": 0, "away": 0}
+    events = []
+    for n in range(1, 6):
+        while True:
+            h, a = dice.d6(), dice.d6()
+            if h != a:
+                break
+        winner = "home" if h > a else "away"
+        wins[winner] += 1
+        roll = Roll(kind="Penalty", dice=[h, a], note=f"kick {n}: home {h}, away {a}")
+        dice.rolls.append(roll)
+        ev = Event(
+            kind="note",
+            rolls=[roll],
+            detail={"kick": n, "winner": winner},
+            text=f"Penalty {n}: home {h}, away {a} — {winner} score.",
+        )
+        match.apply(ev)
+        events.append(ev)
+    champion = "home" if wins["home"] > wins["away"] else "away"
+    ev = Event(
+        kind="match_over",
+        detail={"penalties": wins, "winner": champion},
+        text=f"Penalty Shoot-out: {wins['home']}-{wins['away']} — {champion} win the game.",
+    )
+    match.apply(ev)
+    events.append(ev)
+    return {"ok": True, "winner": champion, "wins": wins, "log": [e.text for e in events]}
+
+
+def start_extra_time(match: Match, receiving: str = "home") -> dict:
+    """ "an extra eight-Turn period … Team Re-rolls will NOT be replenished."""
+    if not match.over:
+        return {"ok": False, "error": "the game is not over yet"}
+    if match.score.get("home", 0) != match.score.get("away", 0):
+        return {"ok": False, "error": "Extra Time is for a draw; this game has a winner"}
+    match.apply(
+        Event(
+            kind="extra_time",
+            detail={"receiving": receiving},
+            text="Extra Time: an extra eight turns each. Team Re-rolls are NOT replenished.",
+        )
+    )
+    start_drive(match, receiving=receiving)
+    return {"ok": True, "clock": match.clock.to_dict()}
 
 
 def _run_activation_gates(match: Match, action: str, cmd: dict, dice) -> dict | None:
@@ -416,7 +571,7 @@ def end_turn(match: Match, forced: bool = False, start_next: bool = True) -> dic
         )
     if match.over or not start_next:
         if match.over:
-            match.apply(Event(kind="match_over", text="Full time."))
+            _end_of_game(match, dice_for(match))
         return {"ok": True, "clock": match.clock.to_dict(), "over": match.over}
     if not match.over:
         match.apply(

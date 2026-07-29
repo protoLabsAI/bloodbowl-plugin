@@ -34,7 +34,7 @@ import re
 
 from ...pitch import in_bounds
 from .. import rerolls as team_rerolls
-from ..ball import bounce, catch, scatter
+from ..ball import bounce, catch, scatter, throw_in
 from ..dice import roll_target
 from ..events import Event
 from ..ruler import band, in_corridor
@@ -222,7 +222,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     # throw-in — and after a Pass, a ball that ends loose or with the opposition
     # is a Turnover.
     if not in_bounds(lx, ly):
-        rec.absorb(_throw_in(match, dice, lx, ly))
+        rec.absorb(throw_in(match, dice, lx, ly))
     else:
         landed = match.at(lx, ly)
         if landed is None:
@@ -255,44 +255,6 @@ def _drop_here(match: Match, p, dice) -> list[Event]:
     )
     match.apply(ev)
     return [ev, *bounce(match, dice)]
-
-
-def _throw_in(match: Match, dice, lx: int, ly: int) -> list[Event]:
-    """The crowd throws it back: 2D6 squares from the last square it occupied.
-
-    The direction comes off the Throw-in Template, another diagram — so the
-    engine throws it back INWARD, perpendicular to the sideline it crossed, which
-    is the one thing the template guarantees whatever its exact spread.
-    """
-    from ...pitch import LENGTH, WIDTH
-    from ..dice import Roll
-
-    a, b = dice.d6(), dice.d6()
-    roll = Roll(kind="Throw-in", dice=[a, b], total=a + b, note="2D6 squares")
-    dice.rolls.append(roll)
-    steps = a + b
-
-    # Back in from whichever edge it left by.
-    dx = 1 if lx < 1 else (-1 if lx > WIDTH else 0)
-    dy = 1 if ly < 1 else (-1 if ly > LENGTH else 0)
-    sx = min(max(lx, 1), WIDTH)
-    sy = min(max(ly, 1), LENGTH)
-    nx, ny = min(max(sx + dx * steps, 1), WIDTH), min(max(sy + dy * steps, 1), LENGTH)
-
-    ev = Event(
-        kind="ball_moved",
-        detail={"x": nx, "y": ny, "carrier": ""},
-        rolls=[roll],
-        text=f"The crowd throws the ball back in {steps} squares, to ({nx},{ny}).",
-    )
-    match.apply(ev)
-    events = [ev]
-    landed = match.at(nx, ny)
-    if landed is not None:
-        events.extend(catch(match, landed, dice))
-    else:
-        events.extend(bounce(match, dice))
-    return events
 
 
 register("pass", validate, resolve)

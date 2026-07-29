@@ -220,6 +220,7 @@ def _tools(cfg: dict):
         cheerleaders: int = 0,
         fan_factor: int = 0,
         weather: str = "",
+        apothecary: bool = False,
     ) -> str:
         """Start a match from the current practice board.
 
@@ -264,6 +265,7 @@ def _tools(cfg: dict):
                 for side in ("home", "away")
             },
             weather=weather or None,
+            apothecary=bool(apothecary),
         )
         save_match(m)
         return json.dumps({"ok": True, "match": m.to_dict(include_log=False), "message": m.events[0].text})
@@ -442,6 +444,59 @@ def _tools(cfg: dict):
         from .engine.ruler import describe
 
         return json.dumps({"ok": True, **describe()})
+
+    @tool
+    def bb_game_apothecary(player: str) -> str:
+        """Patch a Knocked-out or Casualtied player up. ONCE PER GAME per side.
+
+        A Knocked-out player comes back Stunned in the square they were in —
+        which is a real swing, because they are back on the pitch. One taken out
+        by the crowd goes to the Reserves Box instead. Only available if the match
+        was started with ``apothecary=True``.
+        """
+        from .engine.game import dice_for, use_apothecary
+        from .store import load_match, save_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress"})
+        out = use_apothecary(m, player, dice_for(m))
+        if out.get("ok"):
+            save_match(m)
+        return json.dumps(out)
+
+    @tool
+    def bb_game_extra_time(receiving: str = "home") -> str:
+        """Play Extra Time after a drawn game — an extra eight turns each.
+
+        Team Re-rolls are NOT replenished and whatever is left carries over, which
+        is the difference between this and half-time. Only legal on a draw at full
+        time; if Extra Time is also drawn, use bb_game_penalties.
+        """
+        from .engine.game import start_extra_time
+        from .store import load_match, save_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress"})
+        out = start_extra_time(m, receiving="away" if receiving == "away" else "home")
+        if out.get("ok"):
+            save_match(m)
+        return json.dumps(out)
+
+    @tool
+    def bb_game_penalties() -> str:
+        """Settle a still-drawn game with a Penalty Shoot-out: five roll-offs,
+        ties re-rolled, most wins takes it. No other re-roll may be used."""
+        from .engine.game import dice_for, penalty_shootout
+        from .store import load_match, save_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress"})
+        out = penalty_shootout(m, dice_for(m))
+        save_match(m)
+        return json.dumps(out)
 
     @tool
     def bb_get_skill(name: str) -> str:
@@ -704,6 +759,9 @@ def _tools(cfg: dict):
         bb_pass_ranges,
         bb_get_skill,
         bb_list_skills,
+        bb_game_apothecary,
+        bb_game_extra_time,
+        bb_game_penalties,
         bb_game_log,
         bb_game_abandon,
     ]
