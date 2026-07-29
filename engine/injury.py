@@ -65,11 +65,15 @@ def place_prone(match, player, dice, reason: str = "") -> list[Event]:
     return events
 
 
-def knock_down(match, player, dice, by=None, cause: str = "Knocked Down") -> list[Event]:
+def knock_down(match, player, dice, by=None, cause: str = "Knocked Down", bonus: int = 0) -> list[Event]:
     """Put a player on the ground and resolve what it cost them.
 
     ``by`` is the player responsible, when there is one — Mighty Blow belongs to
     the player who knocked them down, not to the one who fell.
+
+    ``bonus`` is a +1 for the Armour OR Injury Roll that came from somewhere other
+    than the knocker-down: Arm Bar, whose owner is a bystander to a failed Dodge
+    rather than the cause of it. It is spent exactly as Mighty Blow's is.
     """
     events = [
         Event(
@@ -85,11 +89,11 @@ def knock_down(match, player, dice, by=None, cause: str = "Knocked Down") -> lis
     from .ball import drop
 
     events.extend(drop(match, player, dice, reason=f"is {cause}"))
-    events.extend(risk_injury(match, player, dice, by=by))
+    events.extend(risk_injury(match, player, dice, by=by, bonus=bonus))
     return events
 
 
-def risk_injury(match, player, dice, by=None, armour_modifier: int = 0) -> list[Event]:
+def risk_injury(match, player, dice, by=None, armour_modifier: int = 0, bonus: int = 0) -> list[Event]:
     """Armour, and the injury behind it if the armour breaks.
 
     ``armour_modifier`` exists for the Foul Action, which is the one route here
@@ -111,6 +115,10 @@ def risk_injury(match, player, dice, by=None, armour_modifier: int = 0) -> list[
             if by.has_skill(skill):
                 fn(ctx)
         mighty = ctx.value
+    # …plus any +1 from a bystander (Arm Bar). Same rule, same spend: it goes on
+    # the Armour Roll only when that is what breaks it, and on the Injury Roll
+    # otherwise.
+    mighty += bonus
 
     # CLAWS: "any roll of a natural 8+ on the Armour Roll will break the
     # opposition player's armour REGARDLESS OF THEIR ACTUAL ARMOUR VALUE" — so it

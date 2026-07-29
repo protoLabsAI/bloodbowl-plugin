@@ -369,7 +369,7 @@ block, blitz, foul, hand-off, Secure the Ball, pass → injuries → touchdowns 
 drives → half-time → full time.
 
 Actions: `move`, `block`, `blitz`, `foul`, `handoff`, `secure`, `pass`.
-Skills modelled — **54 of 108**. The other 74 are reported as unmodelled *and can still be quoted* —
+Skills modelled — **58 of 108**. The other 74 are reported as unmodelled *and can still be quoted* —
 `bb_get_skill` returns the rulebook's text for all 108 whether or not the engine
 applies them.
 
@@ -479,6 +479,27 @@ the roll is coming (`dauntless: true`) and resolve makes it; Horns is
 deterministic, so it is in both and the odds a coach is shown are the odds they
 get. Reporting odds that resolve then ignores would be worse than not reporting
 them at all.
+
+**FOUR SKILLS FIRE WHEN AN OPPONENT LEAVES YOUR TACKLE ZONE**, and they are one
+mechanism seen from four angles — `engine/leaving.py`. The ORDER is the rules'
+own and changes outcomes:
+
+  1. **Tentacles**, before the roll — it stops them leaving at all, so a Dodge
+     that never happens cannot be failed, re-rolled or Diving-Tackled.
+  2. the Agility Test, its modifiers and its re-rolls.
+  3. **Diving Tackle**, after all of that — "an Agility test has been rolled and
+     any modifiers and re-rolls have been applied". That is what makes it worth a
+     Skill: the coach spends it knowing whether it will matter. It costs the
+     tackler their feet every time, so the engine spends it only when it turns a
+     success into a failure.
+  4. then either they left (**Shadowing** follows) or they Fell Over (**Arm Bar**
+     adds its +1 to whichever roll needs it).
+
+"Only one of those players may use this Skill" is PER SKILL, not across them — a
+player can be Tentacled and Diving-Tackled by two different opponents in the same
+step. Note also that the Diving Tackler is placed in the vacated square LAST,
+after the dodger has left it; placing them first puts two players on one square
+for the length of a knock-down and `match.at` answers with whichever it finds.
 
 **A NEW ONCE-PER-TURN FLAG HAS THREE RESET SITES.** They used to name the flags by
 hand (turn start, drive start, and `from_dict`), so a forgotten one would make a
