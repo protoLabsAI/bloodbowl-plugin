@@ -349,6 +349,12 @@ def _tools(cfg: dict):
                       turnover unless they were holding the ball
           "pass"    — with ``x``/``y``, the target SQUARE. Check bb_game_legal
                       first: it gives the range band and the modifier
+          "kickteam" — like "throwteam", but it does NOT use up the team's Throw
+                      Team-mate for the turn. A fumble hurts the kicked player
+          "ball_chain" — with ``facing`` ("north"/"south"/"east"/"west"): the
+                      player is dragged D6-wise up to their MA, Dodging for free
+          "throw_bomb" — with ``x``/``y``: thrown like a Pass, explodes where it
+                      stops, and catches everyone adjacent on a 4+
           "stab" · "vomit" · "breathe_fire" · "chainsaw" · "chomp" — SPECIAL
                       ACTIONS, each granted by a Skill of the same name and each
                       taking an adjacent Standing ``target``. Any number of

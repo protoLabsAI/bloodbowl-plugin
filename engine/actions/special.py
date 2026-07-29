@@ -55,6 +55,8 @@ from . import Legality, Outcome, Recorder, ended, register
 # skill -> (action name, needs the target to be MARKED rather than merely adjacent)
 SPECIALS = {
     "Stab": ("stab", False),
+    "Ball & Chain": ("ball_chain", None),
+    "Bombardier": ("throw_bomb", None),
     "Projectile Vomit": ("vomit", False),
     "Breathe Fire": ("breathe_fire", True),
     "Chainsaw": ("chainsaw", True),
@@ -83,6 +85,11 @@ def _validate(action: str, match: Match, cmd: dict) -> Legality:
         return Legality(False, f"only a Standing player on the pitch can use {skill}")
     if not p.has_skill(skill):
         return Legality(False, f"{p.name()} does not have {skill}")
+
+    if needs_marked is None:
+        # Ball & Chain aims at a compass point and Throw Bomb at a square, so
+        # neither names a player at all.
+        return Legality(True, "", {"skill": skill, "target": "", "replaces_blitz_block": blitzing})
 
     t = match.by_id(str(cmd.get("target") or ""))
     if t is None:
@@ -117,18 +124,23 @@ def _resolve(action: str, match: Match, cmd: dict, dice) -> Outcome:
     from ..dice import Roll, roll_target
 
     p = match.by_id(str(cmd["player"]))
-    t = match.by_id(str(legal.detail["target"]))
+    t = match.by_id(str(legal.detail["target"])) if legal.detail["target"] else None
     rec = Recorder(match)
     skill = legal.detail["skill"]
-    unmodelled = sorted(set(unmodelled_skills(p)) | set(unmodelled_skills(t)))
+    unmodelled = sorted(set(unmodelled_skills(p)) | (set(unmodelled_skills(t)) if t else set()))
     turnover = False
 
     rec.emit(
         Event(
             kind="special_action",
             actor=p.id,
-            detail={"skill": skill, "target": t.id, "replaces_blitz_block": legal.detail["replaces_blitz_block"]},
-            text=f"{p.name()} uses {skill} on {t.name()}."
+            detail={
+                "skill": skill,
+                "target": t.id if t else "",
+                "replaces_blitz_block": legal.detail["replaces_blitz_block"],
+            },
+            text=f"{p.name()} uses {skill}"
+            + (f" on {t.name()}." if t else ".")
             + (" (replacing the Blitz's Block)" if legal.detail["replaces_blitz_block"] else ""),
         )
     )
@@ -186,14 +198,132 @@ def _resolve(action: str, match: Match, cmd: dict, dice) -> Outcome:
                 )
             )
 
+    if action == "ball_chain":
+        turnover = _ball_and_chain(match, cmd, dice, rec)
+    elif action == "throw_bomb":
+        turnover = _throw_bomb(match, cmd, dice, rec)
+
     rec.emit(ended(p.id, action, f"{p.name()}'s {skill} ends their activation."))
     return Outcome(
         ok=not turnover,
         events=rec.events,
         turnover=turnover,
-        text=f"{p.name()} used {skill} on {t.name()}.",
+        text=f"{p.name()} used {skill}" + (f" on {t.name()}." if t else "."),
         unmodelled=unmodelled,
     )
+
+
+# --- the two that do not fit the table ------------------------------------
+
+
+def _ball_and_chain(match: Match, cmd: dict, dice, rec: Recorder):
+    """BALL & CHAIN: "the ONLY action they can declare is a Ball & Chain Special
+    Action … position the Throw-in Template over this player so it faces one of
+    the two End Zones or either Sideline. Then roll a D6 and move this player into
+    the square as indicated … A player that moves in this manner DOES NOT HAVE TO
+    MAKE AN AGILITY TEST TO DODGE away from another player's Tackle Zone; they
+    will automatically pass … A player performing a Ball & Chain Action can move a
+    number of squares UP TO THEIR MA."
+
+    Movement without agency: the coach picks the facing, the die picks the square,
+    and a wall or another player simply stops them. Dodges are free, which is what
+    makes the Trait survivable at all.
+    """
+    from ...pitch import in_bounds
+    from ..ball import THROW_IN_ARROWS, pick_up
+    from ..dice import Roll
+
+    p = match.by_id(str(cmd["player"]))
+    facing = str(cmd.get("facing") or "north")
+    ring = ((1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1))
+    base = {"north": (0, -1), "south": (0, 1), "west": (-1, 0), "east": (1, 0)}.get(facing, (0, -1))
+    for _ in range(p.movement()):
+        d = dice.d6()
+        roll = Roll(kind="Ball & Chain", dice=[d], total=d, note=f"facing {facing}")
+        dice.rolls.append(roll)
+        dx, dy = ring[(ring.index(base) + THROW_IN_ARROWS[d]) % 8]
+        nx, ny = p.x + dx, p.y + dy
+        if not in_bounds(nx, ny):
+            rec.emit(
+                Event(kind="note", actor=p.id, rolls=[roll], text=f"{p.name()} lurches off the pitch at ({nx},{ny}).")
+            )
+            from ..injury import injure_by_crowd
+
+            rec.absorb(injure_by_crowd(match, p, dice))
+            return True
+        if match.at(nx, ny) is not None:
+            rec.emit(
+                Event(kind="note", actor=p.id, rolls=[roll], text=f"{p.name()} is brought up short at ({nx},{ny}).")
+            )
+            break
+        rec.emit(
+            Event(
+                kind="player_moved",
+                actor=p.id,
+                detail={"x": nx, "y": ny, "ma_used": p.ma_used + 1},
+                rolls=[roll],
+                text=f"{p.name()} is dragged to ({nx},{ny}). No Dodge is needed — they pass automatically.",
+            )
+        )
+        if match.ball.in_play and not match.ball.carrier and (match.ball.x, match.ball.y) == (nx, ny):
+            events, turned = pick_up(match, p, dice)
+            rec.absorb(events)
+            if turned:
+                return True
+    return False
+
+
+def _throw_bomb(match: Match, cmd: dict, dice, rec: Recorder):
+    """BOMBARDIER: "they throw a bomb IN THE SAME MANNER as when a player performs
+    a Pass Action, following all the usual rules for a Pass Action. Though this is
+    NOT a Pass Action itself … A player that declared a Throw Bomb Special Action
+    MAY NOT PERFORM A MOVE ACTION before throwing the bomb. If at any point a bomb
+    comes to rest on the ground then it will immediately explode in that square …
+    When a bomb explodes, any player in the square it exploded in is hit …
+    Additionally, roll a D6 for each player ADJACENT to the square … On a 4+, they
+    are hit. Any Standing player that is hit is immediately Knocked Down.
+    Additionally, make an Armour Roll for any Prone or Stunned players hit."
+
+    The bomb is thrown with the Pass Action's own machinery — same ruler, same
+    accuracy, same interception corridor — and then explodes wherever it stops.
+    Modelled here as: throw, land, explode; the catch-and-throw-again chain is
+    reported rather than followed, because it needs a coach at the other end.
+    """
+    from ..injury import knock_down, risk_injury
+    from ..ruler import band
+    from ..rules import adjacent
+
+    p = match.by_id(str(cmd["player"]))
+    x, y = int(cmd.get("x") or 0), int(cmd.get("y") or 0)
+    reach = band(p.x, p.y, x, y)
+    if reach is None:
+        rec.emit(Event(kind="note", actor=p.id, text=f"({x},{y}) is out of range for a bomb."))
+        return False
+
+    from ..actions.throw import _passing_target
+    from ..dice import roll_target
+
+    r = roll_target(dice, "Throw Bomb", _passing_target(p), reach[1], note=reach[0])
+    rec.emit(Event(kind="note", actor=p.id, rolls=[r], text=f"{p.name()} lobs a bomb. {r.describe()}"))
+    # "Should a bomb be fumbled by the thrower … it will not Bounce and will
+    # instead explode in that player's square."
+    bx, by = (x, y) if r.passed else (p.x, p.y)
+
+    rec.emit(Event(kind="note", detail={"x": bx, "y": by}, text=f"The bomb explodes at ({bx},{by})!"))
+    hit = [q for q in match.on_pitch() if (q.x, q.y) == (bx, by)]
+    for q in match.on_pitch():
+        if (q.x, q.y) == (bx, by) or not adjacent(q.x, q.y, bx, by):
+            continue
+        d = roll_target(dice, "Blast", 4, note=q.name())
+        rec.emit(Event(kind="note", actor=q.id, rolls=[d], text=f"{q.name()} — {d.describe()}"))
+        if d.passed:
+            hit.append(q)
+    for q in hit:
+        if q.down == "standing":
+            rec.absorb(knock_down(match, q, dice, cause="caught by the blast"))
+        else:
+            rec.absorb(risk_injury(match, q, dice))
+    return any(q.side == match.clock.active for q in hit)
 
 
 def _make(action: str):
