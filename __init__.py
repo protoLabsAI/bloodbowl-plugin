@@ -212,7 +212,13 @@ def _tools(cfg: dict):
     # narration comes from `bb_game_log`, which holds the rolls as they happened.
 
     @tool
-    def bb_game_new(seed: int = 0, kicking_to: str = "home", rerolls: int = -1) -> str:
+    def bb_game_new(
+        seed: int = 0,
+        kicking_to: str = "home",
+        rerolls: int = -1,
+        assistant_coaches: int = 0,
+        cheerleaders: int = 0,
+    ) -> str:
         """Start a match from the current practice board.
 
         Every player set up on the board takes the field. Pass a ``seed`` to make
@@ -223,6 +229,11 @@ def _tools(cfg: dict):
         default. How many a team really has is a drafting decision and a practice
         board was never drafted, so the engine takes it as an input and tells you
         what it used rather than inventing one.
+
+        ``assistant_coaches`` and ``cheerleaders`` are the same kind of number, and
+        the Kick-off Event Table asks for both: Brilliant Coaching adds Assistant
+        Coaches to a D6 for a free Team Re-roll, Cheering Fans adds Cheerleaders
+        for a free Offensive Assist. Both sides get whatever you pass.
         """
         from .engine.game import new_match
         from .store import load, save_match
@@ -235,6 +246,10 @@ def _tools(cfg: dict):
             seed=int(seed or 0),
             kicking_to=("away" if kicking_to == "away" else "home"),
             rerolls=None if int(rerolls) < 0 else int(rerolls),
+            staff={
+                side: {"assistant_coaches": int(assistant_coaches), "cheerleaders": int(cheerleaders)}
+                for side in ("home", "away")
+            },
         )
         save_match(m)
         return json.dumps({"ok": True, "match": m.to_dict(include_log=False), "message": m.events[0].text})

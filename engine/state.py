@@ -209,6 +209,17 @@ class Match:
     # half with its FULL complement" and "unused Team Re-rolls do NOT carry over".
     rerolls: dict = field(default_factory=dict)
     rerolls_max: dict = field(default_factory=dict)
+    # Brilliant Coaching grants "a free Team Re-roll FOR THE DRIVE AHEAD", which
+    # is a different thing from the ones a team bought — it expires. Kept apart so
+    # it can be spent FIRST and simply dropped at the next kick-off; folding it
+    # into `rerolls` makes "was the bonus or a bought one spent?" unanswerable.
+    drive_rerolls: dict = field(default_factory=dict)
+    # Assistant Coaches, Cheerleaders and Fan Factor: roster facts a practice
+    # board never bought, so they are inputs with a stated default of zero.
+    staff: dict = field(default_factory=dict)
+    # Cheering Fans: which side's next Turn gets a free Offensive Assist on its
+    # first Block, and whether that Turn has begun yet.
+    cheer: dict = field(default_factory=dict)
     blitz: dict = field(default_factory=dict)
     # Coaches ejected for arguing: "may not attempt to Argue the Call for the
     # remainder of the game". Per SIDE and per MATCH — one of the few things here
@@ -254,6 +265,7 @@ class Match:
             full = d.get("rerolls") or {}
             self.rerolls_max = {"home": int(full.get("home", 0)), "away": int(full.get("away", 0))}
             self.rerolls = dict(self.rerolls_max)
+            self.staff = {side: dict(vals) for side, vals in (d.get("staff") or {}).items()}
 
         elif kind == "turn_started":
             self.clock.active = str(d.get("side") or self.clock.active)
@@ -261,6 +273,11 @@ class Match:
             self.clock.turn = int(d.get("turn") or self.clock.turn)
             self.blitz = {}
             self.turn_actions = {}  # one Blitz, one Pass, one Foul… per team per turn
+            # Cheering Fans applies to "the Coach with the highest roll's NEXT
+            # Turn": arm it when that Turn starts, and drop it when the one after
+            # begins, used or not.
+            if self.cheer.get("side") == self.clock.active:
+                self.cheer = {} if self.cheer.get("ready") else {**self.cheer, "ready": True}
             for p in self.players:
                 if p.side == self.clock.active:
                     p.ma_used = 0
@@ -313,10 +330,22 @@ class Match:
 
         elif kind == "team_reroll_used":
             # Spent whether or not it bought anything — a failed Loner roll loses
-            # it "just as if it had been used".
+            # it "just as if it had been used". The Drive-scoped one goes FIRST,
+            # because it is the one that expires.
             side = str(d.get("side") or "")
-            if side in self.rerolls:
+            if self.drive_rerolls.get(side):
+                self.drive_rerolls[side] -= 1
+            elif side in self.rerolls:
                 self.rerolls[side] = max(0, self.rerolls[side] - 1)
+
+        elif kind == "kickoff_bonus":
+            side = str(d.get("side") or "")
+            if d.get("cheer_used"):
+                self.cheer = {}
+            if d.get("reroll") and side:
+                self.drive_rerolls[side] = self.drive_rerolls.get(side, 0) + 1
+            if d.get("cheer") and side:
+                self.cheer = {"side": side, "ready": False}
 
         elif kind == "blitz_declared":
             self.blitz = {"player": event.actor, "target": str(d.get("target") or ""), "blocked": False}
@@ -435,6 +464,9 @@ class Match:
 
         elif kind == "drive_started":
             self.drive = int(d.get("drive") or self.drive + 1)
+            # A Drive-scoped re-roll lasts exactly one Drive.
+            self.drive_rerolls = {}
+            self.cheer = {}
             self.setup = [dict(row) for row in (d.get("setup") or [])]
             for row in self.setup:
                 p = self.by_id(str(row.get("id") or ""))
@@ -529,6 +561,9 @@ class Match:
             "blitz": dict(self.blitz),
             "rerolls": dict(self.rerolls),
             "rerolls_max": dict(self.rerolls_max),
+            "drive_rerolls": dict(self.drive_rerolls),
+            "staff": {k: dict(v) for k, v in self.staff.items()},
+            "cheer": dict(self.cheer),
             "argue_banned": list(self.argue_banned),
             "turn_actions": dict(self.turn_actions),
         }

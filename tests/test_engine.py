@@ -3243,3 +3243,122 @@ def test_legal_moves_says_how_many_re_rolls_are_left_before_committing():
     m = _reroll_board(skills=["Loner (4+)"])
     out = legal_moves(m, "h00")
     assert out["team_rerolls"] == {"left": 3, "loner": 4}
+
+
+# --- kick-off events that Team Re-rolls unblocked --------------------------
+
+
+def _kickoff_board(staff=None, rerolls=2):
+    from bloodbowl.engine.events import Event
+
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    m.apply(
+        Event(
+            kind="match_started",
+            detail={
+                "kicking_to": "home",
+                "rerolls": {"home": rerolls, "away": rerolls},
+                "staff": staff or {},
+            },
+        )
+    )
+    return m
+
+
+def _event(m, dice, name):
+    """Force one Kick-off Event by its name, and return its events."""
+    from bloodbowl.engine import kickoff
+
+    total = next(k for k, v in kickoff.KICKOFF_EVENTS.items() if v[0] == name)
+    # The event roll is 2D6; feed it two dice that sum to the one we want.
+    lo = max(1, total - 6)
+    return kickoff.kickoff_event(m, _dice([lo, total - lo, *dice]), receiving="home")
+
+
+def test_brilliant_coaching_grants_a_re_roll_for_the_drive_only():
+    """ "Both Coaches roll a D6 and add the number of Assistant Coaches on their
+    Team Roster. The Coach with the highest total gains a free Team Re-roll FOR
+    THE DRIVE AHEAD."
+
+    For the Drive — so it expires, which is why it is counted apart from the ones
+    the team bought rather than added to them.
+    """
+    from bloodbowl.engine.game import start_drive
+    from bloodbowl.engine.rerolls import available
+
+    m = _kickoff_board(staff={"home": {"assistant_coaches": 2}}, rerolls=2)
+    _event(m, [3, 3], "Brilliant Coaching")  # home 3+2=5, away 3+0=3
+    assert m.drive_rerolls == {"home": 1}
+    assert available(m, m.by_id("h00")) == 3, "2 bought plus 1 for the Drive"
+
+    start_drive(m, receiving="home", dice=_dice([3, 1, 4, 4, 3, 3, 2, 2]))
+    assert m.drive_rerolls == {}, "the Drive re-roll outlived its Drive"
+    assert m.rerolls["home"] == 2
+
+
+def test_the_drive_re_roll_is_spent_before_the_bought_ones():
+    """It is the one that expires, so spending it first is the only reading that
+    does not quietly throw it away."""
+    m = _kickoff_board(staff={"home": {"assistant_coaches": 2}}, rerolls=2)
+    _event(m, [3, 3], "Brilliant Coaching")
+    assert (m.drive_rerolls["home"], m.rerolls["home"]) == (1, 2)
+
+    _move(m, "h00", 6, 12, _dice([1, 5]), team_reroll=True)
+    assert (m.drive_rerolls["home"], m.rerolls["home"]) == (0, 2), "a bought re-roll was spent first"
+
+
+def test_a_tie_on_a_contested_kick_off_event_gives_nobody_anything():
+    """ "The Coach with the highest total gains…" — on a tie there is not one."""
+    m = _kickoff_board(rerolls=2)
+    out = _event(m, [4, 4], "Brilliant Coaching")
+    assert m.drive_rerolls == {}
+    assert any("a tie" in (e.text or "") for e in out)
+
+
+def test_cheering_fans_gives_one_extra_offensive_assist_on_the_next_turn():
+    """ "The FIRST Block Action performed during the Coach with the highest roll's
+    next Turn receives an additional Offensive Assist." """
+    from bloodbowl.engine import actions
+    from bloodbowl.engine.events import Event
+
+    actions.load_all()
+    m = _kickoff_board(staff={"home": {"cheerleaders": 3}})
+    _event(m, [2, 2], "Cheering Fans")  # home 2+3=5, away 2
+    assert m.cheer == {"side": "home", "ready": False}
+
+    # It arms when that Coach's Turn begins.
+    m.apply(Event(kind="turn_started", detail={"side": "home", "half": 1, "turn": 1}))
+    assert m.cheer["ready"] is True
+
+    legal = actions.get("block")["validate"](m, {"player": "h00", "target": "a01"})
+    assert legal.detail["cheered"] is True
+    assert legal.detail["offensive_assists"] == 1, "the crowd's assist is missing"
+    assert legal.detail["attacker_strength"] == legal.detail["defender_strength"] + 1
+
+    # …and it is consumed by that first Block.
+    _block(m, "h00", "a01", _dice([2, 2], [["push_back"]]), follow_up=False)
+    assert m.cheer == {}, "the crowd cheered twice"
+
+
+def test_cheering_fans_expires_if_that_turn_goes_by_unused():
+    """ "…during the Coach's NEXT Turn" — one Turn, not a standing bonus."""
+    from bloodbowl.engine.events import Event
+
+    m = _kickoff_board(staff={"home": {"cheerleaders": 3}})
+    _event(m, [2, 2], "Cheering Fans")
+    m.apply(Event(kind="turn_started", detail={"side": "home", "half": 1, "turn": 1}))
+    assert m.cheer["ready"]
+    m.apply(Event(kind="turn_started", detail={"side": "away", "half": 1, "turn": 1}))
+    assert m.cheer["ready"], "the opponent's turn must not consume it"
+    m.apply(Event(kind="turn_started", detail={"side": "home", "half": 1, "turn": 2}))
+    assert m.cheer == {}, "it should have expired after their Turn"
+
+
+def test_the_staff_numbers_are_inputs_and_default_to_none():
+    """A practice board hired nobody, so both events are a bare D6 unless told
+    otherwise — and the roll says what it added."""
+    m = _kickoff_board()
+    out = _event(m, [5, 2], "Brilliant Coaching")
+    assert m.drive_rerolls == {"home": 1}
+    line = next(e.text for e in out if e.text and "home roll" in e.text)
+    assert line.endswith("home roll 5."), line

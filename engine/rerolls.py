@@ -78,7 +78,7 @@ def available(match, player) -> int:
     """
     if player is None or player.side != match.clock.active:
         return 0
-    return int(match.rerolls.get(player.side, 0))
+    return int(match.rerolls.get(player.side, 0)) + int(match.drive_rerolls.get(player.side, 0))
 
 
 def _loner_target(player) -> int | None:
@@ -121,7 +121,7 @@ def spend(match, player, kind: str, dice, rec) -> bool:
 
 
 def _spent(match, player, kind: str, wasted: bool) -> Event:
-    left = max(0, int(match.rerolls.get(player.side, 0)) - 1)
+    left = max(0, available(match, player) - 1)
     return Event(
         kind="team_reroll_used",
         actor=player.id,
