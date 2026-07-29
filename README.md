@@ -52,7 +52,8 @@ Start a match from the board and play it. The engine owns the rules:
 - **The weather** — rolled at kick-off, and it changes the odds: rain penalises
   every ball roll, a Blizzard forbids a Long Pass outright
 - **The game** — kick-off with the full event table (six of the eleven results
-  applied, the rest reported), drives, half-time, full time
+  applied, the rest reported), drives, half-time, full time — and, on a draw,
+  Extra Time and a Penalty Shoot-out
 
 Every roll lands in an event log with its arithmetic shown, and that log is what
 the agent narrates from.
@@ -98,6 +99,8 @@ Ten of the eleven kick-off events say plainly that they were rolled but not appl
 **Playing** — `bb_game_new` · `bb_game_state` · `bb_game_legal` · `bb_game_odds` ·
 `bb_game_act` · `bb_game_end_turn` · `bb_game_kickoff` · `bb_game_log` ·
 `bb_game_abandon` · `bb_pass_ranges`
+
+**Finishing** — `bb_game_apothecary` · `bb_game_extra_time` · `bb_game_penalties`
 
 `bb_game_legal` and `bb_game_odds` are free and side-effect-free — ask them as
 often as you like. They exist so the coach never has to work out a dodge modifier

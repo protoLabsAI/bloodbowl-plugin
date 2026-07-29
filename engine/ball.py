@@ -221,6 +221,75 @@ def pick_up(match, player, dice, team_reroll: bool = False) -> tuple[list[Event]
     return [*events, ev, *bounce(match, dice)], True
 
 
+# The Throw-in Template is a DIAGRAM with three arrows, so — like the Range Ruler
+# and the push arc — the numbers here are read off the picture rather than quoted.
+# The template is laid on the last square the ball occupied, facing IN from the
+# edge it crossed, and its three arrows are the inward normal and its two
+# diagonal neighbours. A D6 selects one, two numbers per arrow.
+#
+# "roll a D6 to determine the direction the crowd will throw the ball as
+# determined by the Throw-in Template. The ball will then travel 2D6 squares in
+# the direction of the Throw-in before landing, counting the square underneath
+# the Blood Bowl logo … as the first square."
+THROW_IN_ARROWS = {1: -1, 2: -1, 3: 0, 4: 0, 5: 1, 6: 1}
+
+
+def _inward(x: int, y: int) -> tuple[int, int]:
+    """Which way is "in" from the square the ball left by."""
+    from ..pitch import LENGTH, WIDTH
+
+    return (1 if x < 1 else -1 if x > WIDTH else 0, 1 if y < 1 else -1 if y > LENGTH else 0)
+
+
+def throw_in(match, dice, lx: int, ly: int) -> list[Event]:
+    """The crowd throws it back.
+
+    A CORNER is its own rule — "Should the ball leave the pitch from a corner
+    square, position the Random Direction Template … and roll a D3" — because from
+    a corner there is no single inward normal to spread three arrows around, so
+    the three candidates are the two along the sidelines and the diagonal.
+    """
+    from ..pitch import LENGTH, WIDTH
+    from .dice import Roll
+
+    events: list[Event] = []
+    sx, sy = min(max(lx, 1), WIDTH), min(max(ly, 1), LENGTH)
+    ix, iy = _inward(lx, ly)
+
+    if ix and iy:  # a corner: both axes are out
+        d = dice.dn(3)
+        roll = Roll(kind="Corner Throw-in", dice=[d], total=d, note="D3")
+        options = [(ix, 0), (ix, iy), (0, iy)]
+        dx, dy = options[d - 1]
+    else:
+        d = dice.d6()
+        roll = Roll(kind="Throw-in", dice=[d], total=d, note="D6, three arrows")
+        # Rotate the inward normal by one of the three arrows.
+        ring = ((1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1))
+        base = ring.index((ix, iy))
+        dx, dy = ring[(base + THROW_IN_ARROWS[d]) % 8]
+    dice.rolls.append(roll)
+
+    a, b = dice.d6(), dice.d6()
+    dist = Roll(kind="Throw-in distance", dice=[a, b], total=a + b, note="2D6 squares")
+    dice.rolls.append(dist)
+    steps = a + b
+    nx, ny = sx + dx * steps, sy + dy * steps
+    nx, ny = min(max(nx, 1), WIDTH), min(max(ny, 1), LENGTH)
+
+    ev = Event(
+        kind="ball_moved",
+        detail={"x": nx, "y": ny, "carrier": ""},
+        rolls=[roll, dist],
+        text=f"The crowd hurls the ball back in {steps} squares, to ({nx},{ny}).",
+    )
+    match.apply(ev)
+    events.append(ev)
+    landed = match.at(nx, ny)
+    events.extend(catch(match, landed, dice) if landed is not None else bounce(match, dice))
+    return events
+
+
 def drop(match, player, dice, reason: str = "goes down") -> list[Event]:
     """The carrier loses the ball where they stand, and it bounces."""
     if match.ball.carrier != player.id:

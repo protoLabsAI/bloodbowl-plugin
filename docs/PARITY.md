@@ -65,15 +65,15 @@ Three verdicts, and the middle one is the important one:
 | BROKEN ARM · DISLOCATED HIP · BROKEN SHOULDER | n/a | League Play |
 | GETTING EVEN | n/a | League Play |
 | INJURY BY THE CROWD | yes | no Armour Roll; Stunned means the Reserves Box |
-| APOTHECARIES | no | |
+| APOTHECARIES | partly | the Knocked-out patch-up; the Casualty branch's choice of two rolls is not offered |
 | FOUL ACTIONS! · PERFORMING A FOUL ACTION | yes | |
 | BEING SENT-OFF · ARGUE THE CALL | yes | the Argue roll is made for you — see §6 |
 | PASS ACTIONS! · PERFORMING A PASS ACTION | yes | |
 | DECLARE TARGET SQUARE · MEASURE RANGE | partly | the ruler is measured, not quoted |
 | TEST FOR ACCURACY · ACCURATE PASS · INACCURATE PASS · FUMBLED PASS | yes | |
 | INTERCEPTIONS · RESOLVE PASS ACTION · CATCHING THE BALL | yes | |
-| THROW-INS | partly | thrown straight back in; the template is a diagram |
-| CORNER THROW-INS | no | |
+| THROW-INS | yes | D6 across the template's three arrows, then 2D6 squares |
+| CORNER THROW-INS | yes | a D3 among the three inward directions |
 | HAND-OFF ACTIONS! · PERFORMING A HAND-OFF | yes | |
 | THROW TEAM-MATE ACTIONS! · PERFORMING A THROW TEAM-MATE ACTION | yes | |
 | SUPERB THROW · SUBPAR THROW · FUMBLED THROW · LANDING | yes | dropping them is only a turnover if they held the ball |
@@ -82,12 +82,12 @@ Three verdicts, and the middle one is the important one:
 | SCORING DURING YOUR OPPONENT'S TURN | yes | a push into the End Zone scores |
 | STALLING | yes | including the hand-off exception |
 | THE END OF A DRIVE! · END OF DRIVE SEQUENCE · THE DRIVE ENDS | yes | |
-| DEAL WITH SECRET WEAPONS | no | |
+| DEAL WITH SECRET WEAPONS | yes | sent off as if they had Fouled, and they may Argue |
 | END OF DRIVE EFFECTS · RECOVER KNOCKED-OUT PLAYERS | yes | |
 | RESTARTING THE GAME | yes | the conceder receives |
 | ENDING THE GAME · WINNING THE GAME | yes | |
-| EXTRA TIME | no | |
-| PENALTIES | no | |
+| EXTRA TIME | yes | re-rolls are NOT replenished and carry over |
+| PENALTIES | yes | five roll-offs, ties re-rolled |
 
 ## Skills and Traits
 

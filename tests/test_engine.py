@@ -4084,3 +4084,144 @@ def test_any_number_of_players_may_use_a_special_action_each_turn():
     )
     _special(m, "stab", _dice([3, 3]), player="h00", target="a01")
     assert actions.get("stab")["validate"](m, {"player": "h02", "target": "a03"}).ok
+
+
+# --- throw-ins, Secret Weapons, and the end of a drawn game ----------------
+
+
+def test_a_throw_in_comes_back_in_across_the_templates_three_arrows():
+    """ "roll a D6 to determine the direction the crowd will throw the ball as
+    determined by the Throw-in Template. The ball will then travel 2D6 squares."
+
+    The template is a DIAGRAM with three arrows, so — like the Range Ruler and the
+    push arc — the mapping from a D6 to an arrow is read off the picture. What is
+    quoted is that it comes back INWARD, which is the part every arrow shares.
+    """
+    from bloodbowl.engine.ball import throw_in
+
+    seen = set()
+    for d6 in (1, 3, 5):  # one number from each of the template's three arrows
+        m = _match(("home", 7, 13, 6))
+        out = throw_in(m, _dice([d6, 2, 2, 1]), 0, 13)  # left off the west sideline
+        assert m.ball.x >= 1, "the ball must come back onto the pitch"
+        assert any("hurls the ball back" in (e.text or "") for e in out)
+        seen.add((m.ball.x, m.ball.y))
+    assert len(seen) == 3, f"the three arrows should send it three different ways: {seen}"
+
+
+def test_a_corner_throw_in_uses_a_d3_because_a_corner_has_no_single_way_in():
+    """ "Should the ball leave the pitch from a CORNER square, position the Random
+    Direction Template … and roll a D3." """
+    from bloodbowl.engine.ball import throw_in
+
+    m = _match(("home", 7, 13, 6))
+    out = throw_in(m, _dice([2, 3, 3, 1]), 0, 0)
+    kinds = [r.kind for e in out for r in e.rolls]
+    assert "Corner Throw-in" in kinds, kinds
+    assert 1 <= m.ball.x <= 15 and 1 <= m.ball.y <= 26
+
+
+def test_a_secret_weapon_is_sent_off_at_the_end_of_the_drive():
+    """ "If a Coach fielded any players with the Secret Weapon Trait during the
+    current Drive, then they will immediately be Sent-off AS IF THEY HAD COMMITTED
+    A FOUL ACTION, even if they were not on the pitch at the end of the Drive.
+    Players Sent-off in this way may still Argue the Call."
+
+    "As if they had committed a Foul" is why this calls the Foul's own helper —
+    the Argue roll, the ejected-Coach ban and all — rather than a second
+    implementation that agrees until it does not.
+    """
+    from bloodbowl.engine.game import start_drive
+
+    m = _match(("home", 7, 13, 6, "3+", ["Secret Weapon"]), ("home", 8, 13, 6), ("away", 7, 20, 6))
+    m.setup = [{"id": p.id, "x": p.x, "y": p.y} for p in m.players]
+    start_drive(m, receiving="home", dice=_dice([3] + [4] * 20))
+    assert m.by_id("h00").place == "sent_off"
+    assert m.by_id("h01").place == "pitch", "only the one with the weapon"
+    assert any(r.kind == "Argue the Call" for e in m.events for r in e.rolls), "they may still Argue"
+
+
+def test_extra_time_does_not_replenish_the_re_rolls():
+    """ "Team Re-rolls will NOT be replenished like they would be at half-time. Any
+    Team Re-rolls not spent at the end of the game may carry over." That is the
+    whole difference between Extra Time and a half."""
+    from bloodbowl.engine.events import Event
+    from bloodbowl.engine.game import start_extra_time
+
+    m = _match(("home", 7, 13, 6), ("away", 7, 20, 6))
+    m.apply(Event(kind="match_started", detail={"kicking_to": "home", "rerolls": {"home": 3, "away": 3}}))
+    m.clock.half = 2  # full time comes at the end of the second half
+    m.rerolls["home"] = 1
+    m.setup = [{"id": p.id, "x": p.x, "y": p.y} for p in m.players]
+    m.apply(Event(kind="match_over", text="Full time."))
+
+    out = start_extra_time(m, receiving="home")
+    assert out["ok"] and not m.over
+    assert m.clock.half == 3 and m.clock.turn == 1, "Extra Time is a third period"
+    assert m.rerolls["home"] == 1, "Extra Time replenished what half-time would have"
+
+
+def test_extra_time_is_only_for_a_draw():
+    from bloodbowl.engine.events import Event
+    from bloodbowl.engine.game import start_extra_time
+
+    m = _match(("home", 7, 13, 6))
+    m.apply(Event(kind="match_over", text="Full time."))
+    m.score = {"home": 2, "away": 1}
+    assert not start_extra_time(m)["ok"]
+
+
+def test_a_penalty_shootout_is_five_roll_offs_with_ties_re_rolled():
+    """ "both Coaches will roll off against each other five times … rolling a D6
+    (RE-ROLLING ANY TIES, though no other re-rolls from any source can be used)."
+    """
+    from bloodbowl.engine.game import penalty_shootout
+
+    m = _match(("home", 7, 13, 6))
+    # A tie first, which must be re-rolled and must not count as a kick.
+    out = penalty_shootout(m, _dice([4, 4, 6, 1, 6, 1, 6, 1, 1, 6, 1, 6]))
+    assert out["wins"]["home"] + out["wins"]["away"] == 5, out["wins"]
+    assert out["wins"] == {"home": 3, "away": 2}
+    assert out["winner"] == "home"
+
+
+def test_the_apothecary_puts_a_knocked_out_player_back_on_the_pitch():
+    """ "the player is NOT removed from the pitch … Instead, the player will become
+    STUNNED IN THE SQUARE THEY ARE IN. If the player was Knocked-out as a result of
+    an Injury by the Crowd, they are placed in the Reserves Box instead."
+
+    Back on the pitch is a real swing, and it is once per game.
+    """
+    from bloodbowl.engine.events import Event
+    from bloodbowl.engine.game import use_apothecary
+
+    # A SECOND home player, because the once-per-game half needs another casualty
+    # on the same side — `_match` numbers across the list, so the ids are h00/h01.
+    m = _match(("home", 7, 13, 6), ("home", 8, 13, 6), ("away", 7, 20, 6))
+    m.apply(Event(kind="match_started", detail={"kicking_to": "home", "apothecary": {"home": True, "away": True}}))
+    m.apply(Event(kind="player_condition", actor="h00", detail={"outcome": "knocked_out"}))
+    assert m.by_id("h00").place == "knocked_out"
+
+    out = use_apothecary(m, "h00", _dice([]))
+    assert out["ok"]
+    p = m.by_id("h00")
+    assert p.place == "pitch" and p.down == "stunned", "they should be back, Stunned"
+
+    # Once per game.
+    m.apply(Event(kind="player_condition", actor="h01", detail={"outcome": "knocked_out"}))
+    again = use_apothecary(m, "h01", _dice([]))
+    assert not again["ok"] and "once per game" in again["error"]
+
+
+def test_the_apothecary_sends_a_crowd_victim_to_the_reserves_instead():
+    from bloodbowl.engine.events import Event
+    from bloodbowl.engine.game import use_apothecary
+
+    m = _match(("home", 2, 13, 6), ("away", 1, 13, 6))
+    m.apply(Event(kind="match_started", detail={"kicking_to": "home", "apothecary": {"home": True, "away": True}}))
+    _block(m, "h00", "a01", _dice([4, 4], [["push_back"]]), follow_up=False)  # into the crowd, KO
+    assert m.by_id("a01").place == "knocked_out"
+
+    m.clock.active = "away"
+    out = use_apothecary(m, "a01", _dice([]))
+    assert out["ok"] and m.by_id("a01").place == "reserves"
