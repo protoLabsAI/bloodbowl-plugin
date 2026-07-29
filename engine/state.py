@@ -257,6 +257,10 @@ class Match:
     # count because there is only ever one: "a team … MAY GAIN A SINGLE EXTRA Team
     # Re-roll", however many Leaders are on the pitch.
     leader_used: dict = field(default_factory=dict)
+    # BRIBES, per side. The one Inducement an exhibition match can hold, because
+    # the Kick-off Event Table gives them away: "Each team immediately receives one
+    # free Bribe Inducement." Spent on a sending-off, after Argue the Call.
+    bribes: dict = field(default_factory=dict)
     # Set-ups declared for the NEXT Drive, per side. "The kicking team must set up
     # first followed by the receiving team", so the order is recorded too.
     setups: dict = field(default_factory=dict)
@@ -469,6 +473,16 @@ class Match:
             self.weather = str(d.get("weather") or "perfect")
             apo = d.get("apothecary") or {}
             self.apothecary = {"home": bool(apo.get("home")), "away": bool(apo.get("away"))}
+
+        elif kind == "bribe_used":
+            side = str(d.get("side") or "")
+            # Spent either way: "the referee pockets the Bribe but sends the player
+            # off anyway — the player is still Sent-off AND THE BRIBE IS LOST."
+            self.bribes[side] = max(0, int(self.bribes.get(side, 0)) - 1)
+
+        elif kind == "bribes_awarded":
+            for side in ("home", "away"):
+                self.bribes[side] = int(self.bribes.get(side, 0)) + int(d.get(side, 0))
 
         elif kind == "kickoff_bonus":
             side = str(d.get("side") or "")
@@ -722,6 +736,7 @@ class Match:
             "weather": self.weather,
             "apothecary": dict(self.apothecary),
             "leader_used": dict(self.leader_used),
+            "bribes": dict(self.bribes),
             "setups": {k: [dict(r) for r in v] for k, v in self.setups.items()},
             "pending": dict(self.pending),
             "charge": dict(self.charge),

@@ -39,7 +39,7 @@ KICKOFF_EVENTS: dict[int, tuple[str, str, bool]] = {
         "Get the Ref",
         "Each team immediately receives one free Bribe Inducement. This Bribe must be used by "
         "the end of the game or it is lost.",
-        False,  # Inducements are not modelled.
+        True,  # A Bribe is the one Inducement a match can use — see engine/pregame.py.
     ),
     3: (
         "Time-out!",
@@ -354,7 +354,21 @@ def kickoff_event(match, dice, receiving: str) -> list[Event]:
     ]
     match.apply(events[0])
 
-    if name == "High Kick":
+    if name == "Get the Ref":
+        # "EACH TEAM immediately receives ONE FREE Bribe Inducement." Both sides,
+        # and free — which is what lets an exhibition match hold an Inducement it
+        # never bought. "This Bribe must be used by the end of the game or it is
+        # lost", so there is never a reason to save the last one.
+        events.append(
+            Event(
+                kind="bribes_awarded",
+                detail={"home": 1, "away": 1, "event": name},
+                text="Both Coaches pocket a free Bribe. Use it or lose it.",
+            )
+        )
+        match.apply(events[-1])
+
+    elif name == "High Kick":
         # "ONE Open player on the receiving team MAY immediately be placed in the
         # square the ball is going to land in." One player, and "may" — declining
         # is a real answer, so this is offered rather than taken.

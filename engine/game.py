@@ -70,6 +70,21 @@ def new_match(
     # "this is done with a simple coin toss … The Coach who rolls highest decides
     # which team is kicking and which team is receiving." Rolled when nobody said.
     receiving = kicking_to if kicking_to in ("home", "away") else _roll_off(sky)
+    # THE FANS, the first step of the Pre-game Sequence: "roll a D3 … add … your
+    # Dedicated Fans Characteristic". It used to default to zero, which made Pitch
+    # Invasion quietly milder than the rules intend — Fan Factor is added to a D6
+    # there, and a zero is not a neutral default, it is a wrong one.
+    from .pregame import DEFAULT_DEDICATED_FANS, fan_factor
+    from .pregame import steps as pregame_steps
+
+    fans = {}
+    for side in ("home", "away"):
+        given = (staff or {}).get(side) or {}
+        if given.get("fan_factor"):
+            fans[side] = int(given["fan_factor"])  # an operator may state it outright
+            continue
+        dedicated = int(given.get("dedicated_fans", DEFAULT_DEDICATED_FANS))
+        fans[side], roll = fan_factor(sky, dedicated)
     m.apply(
         Event(
             kind="match_started",
@@ -80,12 +95,16 @@ def new_match(
                 # Assistant Coaches, Cheerleaders, Fan Factor — the Kick-off Event
                 # Table asks for all three, and a practice board hired none of
                 # them. Zero unless told otherwise, and reported either way.
-                "staff": {side: dict((staff or {}).get(side) or {}) for side in ("home", "away")},
+                "staff": {
+                    side: {**dict((staff or {}).get(side) or {}), "fan_factor": fans[side]} for side in ("home", "away")
+                },
+                "pregame": pregame_steps(league=False),
                 "weather": condition,
                 "apothecary": {"home": bool(apothecary), "away": bool(apothecary)},
             },
             text=f"Match begins. {m.home_team or 'Home'} vs {m.away_team or 'Away'}. "
-            f"{n} Team Re-roll(s) each. Weather: {weather_name(condition)}."
+            f"{n} Team Re-roll(s) each. Weather: {weather_name(condition)}. "
+            f"Fan Factor {fans['home']}-{fans['away']}."
             + (
                 f" {len(tokens)} preset token(s) took the field as linemen: {'; '.join(tokens[:4])}"
                 + ("…" if len(tokens) > 4 else "")
