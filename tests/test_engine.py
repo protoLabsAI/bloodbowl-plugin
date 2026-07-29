@@ -1392,6 +1392,45 @@ def test_the_half_advances_after_eight_turns_each_and_the_match_ends_after_two()
     assert any(e.kind == "match_over" for e in m.events)
 
 
+def test_the_post_game_runs_ONCE_however_many_times_the_last_turn_is_ended():
+    """Found in a live game, which finished 2-2 and awarded FOUR MVPs.
+
+    An Amazon ended on 8 SPP from being named MVP twice, and two different Ogre
+    Blockers were each "the home MVP" off two separate D6. Dedicated Fans were
+    updated twice and Full time was logged twice.
+
+    `end_turn` runs `_end_of_game` whenever the match is ALREADY over, so a second
+    call ran the entire Post-game Sequence again — and a second call is the normal
+    case, not a strange one: a Touchdown's Turnover ends the turn, and then the
+    coach ends the turn they think they are still in.
+
+    Every step of it is a once-per-game fact. "The player that is given the MVP
+    award generates 4 SPP" — the player, one, per side, per match.
+    """
+    from collections import Counter
+
+    from bloodbowl.engine.game import end_turn
+
+    m = _kicked()
+    for _ in range(40):
+        end_turn(m)
+        if m.over:
+            break
+    assert m.over, "the match must reach full time"
+
+    spp_at_the_whistle = dict(m.spp)
+    before = Counter(e.kind for e in m.events)
+    assert before["match_over"] == 1 and before["post_game"] == 2, "one whistle, one step per side"
+
+    end_turn(m)  # the coach ends a turn the Turnover had already ended
+    end_turn(m, forced=True)  # and a Turnover lands after the whistle
+
+    after = Counter(e.kind for e in m.events)
+    assert after["match_over"] == 1, f"the whistle blows once: {after['match_over']}"
+    assert after["post_game"] == 2, f"one Dedicated Fans update per side: {after['post_game']}"
+    assert m.spp == spp_at_the_whistle, f"no SPP is earned after full time: {m.spp} was {spp_at_the_whistle}"
+
+
 def test_the_clock_never_runs_past_the_end_of_a_half():
     from bloodbowl.engine.state import TURNS_PER_HALF
 
