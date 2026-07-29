@@ -471,6 +471,20 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         )
     )
 
+    # FUMBLEROOSKI: "When this player performs a Move Action WHILST THEY ARE IN
+    # POSSESSION OF THE BALL, they may choose to PLACE the ball on the ground in
+    # ANY SQUARE THEY MOVE OUT OF during their Move Action. THIS WILL NOT CAUSE A
+    # TURNOVER." Placed, not dropped — no bounce — and it is a CHOICE, so it is a
+    # command flag rather than something the engine does on anybody's behalf.
+    if cmd.get("drop_ball") and match.ball.carrier == p.id and can_use(p, "Fumblerooski"):
+        rec.emit(
+            Event(
+                kind="ball_moved",
+                detail={"x": vacated[0], "y": vacated[1], "carrier": "", "fumblerooski": True},
+                text=f"Fumblerooski: {p.name()} leaves the ball in ({vacated[0]},{vacated[1]}). No Turnover.",
+            )
+        )
+
     # SHADOWING, once they are actually gone: "this player is immediately placed
     # into the square that the opposition player vacated".
     if needs_dodge and leaving_markers:

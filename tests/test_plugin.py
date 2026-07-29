@@ -1137,3 +1137,36 @@ def test_the_lineman_is_the_one_a_team_may_field_most_of(registry):
     sc2.players = [Player(side="home", x=7, y=13, position="Orc Blitzer", team="Orc", MA="6", AG="3+", AV="9+")]
     assert flesh_out(sc2) == []
     assert sc2.players[0].position == "Orc Blitzer"
+
+
+def test_the_fumblerooski_flag_survives_the_whole_tool_path(registry):
+    """A command field the tool forgets to forward is the bug class that dropped a
+    Block's `target` for as long as Blocking existed: the request answers ok:false
+    and the board does nothing, which reads as a dead button."""
+    import bloodbowl
+    from bloodbowl.store import load_match, save_match
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+    tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home"})
+    json.loads(tools["bb_game_choose"].invoke({"decline": True}))
+
+    m = load_match()
+    m.by_id("h00").player.skills = ["Fumblerooski"]
+    # Through an EVENT, not by assignment: a Match is rebuilt by folding its log,
+    # so a ball handed over by poking the object is a ball that is not there after
+    # the reload the next tool call performs.
+    from bloodbowl.engine.events import Event
+
+    m.apply(Event(kind="ball_picked_up", actor="h00", text="h00 has the ball."))
+    where = (m.by_id("h00").x, m.by_id("h00").y)
+    save_match(m)
+
+    out = json.loads(
+        tools["bb_game_act"].invoke({"action": "move", "player": "h00", "x": 7, "y": 12, "drop_ball": True})
+    )
+    assert out["ok"], out
+    after = load_match()
+    assert not after.ball.carrier and (after.ball.x, after.ball.y) == where, (after.ball.x, after.ball.y)

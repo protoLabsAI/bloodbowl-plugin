@@ -333,6 +333,7 @@ def _tools(cfg: dict):
         choice: int = 0,
         follow_up: bool = True,
         team_reroll: bool = False,
+        drop_ball: bool = False,
     ) -> str:
         """Take an action.
 
@@ -394,6 +395,11 @@ def _tools(cfg: dict):
         stronger. Ask bb_game_odds first: it tells you how many dice you get and
         who picks them. ``follow_up`` moves into the vacated square after a push.
 
+        ``drop_ball=True`` on a Move is a FUMBLEROOSKI — "they may choose to place
+        the ball on the ground in any square they move out of … this will not cause
+        a Turnover". It needs the Skill, and it is asked for rather than assumed:
+        the engine will not put the ball down on anybody's behalf.
+
         The engine adjudicates: an illegal action is refused with a reason rather
         than performed. The reply carries every roll that was made — quote those
         rather than describing what probably happened.
@@ -404,7 +410,13 @@ def _tools(cfg: dict):
         m = load_match()
         if m is None:
             return json.dumps({"ok": False, "error": "no match in progress"})
-        cmd = {"player": player, "x": int(x), "y": int(y), "team_reroll": bool(team_reroll)}
+        cmd = {
+            "player": player,
+            "x": int(x),
+            "y": int(y),
+            "team_reroll": bool(team_reroll),
+            "drop_ball": bool(drop_ball),
+        }
         if action == "block":
             cmd.update({"target": target, "choice": int(choice), "follow_up": bool(follow_up)})
         elif action in ("handoff", "blitz", "foul", "throwteam"):

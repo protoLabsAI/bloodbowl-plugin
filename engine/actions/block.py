@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from ...pitch import in_bounds
 from .. import rerolls as team_rerolls
-from ..ball import check_touchdown
+from ..ball import bounce, check_touchdown
 from ..dice import BLOCK_LABELS, roll_target
 from ..events import Event
 from ..injury import injure_by_crowd, knock_down, place_prone
@@ -35,7 +35,7 @@ from ..rules import (
     push_squares,
     strength_of,
 )
-from ..skills import SkillContext, hooks_for, unmodelled_skills
+from ..skills import SkillContext, can_use, hooks_for, unmodelled_skills
 from ..state import Match
 from . import Legality, Outcome, Recorder, ended, register
 
@@ -551,7 +551,15 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
 
     def _push_and_follow(knock_after: bool) -> None:
         vacated = (t.x, t.y)
+        had_ball = match.ball.carrier == t.id
         _do_push(match, p, t, dice, rec, pushed, prefer=cmd.get("push_to"))
+        # STRIP BALL: "if an opposition player is Pushed Back then they will DROP
+        # THE BALL IN THE SQUARE THEY ARE PUSHED BACK INTO, at which point it will
+        # Bounce from that square. This Bounce will happen BEFORE the opposition
+        # player becomes Prone (if applicable) but AFTER this player chooses to
+        # Follow-up." The bounce is deferred to the end of this function for
+        # exactly that reason — it is one of the few orderings the rules spell out.
+        stripped = had_ball and t.place == "pitch" and can_use(p, "Strip Ball")
         if knock_after and t.place == "pitch":
             # "Apply the Push Back result. The target is then Knocked Down in the
             # square they are now in" — so the Armour Roll happens where they land.
@@ -590,6 +598,17 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                     text=f"{p.name()} follows up to ({vacated[0]},{vacated[1]}).",
                 )
             )
+        # …and NOW the Strip Ball bounce, after the Follow-up, exactly as written.
+        if stripped and match.ball.carrier == t.id:
+            rec.emit(
+                Event(
+                    kind="ball_dropped",
+                    actor=t.id,
+                    detail={"x": t.x, "y": t.y, "skill": "Strip Ball"},
+                    text=f"Strip Ball: {p.name()} knocks the ball out of {t.name()}'s hands.",
+                )
+            )
+            rec.absorb(bounce(match, dice))
 
     if dodged:
         rec.emit(

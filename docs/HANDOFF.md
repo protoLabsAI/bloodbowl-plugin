@@ -369,7 +369,7 @@ block, blitz, foul, hand-off, Secure the Ball, pass → injuries → touchdowns 
 drives → half-time → full time.
 
 Actions: `move`, `block`, `blitz`, `foul`, `handoff`, `secure`, `pass`.
-Skills modelled — **63 of 108**. The other 74 are reported as unmodelled *and can still be quoted* —
+Skills modelled — **68 of 108**. The other 74 are reported as unmodelled *and can still be quoted* —
 `bb_get_skill` returns the rulebook's text for all 108 whether or not the engine
 applies them.
 

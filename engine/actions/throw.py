@@ -39,7 +39,7 @@ from ..dice import roll_target
 from ..events import Event
 from ..ruler import band, in_corridor
 from ..rules import markers_of_square
-from ..skills import may_reroll, roll_modifier, unmodelled_skills
+from ..skills import can_use, may_reroll, roll_modifier, unmodelled_skills
 from ..state import Match
 from ..weather import bands_allowed
 from ..weather import name_of as weather_name
@@ -149,6 +149,30 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     fumbled = r.dice[0] == 1 or (r.total is not None and r.total <= 1)
     accurate = r.passed and not fumbled
 
+    # SAFE PASS: "If this player rolls A NATURAL 1 when making a Passing Ability
+    # Test, then it will not result in a Fumbled Pass. Instead, the player RETAINS
+    # POSSESSION of the ball and their activation immediately ends. NO TURNOVER is
+    # caused." Natural 1 only — a fumble that came from modifiers is still a
+    # fumble, which is the distinction the rule is careful about.
+    if fumbled and r.dice[0] == 1 and can_use(p, "Safe Pass"):
+        rec.emit(
+            Event(
+                kind="pass_thrown",
+                actor=p.id,
+                detail={"outcome": "safe_pass", "range": d["range"], "x": x, "y": y},
+                rolls=[r],
+                text=f"{p.name()} nearly drops it, and hangs on. {r.describe()} "
+                "Safe Pass: no Fumble, no Turnover, and the ball stays with them.",
+            )
+        )
+        rec.emit(ended(p.id, "pass"))
+        return Outcome(
+            ok=True,
+            events=rec.events,
+            text=f"{p.name()} kept hold of the ball — Safe Pass, and their activation ends.",
+            unmodelled=unmodelled,
+        )
+
     if fumbled:
         rec.emit(
             Event(
@@ -230,9 +254,23 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         else:
             rec.absorb(catch(match, landed, dice, team_reroll=bool(cmd.get("team_reroll"))))
 
-    rec.emit(ended(p.id, "pass"))
     holder = match.by_id(match.ball.carrier) if match.ball.carrier else None
     ours = holder is not None and holder.side == p.side
+    # GIVE AND GO: "If this player performs a Pass Action that is A QUICK PASS …
+    # then, SO LONG AS A TURNOVER ISN'T CAUSED, their activation does not end once
+    # the Pass is resolved. Instead, they may continue with their Move Action using
+    # any movement they have remaining." Quick Pass only, and only if it worked.
+    if ours and d["range"] == "Quick Pass" and can_use(p, "Give and Go"):
+        rec.emit(
+            Event(
+                kind="note",
+                actor=p.id,
+                detail={"skill": "Give and Go"},
+                text=f"{p.name()} gives and goes — their activation continues.",
+            )
+        )
+    else:
+        rec.emit(ended(p.id, "pass"))
     return Outcome(
         ok=ours,
         events=rec.events,
