@@ -566,12 +566,10 @@ says so); Argue the Call does too. Ask when the choice can change the outcome.
      Block Action" makes the engine take an action nobody asked for, and nothing
      in here does that yet.
    - The rest are ordinary hook registrations against machinery that exists.
-2. **A match started from a preset has statless players.** A shipped preset is a
-   SHAPE — labelled tokens with no position, no MA, no AG, no AV — which is right
-   for the practice board and wrong the moment `bb_game_new` builds a Match from
-   it: `PlayerState.movement()` reads `int("" or 0)` and every one of them is a
-   player who cannot move. Either refuse to start (with the reason) or fill from
-   the team roster. Found by looking at a harness screenshot, not by a test.
+2. ~~A match started from a preset has statless players.~~ Fixed — `state.flesh_out`
+   gives every statless token the team's LINEMAN (cheapest positional, the only
+   0-16 on every roster) at match start and says in the log that it did. The label
+   is kept. Two tests, one of them through HTTP.
 
 ### Known simplifications, all deliberate and all stated in the code
 
