@@ -779,6 +779,45 @@ def _monstrous_mouth(ctx: SkillContext) -> None:
     think to clear one."""
 
 
+@skill_hook("Ball & Chain", "special_action")
+def _ball_and_chain(ctx: SkillContext) -> None:
+    """S3: "the ONLY action they can declare is a Ball & Chain Special Action …
+    position the Throw-in Template over this player so it faces one of the two End
+    Zones or either Sideline. Then roll a D6 and move this player into the square
+    as indicated … A player that moves in this manner does not have to make an
+    Agility Test to Dodge away from another player's Tackle Zone; THEY WILL
+    AUTOMATICALLY PASS … can move a number of squares up to their MA."
+
+    Movement without agency: the coach picks the facing, the die picks the square.
+    Free Dodges are what make the Trait survivable at all."""
+
+
+@skill_hook("Bombardier", "special_action")
+def _bombardier(ctx: SkillContext) -> None:
+    """S3: "they throw a bomb IN THE SAME MANNER as when a player performs a Pass
+    Action … Though this is NOT a Pass Action itself … may not perform a Move
+    Action before throwing the bomb … When a bomb explodes, any player in the
+    square it exploded in is hit. Additionally, roll a D6 for each player adjacent
+    … On a 4+, they are hit. Any Standing player that is hit is immediately
+    Knocked Down. Additionally, make an Armour Roll for any Prone or Stunned
+    players hit."
+
+    The catch-and-throw-it-back chain is reported rather than followed: it needs a
+    coach at the other end, which is the one thing this engine cannot supply."""
+
+
+@skill_hook("Kick Team-mate", "action")
+def _kick_team_mate(ctx: SkillContext) -> None:
+    """S3: "works exactly the same as a Throw Team-mate Action, with the following
+    exceptions: Performing a Kick Team-mate Special Action DOES NOT COUNT as a
+    team's Throw Team-mate Action for the Turn … However, if a Kick Team-mate
+    Special Action results in a Fumbled Throw, immediately make an Injury Roll for
+    the team-mate being kicked, TREATING ANY RESULT OF STUNNED AS KNOCKED OUT."
+
+    Kicking somebody is worse for them than throwing them, which is the whole
+    point of the distinction."""
+
+
 @skill_hook("Throw Team-mate", "action")
 def _throw_team_mate(ctx: SkillContext) -> None:
     """S3: "This player may declare the Throw Team-mate Action." The permission

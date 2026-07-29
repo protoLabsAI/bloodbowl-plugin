@@ -24,7 +24,7 @@ _ACTIONS: dict[str, dict[str, Callable]] = {}
 # Hand-off, Secure the Ball, Blitz, Foul and Throw Team-mate. The two exceptions
 # are stated just as plainly — "There is no limit to the number of players that
 # can declare a Move Action each Turn", and the same for Block.
-ONCE_PER_TURN = ("blitz", "pass", "handoff", "secure", "foul", "throwteam")
+ONCE_PER_TURN = ("blitz", "pass", "handoff", "secure", "foul", "throwteam", "kickteam")
 
 # What to call an Action in a sentence. `action.title()` turns "throwteam" into
 # "Throwteam", which is the sort of thing a coach reads twice.
@@ -35,6 +35,7 @@ DISPLAY = {
     "secure": "Secure the Ball",
     "foul": "Foul",
     "throwteam": "Throw Team-mate",
+    "kickteam": "Kick Team-mate",
     "block": "Block",
     "move": "Move",
     "forego": "Forego",

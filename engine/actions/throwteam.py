@@ -74,13 +74,17 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, f"no player with id {cmd.get('player')!r}")
     if p.side != match.clock.active:
         return Legality(False, f"it is {match.clock.active}'s turn, and that player is {p.side}")
-    spent = refuse_if_spent(match, p, "throwteam")
+    spent = refuse_if_spent(match, p, "kickteam" if cmd.get("_kick") else "throwteam")
     if spent:
         return Legality(False, spent)
     if p.place != "pitch" or p.down != "standing":
         return Legality(False, "only a Standing player on the pitch can throw a team-mate")
-    if not p.has_skill("Throw Team-mate"):
-        return Legality(False, f"{p.name()} does not have the Throw Team-mate Trait")
+    # A Kick Team-mate is granted by its OWN Trait — "works exactly the same as a
+    # Throw Team-mate Action" describes the procedure, not the permission, and
+    # demanding both would make the Trait unusable on its own.
+    needed = "Kick Team-mate" if cmd.get("_kick") else "Throw Team-mate"
+    if not p.has_skill(needed):
+        return Legality(False, f"{p.name()} does not have the {needed} Trait")
     if not _passing_target(p):
         return Legality(False, f"{p.name()} has no Passing Ability and cannot throw")
 
@@ -291,6 +295,24 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         # square" — not the target square, which is the whole cost of a fumble.
         start = (p.x, p.y)
         penalty = -1
+        if cmd.get("_kick"):
+            # "if a Kick Team-mate Special Action results in a Fumbled Throw,
+            # immediately make an Injury Roll for the team-mate being kicked,
+            # TREATING ANY RESULT OF STUNNED AS KNOCKED OUT."
+            from ..injury import injury_roll
+
+            hurt = injury_roll(match, t, dice)
+            rec.absorb(hurt)
+            outcome = next((e.detail.get("outcome") for e in hurt if e.kind == "injury_roll"), "")
+            if outcome == "stunned":
+                rec.emit(
+                    Event(
+                        kind="player_condition",
+                        actor=t.id,
+                        detail={"outcome": "knocked_out"},
+                        text=f"A kick is worse than a throw — {t.name()} is Knocked-out rather than Stunned.",
+                    )
+                )
     else:
         start = (x, y)
         penalty = 0 if superb else -1
@@ -309,7 +331,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         _scatter_player(match, t, dice, rec, times=1 if fumbled else 3)
 
     turned_over = _land(match, t, dice, rec, penalty, had_ball)
-    rec.emit(ended(p.id, "throwteam"))
+    rec.emit(ended(p.id, "kickteam" if cmd.get("_kick") else "throwteam"))
     return Outcome(
         ok=not turned_over,
         events=rec.events,
@@ -319,4 +341,28 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     )
 
 
+def _kick_validate(match: Match, cmd: dict) -> Legality:
+    """KICK TEAM-MATE: "works exactly the same as a Throw Team-mate Action, with
+    the following exceptions: Performing a Kick Team-mate Special Action DOES NOT
+    COUNT as a team's Throw Team-mate Action for the Turn, and so a team can
+    perform both … in the same Turn if they wish."
+
+    So it borrows every check but the once-per-turn one, which it swaps for its
+    own — "only one player can declare this Special Action each Turn".
+    """
+    return validate(match, {**cmd, "_kick": True})
+
+
+def _kick_resolve(match: Match, cmd: dict, dice) -> Outcome:
+    """…and its one real difference: "if a Kick Team-mate Special Action results in
+    a FUMBLED THROW, immediately make an Injury Roll for the team-mate being
+    kicked, TREATING ANY RESULT OF STUNNED AS KNOCKED OUT."
+
+    Kicking somebody is worse for them than throwing them, which is the entire
+    point of the distinction.
+    """
+    return resolve(match, {**cmd, "_kick": True}, dice)
+
+
 register("throwteam", validate, resolve)
+register("kickteam", _kick_validate, _kick_resolve)

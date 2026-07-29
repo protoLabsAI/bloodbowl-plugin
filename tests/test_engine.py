@@ -4334,3 +4334,78 @@ def test_the_kicking_team_is_rolled_off_for_when_nobody_says():
     assert _roll_off(_dice([6, 2])) == "away", "home rolled highest, so they kick"
     assert _roll_off(_dice([2, 6])) == "home"
     assert _roll_off(_dice([4, 4, 5, 1])) == "away", "a tie is re-rolled"
+
+
+# --- the last three Special Actions ----------------------------------------
+
+
+def test_kick_team_mate_does_not_use_up_the_teams_throw():
+    """ "Performing a Kick Team-mate Special Action DOES NOT COUNT as a team's Throw
+    Team-mate Action for the Turn, and so a team can perform both … in the same
+    Turn if they wish." """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(
+        ("home", 7, 8, 6, "3+", ["Kick Team-mate", "Throw Team-mate"]),
+        ("home", 7, 9, 6, "3+", ["Right Stuff"]),
+        ("home", 2, 8, 6, "3+", ["Throw Team-mate"]),
+        ("home", 2, 9, 6, "3+", ["Right Stuff"]),
+    )
+    for who in ("h00", "h02"):
+        m.by_id(who).player.PA = "3+"
+    kicked = actions.get("kickteam")["resolve"](
+        m, {"player": "h00", "target": "h01", "x": 7, "y": 12}, _dice([5, 2, 2, 2, 4])
+    )
+    assert kicked.ok or kicked.events
+    # The team's Throw Team-mate is still there for somebody else.
+    assert actions.get("throwteam")["validate"](m, {"player": "h02", "target": "h03", "x": 2, "y": 12}).ok
+
+
+def test_a_fumbled_kick_hurts_the_team_mate_more_than_a_throw_would():
+    """ "if a Kick Team-mate Special Action results in a Fumbled Throw, immediately
+    make an Injury Roll for the team-mate being kicked, TREATING ANY RESULT OF
+    STUNNED AS KNOCKED OUT." """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 8, 6, "3+", ["Kick Team-mate"]), ("home", 7, 9, 6, "3+", ["Right Stuff"]))
+    m.by_id("h00").player.PA = "3+"
+    # A natural 1 fumbles; the injury rolls 2+2 = 4, which is Stunned on the table
+    # and a Knocked-out here.
+    # PA 1 (fumble), the kick's injury 2+2 = 4, the scatter, then the landing fall
+    actions.get("kickteam")["resolve"](
+        m, {"player": "h00", "target": "h01", "x": 7, "y": 12}, _dice([1, 2, 2, 2, 4, 2])
+    )
+    assert m.by_id("h01").place == "knocked_out", "a kick turns a Stunned into a Knocked-out"
+
+
+def test_ball_and_chain_drags_a_player_around_and_dodges_for_free():
+    """ "roll a D6 and move this player into the square as indicated … A player that
+    moves in this manner does not have to make an Agility Test to Dodge away from
+    another player's Tackle Zone; THEY WILL AUTOMATICALLY PASS." """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 3, "3+", ["Ball & Chain"]), ("away", 7, 14, 6))
+    out = actions.get("ball_chain")["resolve"](m, {"player": "h00", "facing": "north"}, _dice([3, 3, 3]))
+    p = m.by_id("h00")
+    assert (p.x, p.y) != (7, 13), "they should have been dragged somewhere"
+    assert not any(r.kind.startswith("Dodge") for e in out.events for r in e.rolls), "Dodges are automatic"
+    assert any("No Dodge is needed" in (e.text or "") for e in out.events)
+
+
+def test_a_bomb_explodes_where_it_stops_and_catches_the_neighbours():
+    """ "When a bomb explodes, any player in the square it exploded in is hit …
+    roll a D6 for each player ADJACENT to the square … On a 4+, they are hit. Any
+    Standing player that is hit is immediately Knocked Down." """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 4, 6, "3+", ["Bombardier"]), ("away", 7, 8, 6), ("away", 8, 8, 6))
+    m.by_id("h00").player.PA = "2+"
+    out = actions.get("throw_bomb")["resolve"](m, {"player": "h00", "x": 7, "y": 8}, _dice([5, 5, 2, 2, 2, 2, 2, 2, 2]))
+    assert any("explodes" in (e.text or "") for e in out.events)
+    assert m.by_id("a01").down != "standing", "the player under it should be down"
+    blast = [r for e in out.events for r in e.rolls if r.kind == "Blast"]
+    assert blast, "the neighbour should have been rolled for"
