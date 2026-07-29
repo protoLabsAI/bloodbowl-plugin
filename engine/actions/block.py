@@ -439,22 +439,43 @@ def _both_down_choice(match: Match, p, t, juggernaut=None, wrestle=None) -> tupl
     return "", ""
 
 
-def _choose(faces: list[str], chooser: str, acting: str, choice) -> int:
+# Best to worst FOR THE ATTACKER. POW puts the target down and leaves the attacker
+# standing; Stumble does the same unless the target has Dodge, in which case it is
+# a push; Push Back moves them and hurts nobody; Both Down puts BOTH down unless
+# the attacker has Block or Wrestle; Player Down is the attacker alone on the floor.
+_BEST_FOR_ATTACKER = ["pow", "stumble", "push_back", "both_down", "player_down"]
+_WORST_FOR_ATTACKER = ["player_down", "both_down", "push_back", "stumble", "pow"]
+
+
+def _choose(faces: list[str], chooser: str, acting: str, choice, match=None, blocker=None) -> int:
     """Which die is applied.
 
-    The stronger coach chooses. When that is the ACTING coach we honour their
-    pick; when it is the defending side there is no second coach at the table, so
-    the engine picks the worst result for the attacker — playing the opposition as
-    well as it can rather than conveniently badly.
+    The stronger coach chooses. When that is the ACTING coach we honour their pick
+    — and when they DID NOT MAKE ONE, we pick the best face for them.
+
+    That default used to be `faces[0]`, the first die ROLLED, which is nobody's
+    choice at all: a coach who rolled "Both Down, Push Back, Push Back" and did not
+    pass an index got the Both Down and went down with their target. It cost the
+    agent two turns in its first live game, and it apologised for the engine's bug
+    both times. An arbitrary default is worse than either honest option, because it
+    looks like a decision.
+
+    The defending branch already played the opposition as well as it could. This is
+    the same courtesy pointed the other way.
     """
     if chooser == "attacker" and acting == "attacker":
-        try:
-            i = int(choice)
-        except (TypeError, ValueError):
-            i = 0
-        return max(0, min(i, len(faces) - 1))
-    order = ["player_down", "both_down", "push_back", "stumble", "pow"]
-    return min(range(len(faces)), key=lambda i: order.index(faces[i]))
+        if choice is not None and str(choice).strip() != "":
+            try:
+                return max(0, min(int(choice), len(faces) - 1))
+            except (TypeError, ValueError):
+                pass
+        order = list(_BEST_FOR_ATTACKER)
+        # A blocker who will not fall on a Both Down (Block, or Wrestle against a
+        # standing target) should take it over a mere push: the target goes down.
+        if match is not None and blocker is not None and not _would_fall(match, blocker):
+            order = ["pow", "both_down", "stumble", "push_back", "player_down"]
+        return min(range(len(faces)), key=lambda i: order.index(faces[i]))
+    return min(range(len(faces)), key=lambda i: _WORST_FOR_ATTACKER.index(faces[i]))
 
 
 def resolve(match: Match, cmd: dict, dice) -> Outcome:
@@ -647,7 +668,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             )
 
     faces = dice.block(n)
-    face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"))]
+    face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"), match, p)]
     roll = Roll(kind="Block", dice=list(faces), note=f"{n} dice, {chooser} chooses")
     dice.rolls.append(roll)
     rolls = [roll]
@@ -658,7 +679,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     # Action", so a Blitz switches it off.
     if face == "both_down" and p.has_skill("Brawler") and declared_a_block(match, p) and _would_fall(match, p):
         faces = dice.block(n)
-        face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"))]
+        face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"), match, p)]
         again = Roll(kind="Block (re-roll)", dice=list(faces), note="Brawler, a single Both Down")
         dice.rolls.append(again)
         rolls.append(again)
@@ -672,7 +693,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         and not cmd.get("_hated")
     ):
         faces = dice.block(n)
-        face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"))]
+        face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"), match, p)]
         again = Roll(kind="Block (re-roll)", dice=list(faces), note="Hatred, a single Player Down")
         dice.rolls.append(again)
         rolls.append(again)
@@ -683,7 +704,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         # POOL must be re-rolled" — so the whole handful goes again, not the one
         # face that was applied.
         faces = dice.block(n)
-        face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"))]
+        face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"), match, p)]
         again = Roll(kind="Block (Team Re-roll)", dice=list(faces), note=f"all {n} dice re-rolled")
         dice.rolls.append(again)
         rolls.append(again)

@@ -1329,3 +1329,22 @@ def test_a_board_started_match_can_be_pulled_into_a_chat(client, registry):
 
     # And with no session to bind it says so rather than binding nothing.
     assert json.loads(tools["bb_game_here"].invoke({}))["ok"] is False
+
+
+def test_the_turn_nudge_is_wired_from_the_startup_hook_not_from_register(registry):
+    """`register()` runs during the GRAPH BUILD; the host's event bus is not
+    populated until the server's STARTUP hook. Subscribing at registration is
+    therefore too early — and it fails SILENTLY: `registry.on` logs "dropped — no
+    bus" at debug level, the nudge never arrives, and the agent simply never takes
+    its turn with nothing anywhere saying why.
+
+    That is exactly what happened the first time this shipped. `register_surface`
+    is the seam whose `start` runs late enough."""
+    import bloodbowl
+
+    bloodbowl.register(registry)
+    assert "bloodbowl-turns" in registry.surfaces, f"the nudge is not deferred to startup: {registry.surfaces}"
+
+    # And it must not have subscribed during register — there was no bus to
+    # subscribe to, so anything it did there went nowhere.
+    assert not registry.subscriptions, f"subscribed too early: {registry.subscriptions}"

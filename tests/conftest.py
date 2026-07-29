@@ -59,6 +59,10 @@ class _Registry:
         self.routers: list[tuple[object, str]] = []
         self.surfaces: list = []
         self.skill_dirs: list = []
+        # Bus subscriptions, so a test can assert WHEN a plugin wires one rather
+        # than only that it did — `register()` is too early, and that failure is
+        # silent on a real host.
+        self.subscriptions: list = []
 
     def register_tool(self, t):
         self.tools.append(t)
@@ -69,8 +73,14 @@ class _Registry:
     def register_router(self, router, prefix):
         self.routers.append((router, prefix))
 
-    def register_surface(self, start, stop=None, name=None):
+    def register_surface(self, start, stop=None, name=None, reload=None):
         self.surfaces.append(name)
+
+    def on(self, topic, handler):
+        self.subscriptions.append((topic, handler))
+
+    def emit(self, topic, data=None):
+        """The bus, as far as a host-free test is concerned: it exists and swallows."""
 
     def register_skill_dir(self, path):
         self.skill_dirs.append(path)

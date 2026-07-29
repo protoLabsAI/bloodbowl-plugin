@@ -6633,3 +6633,44 @@ def test_a_finished_match_is_waiting_for_nobody():
     m = _versus(("home", 7, 13), ("away", 7, 20))
     m.over = True
     assert handover.owed(m) == {}
+
+
+def test_a_block_with_no_stated_choice_takes_the_best_face_not_the_first_die():
+    """The default used to be `faces[0]` — the first die ROLLED, which is nobody's
+    choice at all. A coach who rolled "Both Down, Push Back, Push Back" and did not
+    pass an index got the Both Down and went down with their target.
+
+    It cost the agent two turns in its first live game against a person, and it
+    apologised for the engine's bug both times. An arbitrary default is worse than
+    either honest option, because it looks like a decision."""
+    m = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
+    out = _block(m, "h00", "a01", _dice([4] * 10, block=[["both_down", "push_back", "push_back"]]))
+    assert out.turnover is not True, "the blocker should not have taken the Both Down"
+    assert m.by_id("h00").down == "standing", "…and should still be on their feet"
+    rolled = next(r for e in out.events for r in e.rolls if r.kind == "Block")
+    assert set(rolled.dice) == {"both_down", "push_back"}, "the dice are untouched — only the PICK changed"
+
+    # An explicit choice is still honoured, however bad it is: the coach's call.
+    chosen = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
+    out2 = _block(chosen, "h00", "a01", _dice([4] * 10, block=[["both_down", "push_back", "push_back"]]), choice=0)
+    assert chosen.by_id("h00").down != "standing", "an explicit Both Down is theirs to pick"
+    assert out2.turnover is True
+
+
+def test_a_blocker_who_will_not_fall_prefers_the_both_down():
+    """With Block, a Both Down puts the TARGET down and leaves you standing — which
+    beats a Push Back. The default has to know that, or it hands back a shove when
+    it was offered a knockdown."""
+    m = _match(("home", 7, 13, 6, "3+", ["Block"]), ("away", 7, 14), ("away", 2, 20))
+    _block(m, "h00", "a01", _dice([4] * 10, block=[["push_back", "both_down"]]))
+    assert m.by_id("h00").down == "standing", "Block keeps them up"
+    assert m.by_id("a01").down != "standing", "…and the target goes down, which a push would not have done"
+
+
+def test_the_defender_still_gets_the_worst_face_for_the_attacker():
+    """The branch that was always right: when the DEFENDER chooses there is no
+    second coach at the table, so the engine plays them as well as it can."""
+    m = _match(("home", 7, 13, 6, "3+"), ("away", 7, 14, 6, "3+"), ("away", 2, 20))
+    m.by_id("a01").player.ST = "5"  # stronger, so the defender chooses
+    out = _block(m, "h00", "a01", _dice([4] * 10, block=[["pow", "player_down"]]))
+    assert out.turnover is True and m.by_id("h00").down != "standing", "they take the Player Down"
