@@ -498,6 +498,35 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             )
         )
 
+    # FOUL APPEARANCE: "Whenever an opposition player attempts to perform a Block
+    # Action against this player … they must roll a D6 BEFORE ANY OTHER DICE ARE
+    # ROLLED. On a 2+, the Block Action continues as normal. On a 1, the Block
+    # Action is IMMEDIATELY CANCELLED and the opposition player's activation
+    # immediately ends." Not a Turnover — the Block simply does not happen, which
+    # for a Blitz means the team's one Blitz is gone for nothing.
+    if can_use(t, "Foul Appearance"):
+        d = dice.d6()
+        fa = Roll(kind="Foul Appearance", dice=[d], total=d, target=2, passed=d >= 2)
+        dice.rolls.append(fa)
+        rec.emit(
+            Event(
+                kind="note",
+                actor=t.id,
+                rolls=[fa],
+                detail={"skill": "Foul Appearance", "cancelled": not fa.passed},
+                text=f"{p.name()} recoils from {t.name()}. {fa.describe()}"
+                + ("" if fa.passed else f" The Block is cancelled and {p.name()}'s activation ends."),
+            )
+        )
+        if not fa.passed:
+            rec.emit(ended(p.id, "block"))
+            return Outcome(
+                ok=False,
+                events=rec.events,
+                text=f"{p.name()} could not bring themselves to Block {t.name()} — their activation ends.",
+                unmodelled=unmodelled,
+            )
+
     faces = dice.block(n)
     face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"))]
     roll = Roll(kind="Block", dice=list(faces), note=f"{n} dice, {chooser} chooses")
@@ -569,7 +598,22 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         # Follow-up." Not optional, and not a preference the acting coach can
         # override — which is why it is checked after `follow_up`, not folded into
         # it. The exception is a Juggernaut mid-Blitz.
-        fended = t.has_skill("Fend") and not _juggernaut_suppresses(match, p)
+        # TAUNT: "this player's Coach may CHOOSE TO MAKE the opposition player
+        # Follow-up." The defender forcing the attacker forward, which is the
+        # opposite of Fend and is why the two cannot both apply. Taken whenever it
+        # is available: a defender who taunts wants the attacker off their line,
+        # and there is nobody at the table to ask.
+        taunted = can_use(t, "Taunt") and not (t.rooted or p.rooted)
+        if taunted and not follow_up:
+            rec.emit(
+                Event(
+                    kind="note",
+                    actor=t.id,
+                    detail={"skill": "Taunt"},
+                    text=f"{t.name()} jeers — {p.name()} must Follow-up whether they meant to or not.",
+                )
+            )
+        fended = t.has_skill("Fend") and not _juggernaut_suppresses(match, p) and not taunted
         if fended and follow_up:
             rec.emit(
                 Event(
@@ -589,7 +633,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                     text=f"{p.name()} is Rooted and may not Follow-up.",
                 )
             )
-        if follow_up and not fended and not p.rooted and match.at(*vacated) is None:
+        if (follow_up or taunted) and not fended and not p.rooted and match.at(*vacated) is None:
             rec.emit(
                 Event(
                     kind="player_followed_up",
@@ -598,6 +642,21 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                     text=f"{p.name()} follows up to ({vacated[0]},{vacated[1]}).",
                 )
             )
+        # EYE GOUGE: "When an opposition player is Pushed Back by this player, the
+        # opposition player CANNOT PROVIDE OFFENSIVE OR DEFENSIVE ASSISTS UNTIL
+        # AFTER THEY ARE NEXT ACTIVATED." Distracted is exactly that duration —
+        # "they will remain Distracted until they are next activated" — and it
+        # already removes a Tackle Zone, which is what an assist needs.
+        if can_use(p, "Eye Gouge") and t.place == "pitch":
+            rec.emit(
+                Event(
+                    kind="player_status",
+                    actor=t.id,
+                    detail={"distracted": True, "skill": "Eye Gouge"},
+                    text=f"{p.name()} gets a thumb in {t.name()}'s eye — no assists until they are next activated.",
+                )
+            )
+
         # …and NOW the Strip Ball bounce, after the Follow-up, exactly as written.
         if stripped and match.ball.carrier == t.id:
             rec.emit(
