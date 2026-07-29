@@ -116,7 +116,15 @@ def register(registry) -> None:
     #
     # Guarded because the SDK is a host module — every test and the browser harness
     # import this plugin with no host at all, and must keep working.
-    try:
+    # SUBSCRIBING AT REGISTRATION IS TOO EARLY AND FAILS SILENTLY. `register()` runs
+    # during the GRAPH BUILD; the host's event bus is not populated until the
+    # server's STARTUP hook, so `registry.on(...)` here logs "dropped — no bus" at
+    # debug level and the nudge never arrives. Nothing is broken, nothing is
+    # reported, and the agent simply never takes its turn.
+    #
+    # `register_surface` is the seam for exactly this: `start` runs in the startup
+    # hook, by which time `registry.host.on` exists.
+    def _start_nudge():
         from graph import sdk  # type: ignore[import-not-found]
 
         # NOT `sdk.react_on`: that binds ONE session at registration, and the
@@ -147,11 +155,16 @@ def register(registry) -> None:
             # the durable Activity thread rather than dropping the turn on the
             # floor. `bb_game_here` is how a person moves it into their own chat.
             session = str(d.get("session_id") or "") or "system:activity"
-            sdk.run_in_session(session, prompt, job_id="bloodbowl-turn")
+            out = sdk.run_in_session(session, prompt, job_id="bloodbowl-turn")
+            log.info("[bloodbowl] nudged %s for %s's turn: %s", session, d.get("side"), out.get("message"))
 
         registry.on("bloodbowl.turn_ready", _turn_ready)
+        log.info("[bloodbowl] turn nudge subscribed")
+
+    try:
+        registry.register_surface(_start_nudge, name="bloodbowl-turns")
     except Exception:  # noqa: BLE001 — no host, no nudge; the plugin still works
-        log.debug("[bloodbowl] turn nudge unavailable (no host SDK)", exc_info=True)
+        log.debug("[bloodbowl] turn nudge unavailable (no host)", exc_info=True)
 
     log.info("[bloodbowl] registered")
 
