@@ -314,6 +314,20 @@ def build_game_router(cfg: dict | None = None):
         report["log"] = [e.text for e in m.events[before:] if e.text]
         return report
 
+    @r.post("/game/choose")
+    async def _choose(body: dict | None = None) -> dict:
+        """Answer the question a Kick-off Event stopped to ask. The board is where
+        a coach will see it asked, so the board is where they must be able to
+        answer — the pitch view refuses every other click until they do."""
+        m = _need_match()
+        before = len(m.events)
+        out = engine().resolve_choice(m, dict(body or {}), engine().dice_for(m))
+        if out.get("ok"):
+            _store().save_match(m)
+        out["log"] = [e.text for e in m.events[before:] if e.text]
+        out["match"] = m.to_dict(include_log=False)
+        return out
+
     @r.post("/game/end-turn")
     async def _end_turn() -> dict:
         m = _need_match()

@@ -233,6 +233,12 @@ class Match:
     # Set-ups declared for the NEXT Drive, per side. "The kicking team must set up
     # first followed by the receiving team", so the order is recorded too.
     setups: dict = field(default_factory=dict)
+    # A choice the engine is waiting on. Several Kick-off Events say "the Coach
+    # selects…", and the engine cannot block mid-resolution and ask — so it stops,
+    # records what it is waiting for, and the coach answers with a second call.
+    # Exactly the shape of the Blitz declaration: split the compound thing into
+    # steps the coach drives, rather than choosing on their behalf.
+    pending: dict = field(default_factory=dict)
     # Cheering Fans: which side's next Turn gets a free Offensive Assist on its
     # first Block, and whether that Turn has begun yet.
     cheer: dict = field(default_factory=dict)
@@ -361,6 +367,12 @@ class Match:
                 self.drive_rerolls[side] -= 1
             elif side in self.rerolls:
                 self.rerolls[side] = max(0, self.rerolls[side] - 1)
+
+        elif kind == "choice_pending":
+            self.pending = {k: v for k, v in d.items()}
+
+        elif kind == "choice_made":
+            self.pending = {}
 
         elif kind == "drive_setup":
             side = str(d.get("side") or "")
@@ -515,6 +527,7 @@ class Match:
             self.drive_rerolls = {}
             self.cheer = {}
             self.setups = {}
+            self.pending = {}
             self.setup = [dict(row) for row in (d.get("setup") or [])]
             for row in self.setup:
                 p = self.by_id(str(row.get("id") or ""))
@@ -623,6 +636,7 @@ class Match:
             "weather": self.weather,
             "apothecary": dict(self.apothecary),
             "setups": {k: [dict(r) for r in v] for k, v in self.setups.items()},
+            "pending": dict(self.pending),
             "cheer": dict(self.cheer),
             "argue_banned": list(self.argue_banned),
             "turn_actions": dict(self.turn_actions),

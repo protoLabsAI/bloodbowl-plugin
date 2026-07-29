@@ -174,6 +174,119 @@ def _deal_with_secret_weapons(match: Match, dice) -> None:
         _argue_the_call(match, p, dice, sink)
 
 
+def resolve_choice(match: Match, answer: dict, dice) -> dict:
+    """Answer whatever the engine stopped to ask.
+
+    ``answer`` is ``{"decline": True}`` or the choice itself. Declining is always
+    legal — every one of these events says the Coach "MAY" — and it is a real
+    answer rather than a no-op, because the Drive cannot go on until one is given.
+    """
+    from ..pitch import in_bounds
+    from .rules import is_open
+    from .setup import violations
+
+    pending = match.pending
+    if not pending:
+        return {"ok": False, "error": "the engine is not waiting on anything"}
+    kind, side = pending.get("choice"), pending.get("side")
+
+    if answer.get("decline"):
+        match.apply(
+            Event(
+                kind="choice_made",
+                detail={"choice": kind, "declined": True},
+                text=f"{side} decline the {kind.replace('_', ' ')}.",
+            )
+        )
+        return {"ok": True, "declined": True}
+
+    events: list = []
+    if kind == "high_kick":
+        # "ONE Open player … may immediately be placed in the square the ball is
+        # going to land in."
+        p = match.by_id(str(answer.get("player") or ""))
+        if p is None or p.side != side or not is_open(match, p):
+            return {"ok": False, "error": "name one Open player on the receiving team"}
+        x, y = pending["square"]
+        if match.at(x, y) is not None:
+            return {"ok": False, "error": f"({x},{y}) is occupied"}
+        events.append(
+            Event(
+                kind="player_pushed",
+                actor=p.id,
+                detail={"x": x, "y": y, "high_kick": True},
+                text=f"{p.name()} sprints under the High Kick to ({x},{y}).",
+            )
+        )
+
+    elif kind in ("quick_snap", "solid_defence"):
+        rows = list(answer.get("moves") or [])
+        limit = int(pending.get("limit", 0))
+        if len(rows) > limit:
+            return {"ok": False, "error": f"the roll allows up to {limit} players, and {len(rows)} were named"}
+
+        # Both re-place the named players and leave everyone else where they
+        # stand, so the destination checks run against a board with the movers
+        # LIFTED OFF — otherwise a pair swapping squares refuses itself, and for
+        # Solid Defence a player would collide with the square they just left.
+        named = {str(r.get("id") or "") for r in rows}
+        if len(named) != len(rows):
+            return {"ok": False, "error": "the same player was named twice"}
+        taken = {(q.x, q.y) for q in match.on_pitch() if q.id not in named}
+        placed: list[tuple[int, int]] = []
+
+        for row in rows:
+            p = match.by_id(str(row.get("id") or ""))
+            x, y = int(row.get("x", 0)), int(row.get("y", 0))
+            if p is None or p.side != side or not is_open(match, p):
+                return {"ok": False, "error": f"{row.get('id')!r} is not an Open player on {side}"}
+            if (x, y) in taken or not in_bounds(x, y):
+                return {"ok": False, "error": f"({x},{y}) is not a free square on the pitch"}
+            # "may immediately move ONE SQUARE IN ANY DIRECTION, even if this takes
+            # them into the opposition's half." No Dodge, no Rush, no Move
+            # Allowance — the halfway line is the only thing the rule bothers to
+            # permit, so nothing else restricts the square.
+            if kind == "quick_snap" and max(abs(p.x - x), abs(p.y - y)) != 1:
+                return {"ok": False, "error": f"{p.name()} may move exactly one square, not to ({x},{y})"}
+            taken.add((x, y))
+            placed.append((x, y))
+            events.append(
+                Event(
+                    kind="player_pushed",
+                    actor=p.id,
+                    detail={"x": x, "y": y, kind: True},
+                    text=(
+                        f"{p.name()} steals a square to ({x},{y})."
+                        if kind == "quick_snap"
+                        else f"{p.name()} re-forms at ({x},{y})."
+                    ),
+                )
+            )
+
+        if kind == "solid_defence":
+            # "can be set up again FOLLOWING ALL THE USUAL RESTRICTIONS FOR SETTING
+            # UP THE TEAM" — so it is the whole resulting formation that must be
+            # legal, not just the squares that moved. Three on the Line and two per
+            # Wide Zone are properties of the team, and a re-placement can break
+            # them from either end.
+            squares = [(q.x, q.y) for q in match.on_pitch(side) if q.id not in named] + placed
+            broken = violations(side, squares, len(squares))
+            if broken:
+                return {"ok": False, "error": "; ".join(broken), "violations": broken}
+    else:
+        return {"ok": False, "error": f"nothing known about a {kind!r} choice"}
+
+    for ev in events:
+        match.apply(ev)
+    done = Event(
+        kind="choice_made",
+        detail={"choice": kind, "moved": len(events)},
+        text=f"{side} answer the {kind.replace('_', ' ')}: {len(events)} player(s) moved.",
+    )
+    match.apply(done)
+    return {"ok": True, "moved": len(events), "log": [e.text for e in [*events, done]]}
+
+
 def declare_setup(match: Match, side: str, squares: list[dict]) -> dict:
     """One team's Set-up for the coming Drive, checked against all four rules.
 
@@ -256,6 +369,16 @@ def act(match: Match, action: str, cmd: dict, dice=None) -> dict:
         return {"ok": False, "error": f"unknown action {action!r}", "actions": actions.names()}
     if match.over:
         return {"ok": False, "error": "the match is over"}
+
+    if match.pending:
+        # A Kick-off Event that gives a Coach a choice is resolved BEFORE the ball
+        # lands, so nothing else can happen in between. Refusing here — with the
+        # question attached — beats choosing on their behalf.
+        why = (
+            f"the Kick-off Event is waiting on {match.pending['side']} — "
+            f"answer the {str(match.pending['choice']).replace('_', ' ')} with bb_game_choose first"
+        )
+        return {"ok": False, "error": why, "text": why, "pending": dict(match.pending)}
 
     dice = dice or dice_for(match)
 

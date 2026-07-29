@@ -59,6 +59,18 @@
   </span>
 </div>
 
+<!-- A Kick-off Event that asks the Coach something. Nothing else on the board
+     works until it is answered, so the question sits above the pitch rather than
+     in the log, where it would scroll away. -->
+<div id="choice" class="choice" hidden>
+  <span id="choiceText"></span>
+  <span class="grow"></span>
+  <span id="choicePicked" class="mono muted"></span>
+  <button id="choiceConfirm" hidden>Confirm</button>
+  <button id="choiceUndo" hidden>Undo</button>
+  <button id="choiceDecline">Decline</button>
+</div>
+
 <div class="stage">
   <div class="corner"></div>
   <div class="ruler ruler-top" id="rtop"></div>

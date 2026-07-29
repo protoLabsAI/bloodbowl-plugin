@@ -45,6 +45,17 @@ def markers_of_square(match: Match, side: str, x: int, y: int) -> list[PlayerSta
     return [p for p in match.on_pitch(foe) if has_tackle_zone(p) and adjacent(p.x, p.y, x, y)]
 
 
+def is_open(match: Match, player: PlayerState) -> bool:
+    """S3: "A Standing player that is not being Marked by an opposition is referred
+    to as an OPEN player."
+
+    Four Kick-off Events are written entirely in terms of Open players, and the
+    definition is narrower than "standing" — a player pinned by a Tackle Zone is
+    not free to do anything.
+    """
+    return player.place == "pitch" and has_tackle_zone(player) and not is_marked(match, player)
+
+
 def is_marked(match: Match, player: PlayerState) -> bool:
     """Is this player Marked where they stand? Marked is what forces a Dodge."""
     return bool(markers_of_square(match, player.side, player.x, player.y))

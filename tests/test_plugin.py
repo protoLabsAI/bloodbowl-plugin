@@ -750,6 +750,7 @@ def test_a_refused_action_is_reported_rather_than_silently_dropped(client):
     base = "/api/plugins/bloodbowl"
     client.post(f"{base}/place", json={"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
     client.post(f"{base}/game/new", json={"seed": 1})
+    client.post(f"{base}/game/choose", json={"decline": True})  # get past whatever the kick-off asked
     r = client.post(f"{base}/game/act", json={"action": "block", "player": "h00", "target": "nobody"}).json()
     assert r["ok"] is False and "no target" in r["text"]
 
@@ -948,3 +949,42 @@ def test_the_parity_table_agrees_with_the_engine_about_the_kickoff_events():
     claim = re.search(r"all 11 rolled and quoted; (\d+) applied", parity)
     assert claim, "the Kick-off Event row lost its count"
     assert int(claim.group(1)) == applied, f"PARITY.md says {claim.group(1)}, the engine applies {applied}"
+
+
+def test_a_pending_kickoff_choice_is_answerable_over_http_and_blocks_play_until_it_is(client):
+    """The board is where a coach sees the question asked, so the board is where
+    they must be able to answer it. Until they do, the engine refuses everything
+    else — and the refusal has to carry the question, or the pitch view is just a
+    page where clicking does nothing."""
+    base = "/api/plugins/bloodbowl"
+    client.post(f"{base}/place", json={"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    client.post(f"{base}/place", json={"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+
+    # Seeds differ in which event they roll, so find one that asks something.
+    for seed in range(1, 40):
+        client.post(f"{base}/game/new", json={"seed": seed})
+        m = client.get(f"{base}/game").json()["match"]
+        if m.get("pending"):
+            break
+    else:
+        raise AssertionError("no seed in 1..39 rolled a Kick-off Event that asks the Coach anything")
+
+    assert m["pending"].get("text"), "the question must travel in the state, not only in the log"
+
+    blocked = client.post(f"{base}/game/act", json={"action": "move", "player": "h00", "x": 7, "y": 12}).json()
+    assert blocked["ok"] is False and "waiting" in blocked["text"], blocked
+
+    answered = client.post(f"{base}/game/choose", json={"decline": True}).json()
+    assert answered["ok"] and not answered["match"].get("pending"), answered
+    assert client.post(f"{base}/game/act", json={"action": "move", "player": "h00", "x": 7, "y": 12}).json()["ok"]
+
+
+def test_the_pitch_view_ships_the_module_that_answers_a_choice(registry):
+    """A view that cannot answer the question is a view that cannot be used once
+    the kick-off rolls a 4, 5 or 9 — which is three results in eleven."""
+    import bloodbowl
+
+    web = Path(bloodbowl.__file__).parent / "web"
+    assert (web / "js" / "choice.js").exists()
+    assert 'id="choice"' in (web / "index.html").read_text()
+    assert "choice.js" in (web / "js" / "game.js").read_text(), "game.js must actually import it"

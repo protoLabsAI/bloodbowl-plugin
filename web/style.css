@@ -267,3 +267,24 @@ button.primary { background: var(--pl-color-accent); color: var(--pl-color-fg-on
    the pitch is a legal target, so painting them unprompted buries the moves. */
 .cell.passable { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--pl-color-status-info) 60%, transparent); }
 button.mini { padding: 0 6px; font-size: 10px; margin-left: 6px; }
+
+/* A Kick-off Event that stops and asks the Coach a question. The bar sits above
+   the pitch because the engine refuses every other action until it is answered —
+   in the log it would scroll away and the board would just look broken. */
+.choice {
+  display: flex; gap: 8px; align-items: center; margin-bottom: 8px;
+  padding: 6px 10px; font-size: 12px;
+  border: 1px solid var(--pl-color-accent); border-radius: 6px;
+  background: color-mix(in oklab, var(--pl-color-accent) 12%, var(--pl-color-bg-raised));
+}
+.choice .grow { flex: 1; }
+/* Eligible = Open, which is narrower than "standing" and worth showing: a coach
+   looking for a player the rule will not let them pick needs to see why. */
+.cell.choosable { cursor: pointer; box-shadow: inset 0 0 0 2px var(--pl-color-accent); }
+/* Staged, not sent. Filled rather than outlined, so the difference between "I
+   have picked this" and "I could pick this" survives a glance. */
+.cell.chosen { background: color-mix(in oklab, var(--pl-color-accent) 35%, transparent); }
+/* Picked, waiting for a square. Distinct from `chosen` (a staged destination)
+   because between the two clicks the coach has to be able to see which of their
+   players the next square will apply to. */
+.cell.picking { box-shadow: inset 0 0 0 3px var(--pl-color-status-warning); }

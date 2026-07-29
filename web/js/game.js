@@ -14,6 +14,7 @@
 import { $, api, apiOrNull, esc, fail, json, ok } from "./api.js";
 import { at, clearMarks, key } from "./board.js";
 import { hideCard, posCard, showCard } from "./card.js";
+import * as choice from "./choice.js";
 
 export const state = {
   match: null,
@@ -78,6 +79,7 @@ export function render() {
     node.addEventListener("mouseleave", hideCard);
     node.addEventListener("click", (ev) => {
       ev.stopPropagation();
+      if (choice.clickPlayer(state.match, p, adopt)) return;
       const acts = (state.legal && state.legal.ball_actions) || [];
       const block = ((state.legal && state.legal.blocks) || []).find((b) => b.target === p.id);
       // An adjacent opponent is a plain Block. Blitzing one you can already reach
@@ -113,11 +115,26 @@ export function render() {
   active.classList.toggle("home", c.active === "home");
   $("#counts").textContent = m.over ? "match over" : "";
 
+  // After the marks, not before: paint() adds its own, and clearMarks elsewhere
+  // in this render would wipe them.
+  choice.paint(m);
+
   document.querySelectorAll(".pc.sel").forEach((n) => n.classList.remove("sel"));
   if (state.selected) {
     const n = [...state.nodes.values()].find((x) => x.dataset.id === state.selected);
     if (n) n.classList.add("sel");
   }
+}
+
+/** Take a board the server just handed back, and redraw everything from it. */
+async function adopt(match) {
+  state.match = match;
+  state.selected = null;
+  state.legal = null;
+  clearMarks("legal", "needsroll", "blockable", "blitzable", "foulable", "securable", "handoffable");
+  describeSelection(null, null);
+  render();
+  await renderLog();
 }
 
 async function select(p) {
@@ -431,6 +448,9 @@ async function throwBlock(block) {
 }
 
 export async function onCellClick(x, y) {
+  // A pending Kick-off Event owns the board until it is answered — the engine
+  // refuses everything else, so the click has to mean the question or nothing.
+  if (choice.clickSquare(state.match, x, y, adopt)) return;
   if (!state.selected || !state.legal) return;
   const acts = (state.legal && state.legal.ball_actions) || [];
   const secure = acts.find((b) => b.action === "secure" && b.x === x && b.y === y);
@@ -488,6 +508,7 @@ export async function renderLog() {
 }
 
 export function wire(onChanged) {
+  choice.mount(adopt, () => state.match);
   $("#newMatch").addEventListener("click", async () => {
     try {
       const seed = Math.floor(Math.random() * 100000);

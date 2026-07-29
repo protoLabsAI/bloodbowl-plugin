@@ -82,7 +82,12 @@ class Roll:
         Show the raw dice, then the modifier, then the total they make.
         """
         raw = "+".join(str(d) for d in self.dice)
-        if self.target is None:
+        if self.target is None or self.passed is None:
+            # Not a test. A Kick-off Event, a Deviate distance and a D3+3 are all
+            # rolls with nothing to pass, so a verdict is a lie — and the lie it
+            # told was "Kick-off Event: needed 0+, rolled 3+1 — FAILED".
+            if self.total is not None and self.total != sum(self.dice):
+                return f"{self.kind}: {raw} = {self.total}" + (f" ({self.note})" if self.note else "")
             return f"{self.kind}: {raw}"
         verdict = "passed" if self.passed else "FAILED"
         if self.modifier:
