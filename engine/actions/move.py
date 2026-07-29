@@ -26,11 +26,12 @@ every roll individually attributable in the log.
 from __future__ import annotations
 
 from ...pitch import in_bounds
+from .. import leaving
 from .. import rerolls as team_rerolls
 from ..ball import check_touchdown, pick_up
 from ..dice import roll_target
 from ..events import Event
-from ..injury import knock_down
+from ..injury import knock_down, place_prone
 from ..rules import (
     MAX_RUSHES,
     STAND_UP_COST,
@@ -45,7 +46,7 @@ from ..rules import (
 )
 from ..skills import SkillContext, apply_value_hook, can_use, hooks_for, roll_modifier, unmodelled_skills
 from ..state import Match
-from . import Legality, Outcome, Recorder, register
+from . import Legality, Outcome, Recorder, ended, register
 
 
 def _player_and_side(match: Match, cmd: dict):
@@ -311,7 +312,22 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             )
         )
 
-    # 3. Dodge, if leaving a Marked square.
+    # 3. The Skills that fire when an opponent leaves your Tackle Zone. TENTACLES
+    # comes FIRST because it stops them leaving at all — a Dodge that never
+    # happens cannot be failed, re-rolled or Diving-Tackled. It applies to a Jump
+    # as well as a Dodge: "attempts to Dodge, Jump or Leap away".
+    leaving_markers = markers_of_square(match, p.side, p.x, p.y)
+    if leaving_markers and leaving.tentacles(match, p, leaving_markers, dice, rec):
+        rec.emit(ended(p.id, "move", f"{p.name()} is held fast — their activation ends."))
+        return Outcome(
+            ok=False,
+            events=rec.events,
+            text=f"{p.name()} cannot break free of the Tentacles — their activation ends.",
+            unmodelled=unmodelled,
+        )
+
+    # 4. Dodge, if leaving a Marked square.
+    vacated = (p.x, p.y)
     if needs_dodge:
         marking = dodge_modifier(match, p, x, y)
         # An opponent's Skill can modify our roll, so the hook is asked of the
@@ -384,6 +400,29 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 r = roll_target(dice, "Dodge (Team Re-roll)", agility_target(p), modifier)
                 dodge_rolls.append(r)
 
+        # DIVING TACKLE, after the roll and after every re-roll: "an Agility test
+        # has been rolled and any modifiers and re-rolls have been applied". The
+        # -2 costs the tackler their feet whether or not it lands, so the engine
+        # spends it only when it turns a success into a failure — any other use is
+        # pure loss and nobody at the table would want one.
+        diver = None
+        if r.passed:
+            lowered, tackler = leaving.diving_tackle(match, p, leaving_markers, dice, rec, modifier)
+            if tackler is not None and (r.total or 0) + (lowered - modifier) < (r.target or 0):
+                r.modifier = lowered
+                r.total = (r.total or 0) + (lowered - modifier)
+                r.passed = False
+                r.note = (r.note + " · Diving Tackle -2").strip(" ·")
+                diver = tackler
+                rec.emit(
+                    Event(
+                        kind="note",
+                        actor=tackler.id,
+                        detail={"skill": "Diving Tackle", "target": p.id},
+                        text=f"{tackler.name()} throws themselves at {p.name()}'s legs — -2, and the Dodge fails.",
+                    )
+                )
+
         if not r.passed:
             # A failed Dodge still moves the player — they land in the square and
             # fall there, which matters for where the ball ends up.
@@ -396,7 +435,24 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 )
             )
             rec.emit(Event(kind="note", actor=p.id, rolls=dodge_rolls, text=f"…and slips. {r.describe()}"))
-            rec.absorb(knock_down(match, p, dice, cause="Falls Over"))
+            # ARM BAR: "+1 to either the Armour Roll or Injury Roll" for an
+            # opponent who Fell Over leaving. Spent the same way Mighty Blow's is.
+            bar = leaving.arm_bar(match, p, leaving_markers, rec)
+            rec.absorb(knock_down(match, p, dice, cause="Falls Over", bonus=bar))
+            # The Diving Tackler lands LAST, in the square the dodger vacated —
+            # after the dodger has left it. Placing them there first would put two
+            # players on one square for the length of a knock-down, and `match.at`
+            # would answer with whichever it found.
+            if diver is not None:
+                rec.absorb(place_prone(match, diver, dice, reason="Diving Tackle"))
+                rec.emit(
+                    Event(
+                        kind="player_pushed",
+                        actor=diver.id,
+                        detail={"x": vacated[0], "y": vacated[1], "diving_tackle": True},
+                        text=f"{diver.name()} lands Prone in ({vacated[0]},{vacated[1]}).",
+                    )
+                )
             return Outcome(
                 ok=False,
                 events=rec.events,
@@ -414,6 +470,11 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
             text=f"{p.name()} " + (f"lands at ({x},{y})." if over else f"moves to ({x},{y})."),
         )
     )
+
+    # SHADOWING, once they are actually gone: "this player is immediately placed
+    # into the square that the opposition player vacated".
+    if needs_dodge and leaving_markers:
+        leaving.shadowing(match, p, leaving_markers, dice, rec, vacated)
 
     # 4. The ball, if it is lying here. S3: the pick-up roll comes AFTER the rolls
     # that got you into the square (Rush, Dodge) and before anything else — which

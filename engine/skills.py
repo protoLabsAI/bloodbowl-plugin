@@ -1099,3 +1099,52 @@ def _guard(ctx: SkillContext) -> None:
     performs a Block Action regardless of how many opposition players are Marking
     this player." """
     ctx.flags["assists_anyway"] = True
+
+
+# --- The Skills that fire when an opponent leaves your Tackle Zone --------
+#
+# One mechanism seen from four angles, implemented in engine/leaving.py and
+# applied by the Move Action in the rules' own order. They register here so the
+# catalogue reports them as modelled and so this file stays the one list of what
+# the engine applies.
+
+
+@skill_hook("Tentacles", "leaving")
+def _tentacles(ctx: SkillContext) -> None:
+    """S3: "…roll a D6 and add their Strength … subtract the Strength
+    Characteristic of the opposition player … If the result is 6 or higher, OR THE
+    ROLL IS A NATURAL 6, then the opposition player does not leave the square they
+    attempted to leave and their activation comes to an end."
+
+    Rolled BEFORE the Agility Test, because it stops them leaving at all.
+    """
+
+
+@skill_hook("Diving Tackle", "leaving")
+def _diving_tackle(ctx: SkillContext) -> None:
+    """S3: "…and an Agility test HAS BEEN ROLLED and any modifiers and re-rolls
+    HAVE BEEN APPLIED, this player may use this Skill. Immediately apply a -2
+    modifier … and place this player Prone in the square the opposition player
+    vacated."
+
+    After everything, which is what makes it worth a Skill: the coach spends it
+    knowing whether it will matter.
+    """
+
+
+@skill_hook("Arm Bar", "leaving")
+def _arm_bar(ctx: SkillContext) -> None:
+    """S3: "If an opposing player FALLS OVER as a result of attempting to Dodge,
+    Leap or Jump away from a square in this player's Tackle Zone … they may apply
+    a +1 modifier to either the Armour Roll or Injury Roll." """
+
+
+@skill_hook(
+    "Shadowing",
+    "leaving",
+    partial="the 'a number of times per Turn equal to their MA' bound is not counted — "
+    "it has never yet been the thing that stops one",
+)
+def _shadowing(ctx: SkillContext) -> None:
+    """S3: "…roll a D6. On a 1-3, nothing happens. On a 4+, this player is
+    immediately placed into the square that the opposition player vacated." """

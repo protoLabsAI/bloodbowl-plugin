@@ -50,6 +50,13 @@ def _dice(script, block=None):
     return ScriptedDice(script=list(script), block_script=list(block or []))
 
 
+def _rec(m):
+    """A Recorder, for calling an engine helper the way an Action would."""
+    from bloodbowl.engine.actions import Recorder
+
+    return Recorder(m)
+
+
 def _move(m, pid, x, y, dice, **cmd):
     """resolve applies its own events (see actions.Outcome) — do not re-apply."""
     from bloodbowl.engine import actions
@@ -5043,3 +5050,134 @@ def test_a_new_turn_clears_every_once_per_turn_flag_not_just_the_ones_it_remembe
     m.apply(Event(kind="turn_started", detail={"side": "home", "half": 1, "turn": 2}))
     left = [f for f in ONCE_PER_TURN_FLAGS if getattr(p, f)]
     assert not left, f"a new turn left these spent: {left}"
+
+
+# --- The Skills that fire when an opponent leaves your Tackle Zone -----------
+
+
+def test_tentacles_can_stop_a_dodge_from_happening_at_all():
+    """S3: "If the result is 6 or higher, OR THE ROLL IS A NATURAL 6, then the
+    opposition player DOES NOT LEAVE the square they attempted to leave and their
+    activation comes to an end."
+
+    Before the Agility Test, not after — a Dodge that never happens cannot be
+    failed, re-rolled or Diving-Tackled."""
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6, "3+", ["Tentacles"]))
+    m.by_id("h00").player.ST = "3"
+    m.by_id("a01").player.ST = "3"
+    out = _move(m, "h00", 7, 12, _dice([6]))  # D6 6 +3 -3 = 6: held
+    assert out.ok is False
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 13), "they must not have moved"
+    assert m.by_id("h00").done, "and their activation comes to an end"
+    assert not [r for e in out.events for r in e.rolls if r.kind.startswith("Dodge")], "no Dodge should be rolled"
+
+
+def test_a_natural_one_never_holds_and_a_natural_six_always_does():
+    """ "If the result is 5 or lower, OR THE ROLL IS A NATURAL 1, this Skill has no
+    effect." A strong player is never quite safe from a weak one, and never quite
+    certain against them either."""
+    from bloodbowl.engine import leaving
+
+    strong = _match(("home", 7, 13, 6), ("away", 7, 14, 6, "3+", ["Tentacles"]))
+    strong.by_id("h00").player.ST = "6"
+    strong.by_id("a01").player.ST = "1"
+    rec = _rec(strong)
+    assert leaving.tentacles(strong, strong.by_id("h00"), [strong.by_id("a01")], _dice([6]), rec) is True
+
+    weak = _match(("home", 7, 13, 6), ("away", 7, 14, 6, "3+", ["Tentacles"]))
+    weak.by_id("h00").player.ST = "1"
+    weak.by_id("a01").player.ST = "6"
+    rec2 = _rec(weak)
+    assert leaving.tentacles(weak, weak.by_id("h00"), [weak.by_id("a01")], _dice([1]), rec2) is False
+
+
+def test_diving_tackle_turns_a_made_dodge_into_a_failed_one_and_costs_the_tackler_their_feet():
+    """ "Immediately apply a -2 modifier to the opposition player's Agility Test
+    and PLACE THIS PLAYER PRONE IN THE SQUARE THE OPPOSITION PLAYER VACATED."
+
+    And it is applied AFTER the roll — which is the whole point."""
+    m = _match(("home", 7, 13, 6, "3+"), ("away", 7, 14, 6, "3+", ["Diving Tackle"]))
+    # A 4 against a 3+ with -1 for the marker makes it exactly: -2 fails it.
+    out = _move(m, "h00", 7, 12, _dice([4, 4, 4, 4, 4, 4, 4, 4]))
+    assert out.ok is False, "the Dodge should have been dragged down"
+    diver = m.by_id("a01")
+    assert diver.down == "prone", "the tackler ends up Prone"
+    assert (diver.x, diver.y) == (7, 13), "in the square the dodger vacated"
+    assert m.by_id("h00").down != "standing", "and the dodger Falls Over"
+
+
+def test_diving_tackle_is_not_spent_when_it_would_change_nothing():
+    """It costs the tackler their feet EVERY time it is used, so using it on a
+    Dodge that fails anyway, or on one it cannot reach, is pure loss — and there
+    is nobody at the table to want one.
+
+    Both halves in one test ON PURPOSE. "The tackler is still standing" is also
+    what an engine with no Diving Tackle at all would report, so the restraint
+    only means something beside a roll where the Skill does fire."""
+    board = (("home", 7, 13, 6, "3+"), ("away", 7, 14, 6, "3+", ["Diving Tackle"]))
+
+    out_of_reach = _match(*board)
+    out = _move(out_of_reach, "h00", 7, 12, _dice([6, 4, 4, 4, 4, 4]))  # a 6 survives even a -2
+    assert out.ok, out.text
+    assert out_of_reach.by_id("a01").down == "standing", "not worth spending — the Dodge was made anyway"
+
+    marginal = _match(*board)
+    assert not _move(marginal, "h00", 7, 12, _dice([4, 4, 4, 4, 4, 4, 4, 4])).ok
+    assert marginal.by_id("a01").down == "prone", "…and on a roll it CAN reach, it is spent"
+
+
+def test_shadowing_follows_a_player_who_got_away():
+    """ "On a 4+, this player is immediately placed into the square that the
+    opposition player vacated." """
+    m = _match(("home", 7, 13, 6, "3+"), ("away", 7, 14, 6, "3+", ["Shadowing"]))
+    out = _move(m, "h00", 7, 12, _dice([6, 5, 4, 4, 4, 4]))  # Dodge made, then a 5 to shadow
+    assert out.ok, out.text
+    assert (m.by_id("a01").x, m.by_id("a01").y) == (7, 13), "the shadow should be in the vacated square"
+    assert m.by_id("a01").down == "standing", "and still on their feet — this is not a Diving Tackle"
+
+
+def test_shadowing_fails_on_a_three_and_leaves_them_standing():
+    """ "On a 1-3, NOTHING HAPPENS." Beside the 4+ case, because "the shadow did
+    not move" is also what an engine with no Shadowing would report — the roll has
+    to be the thing that decides it."""
+    missed = _match(("home", 7, 13, 6, "3+"), ("away", 7, 14, 6, "3+", ["Shadowing"]))
+    assert _move(missed, "h00", 7, 12, _dice([6, 3, 4, 4, 4, 4])).ok
+    assert (missed.by_id("a01").x, missed.by_id("a01").y) == (7, 14), "a 3 does nothing"
+
+    made = _match(("home", 7, 13, 6, "3+"), ("away", 7, 14, 6, "3+", ["Shadowing"]))
+    assert _move(made, "h00", 7, 12, _dice([6, 4, 4, 4, 4, 4])).ok
+    assert (made.by_id("a01").x, made.by_id("a01").y) == (7, 13), "…and a 4 follows"
+
+
+def test_arm_bar_adds_one_to_the_roll_that_matters_when_a_dodger_falls():
+    """ "…they may apply a +1 modifier to EITHER the Armour Roll or Injury Roll."
+    Spent the way Mighty Blow's is: on the Armour Roll only when that is what
+    breaks it."""
+    m = _match(("home", 7, 13, 6, "3+"), ("away", 7, 14, 6, "3+", ["Arm Bar"]))
+    m.by_id("h00").player.AV = "9+"
+    # Dodge fails (1), then armour 4+4 = 8 — one short of 9+, which is exactly
+    # what the +1 is for.
+    out = _move(m, "h00", 7, 12, _dice([1, 4, 4, 4, 4, 4, 4, 4]))
+    assert out.ok is False
+    armour = next(r for e in out.events for r in e.rolls if r.kind == "Armour")
+    assert armour.passed is True, f"the Arm Bar +1 should have broken it: {armour.describe()}"
+    assert any("Arm Bar" in (e.text or "") for e in out.events)
+
+
+def test_only_one_opponent_may_use_each_of_these_skills():
+    """ "If a player tries to leave the Tackle Zone of MULTIPLE PLAYERS WITH THIS
+    SKILL at the same time, ONLY ONE of those players may use this Skill." Three
+    of the four say it in those words."""
+    from bloodbowl.engine import leaving
+
+    m = _match(
+        ("home", 7, 13, 6, "3+"),
+        ("away", 7, 14, 6, "3+", ["Shadowing"]),
+        ("away", 8, 14, 6, "3+", ["Shadowing"]),
+    )
+    rec = _rec(m)
+    markers = [m.by_id("a01"), m.by_id("a02")]
+    m.by_id("h00").move_to(7, 12)
+    leaving.shadowing(m, m.by_id("h00"), markers, _dice([5, 5, 5]), rec, (7, 13))
+    followed = [q for q in markers if (q.x, q.y) == (7, 13)]
+    assert len(followed) == 1, f"{len(followed)} shadows moved into one square"
