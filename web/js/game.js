@@ -348,10 +348,66 @@ function markDropTarget(sq) {
  * (a pointer gesture cannot wait on a fetch), so a fast drag can arrive here
  * before the move list does.
  */
+/** Whoever is standing on a square, or null. */
+function playerAt(sq) {
+  return (state.match.players || []).find((q) => q.place === "pitch" && q.x === sq.x && q.y === sq.y) || null;
+}
+
+/**
+ * Dropped ON somebody. The drop target already knows what the gesture means.
+ *
+ * The board has been painting `blockable`, `blitzable`, `foulable` and
+ * `handoffable` on these squares all along — the engine decided which, and it is
+ * the only thing that can. So a drop reads the answer rather than working it out
+ * again, exactly as the click handler does.
+ *
+ * DISTANCE IS THE VERB. Dropping on an opponent you are already touching is a
+ * Block. Dragging ACROSS the pitch onto one is a Blitz — declare, walk, hit —
+ * which is precisely what a Blitz is, and it is the only action in the game that
+ * a drag describes better than a click ever could.
+ */
+async function dropOnPlayer(p, foe, route) {
+  const legal = state.legal || {};
+  const block = (legal.blocks || []).find((b) => b.target === foe.id);
+  if (block && !route.length) return throwBlock(block);
+
+  const blitz = ((legal.blitz || {}).targets || []).find((b) => b.target === foe.id);
+  if (blitz && !(legal.blitz || {}).declared) {
+    await declareBlitz(blitz);
+    if (route.length) await walkPath(p, route);
+    // Re-ask: whether the Block is on now is the ENGINE's answer, not a guess
+    // from having arrived — a failed Rush on the way leaves them on the floor.
+    state.legal = await apiOrNull(`/game/legal?player=${encodeURIComponent(p.id)}`);
+    const now = ((state.legal || {}).blocks || []).find((b) => b.target === foe.id);
+    if (now) return throwBlock(now);
+    paintLegal();
+    describeSelection(
+      (state.match.players || []).find((q) => q.id === p.id),
+      state.legal,
+    );
+    render();
+    return;
+  }
+  if (block) return throwBlock(block);
+
+  const hand = (legal.ball_actions || []).find((b) => b.action === "handoff" && b.target === foe.id);
+  if (hand) return ballAction("handoff", { target: hand.target });
+
+  const foul = (legal.fouls || []).find((f) => f.target === foe.id);
+  if (foul) return putTheBootIn(foul);
+}
+
 async function dropOn(p, sq) {
-  const route = path.slice();
+  let route = path.slice();
   if (state.selected !== p.id || !state.legal) await select(p);
   if (!state.legal || !state.legal.ok) return;
+
+  // A square with somebody on it is never a square to walk to, so the trail's
+  // last step is trimmed: you cannot stand where they are standing, you act on
+  // them from next door.
+  const onIt = playerAt(sq);
+  if (onIt && route.length && same(route[route.length - 1], sq)) route = route.slice(0, -1);
+  if (onIt && onIt.id !== p.id) return dropOnPlayer(p, onIt, route);
 
   // A drag of more than one square is a RUN, walked a step at a time. One square
   // goes through `onCellClick` instead, so a short drag and a click stay exactly
@@ -670,10 +726,12 @@ async function declareBlitz(target) {
 
 async function throwBlock(block) {
   try {
-    const report = await api(
-      "/game/act",
-      json({ action: "block", player: state.selected, target: block.target, choice: 0 }),
-    );
+    // NO `choice`. It indexes the faces the roll shows, and the roll has not
+    // happened yet at the moment of asking — so the only correct value is no
+    // value, and `choice: 0` was a blind pre-commitment to the FIRST DIE dressed
+    // up as a decision. Left out, the engine applies the best face for whoever is
+    // entitled to choose, which is the coach the board is being played by.
+    const report = await api("/game/act", json({ action: "block", player: state.selected, target: block.target }));
     state.match = report.match;
     ok();
     // Whether the player may do anything else is the ENGINE's answer, not a

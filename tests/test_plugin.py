@@ -350,6 +350,43 @@ def test_a_drop_and_a_click_cannot_disagree_about_what_a_square_means():
     assert "await onCellClick(sq.x, sq.y)" in page
 
 
+def test_the_board_never_pre_commits_to_a_block_die():
+    """`choice` indexes the faces the roll SHOWS, and the roll has not happened at
+    the moment of asking — so the only correct value is no value.
+
+    `choice: 0` was a blind pre-commitment to the first die dressed up as a
+    decision, and it is the same defect the agent's tool had: every block on this
+    board took whichever face happened to be rolled first. Left out, the engine
+    applies the best face for whoever is entitled to choose.
+    """
+    # Comments only, stripped — the prose below explains the bug and would
+    # otherwise be the thing this test finds.
+    code = "\n".join(ln for ln in _web("js/game.js").splitlines() if not ln.lstrip().startswith("//"))
+    # `choice:` as an object key is the payload field. Bare `choice` is the
+    # Kick-off Event module this file also imports, which is a different thing.
+    assert "choice:" not in code, "the board must not pick a die before the dice exist"
+    assert 'action: "block"' in code
+
+
+def test_distance_decides_whether_a_dropped_player_blocks_or_blitzes():
+    """Dropping on somebody you already touch is a Block; dragging across the
+    pitch onto them is a Blitz — declare, walk, hit. Which is what a Blitz IS."""
+    page = _web("js/game.js")
+    body = page.split("async function dropOnPlayer")[1].split("\nasync function")[0]
+    assert "route.length" in body, "the traced distance is what separates the two"
+    assert "declareBlitz" in body and "throwBlock" in body
+    # Whether the Block is on after the walk is the engine's answer, not a guess
+    # from having arrived: a failed Rush on the way leaves them on the floor.
+    assert "/game/legal?player=" in body
+
+
+def test_a_player_is_never_dropped_onto_an_occupied_square():
+    """You cannot stand where somebody is standing — you act on them from next
+    door, so the trail's last step is trimmed before the walk."""
+    page = _web("js/game.js")
+    assert "route.slice(0, -1)" in page
+
+
 def test_a_dragged_run_stops_the_moment_a_step_does_not_land():
     """A move is a sequence of single squares and any of them can end the
     activation. Walking the rest of a plan that no longer applies is the one thing

@@ -992,6 +992,50 @@ def _drag(browser, url: str, w: int, h: int) -> None:
         )
         check("the trail is cleaned up after the run", page.locator(".cell.path").count() == 0)
 
+    # DROP ON AN OPPONENT. A fresh board again, and this time a blocker.
+    page.evaluate("""async () => {
+      await fetch("/api/plugins/bloodbowl/game/new", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({seed: 7}),
+      });
+    }""")
+    page.reload(wait_until="networkidle")
+    page.wait_for_selector(".cell", timeout=10000)
+    if theme.exists():
+        page.add_style_tag(content=theme.read_text())
+    page.wait_for_timeout(400)
+    _get_past_any_question(page)
+
+    duel = page.evaluate("""async () => {
+      const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
+      const on = m.players.filter(p => p.place === "pitch" && p.down === "standing" && !p.acted);
+      const foes = on.filter(p => p.side !== m.clock.active);
+      for (const me of on.filter(p => p.side === m.clock.active)) {
+        const f = foes.find(q => Math.abs(q.x - me.x) <= 1 && Math.abs(q.y - me.y) <= 1);
+        if (f) return {me: {x: me.x, y: me.y, id: me.id}, foe: {x: f.x, y: f.y, id: f.id}};
+      }
+      return null;
+    }""")
+    check("an adjacent pair is available to test a dropped block", duel is not None)
+    if duel is not None:
+        before = page.locator("#log").inner_text()
+        src3 = page.locator(f'.cell[data-x="{duel["me"]["x"]}"][data-y="{duel["me"]["y"]}"] .pc')
+        b1 = src3.bounding_box()
+        tgt3 = page.locator(f'.cell[data-x="{duel["foe"]["x"]}"][data-y="{duel["foe"]["y"]}"]')
+        b2 = tgt3.bounding_box()
+        page.mouse.move(b1["x"] + b1["width"] / 2, b1["y"] + b1["height"] / 2)
+        page.mouse.down()
+        page.mouse.move(b2["x"] + b2["width"] / 2, b2["y"] + b2["height"] / 2, steps=10)
+        page.wait_for_timeout(150)
+        page.mouse.up()
+        page.wait_for_timeout(1200)
+        after = page.locator("#log").inner_text()
+        check(
+            "dropping onto an adjacent opponent throws a Block",
+            ("Blocks" in after or "Blitzes" in after) and after != before,
+            after[:110].replace("\n", " / "),
+        )
+
     check("no page errors", not problems, "; ".join(problems[:2]))
     print(f"  shot: {(SHOTS / 'drag.png').relative_to(ROOT)}")
     page.close()
