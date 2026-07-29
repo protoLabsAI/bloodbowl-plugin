@@ -325,6 +325,10 @@ def _tools(cfg: dict):
           "handoff" — with ``target``, an ADJACENT team-mate who must Catch it
           "pass"    — with ``x``/``y``, the target SQUARE. Check bb_game_legal
                       first: it gives the range band and the modifier
+          "forego"  — this player will not be activated at all, and cannot be
+                      later this turn. Use it to END an activation too: a player
+                      who could have walked the ball in and did not is Stalling,
+                      and the crowd rolls for it when the activation finishes
           "secure"  — S3's Secure the Ball: a flat 2+ pick-up that ends the
                       activation, legal only when no Standing opponent is within
                       2 squares OF THE BALL

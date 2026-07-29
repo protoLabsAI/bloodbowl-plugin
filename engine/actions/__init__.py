@@ -170,4 +170,4 @@ def load_all() -> None:
     depend on what happens to be on disk, and an action that silently fails to
     import would look like an action that does not exist.
     """
-    from . import blitz, block, foul, handoff, move, secure, throw  # noqa: F401
+    from . import blitz, block, forego, foul, handoff, move, secure, throw  # noqa: F401

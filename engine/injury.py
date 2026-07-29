@@ -11,15 +11,16 @@ S3, read from source:
   INJURY   2D6: 2-7 Stunned · 8-9 Knocked-out · 10-12 Casualty.
   CASUALTY removed to the Casualty box, then a D16 Casualty Roll.
 
-The Casualty Roll's D16 table (Badly Hurt through Dead) is a LEAGUE concern —
-it decides what happens between matches, not during one. The player is removed
-to the Casualty box, which is all a single match needs, and the roll itself is
-reported as not modelled rather than silently skipped.
+The Casualty Roll's D16 table decides what happens BETWEEN matches — "In all
+instances the player will miss the rest of the current game", so nothing on it
+changes the match in progress. It is rolled and reported anyway, because a coach
+asking what happened to their Blitzer deserves the answer, and because an
+Apothecary or a Special Rule keys off specific results.
 """
 
 from __future__ import annotations
 
-from .dice import roll_2d6
+from .dice import Roll, roll_2d6
 from .events import Event
 from .rules import armour_target
 from .skills import SkillContext, hooks_for
@@ -199,6 +200,8 @@ def injury_roll(match, player, dice, bonus: int = 0) -> list[Event]:
             text=f"{player.name()} is {_INJURY_TEXT[outcome]}.",
         ),
     )
+    if outcome == "casualty":
+        events.extend(casualty_roll(match, player, dice))
     return events
 
 
@@ -228,6 +231,39 @@ def injure_by_crowd(match, player, dice) -> list[Event]:
     events.extend(drop(match, player, dice, reason="is thrown into the Crowd"))
     events.extend(injury_roll(match, player, dice))
     return events
+
+
+# "D16 RESULT — 1-8 BADLY HURT: The player suffers no long term effects. 9-10
+# SERIOUSLY HURT: must miss their next game. 11-12 SERIOUS INJURY: a Niggling
+# Injury and must miss their next game. 13-14 LASTING INJURY: a Characteristic
+# reduction and must miss their next game. 15-16 DEAD: The player is dead!"
+CASUALTY_TABLE = (
+    (8, "Badly Hurt", "no long term effects"),
+    (10, "Seriously Hurt", "misses their next game"),
+    (12, "Serious Injury", "a Niggling Injury, and misses their next game"),
+    (14, "Lasting Injury", "a Characteristic reduction, and misses their next game"),
+    (16, "Dead", "the player is dead"),
+)
+
+
+def casualty_roll(match, player, dice) -> list[Event]:
+    """The D16 Casualty Table. Reported, not applied — everything on it is a
+    League consequence, and "in all instances the player will miss the rest of the
+    current game" either way."""
+    d = dice.dn(16)
+    roll = Roll(kind="Casualty", dice=[d], total=d, note="D16")
+    dice.rolls.append(roll)
+    name, effect = next((n, e) for cap, n, e in CASUALTY_TABLE if d <= cap)
+    ev = Event(
+        kind="casualty_roll",
+        actor=player.id,
+        rolls=[roll],
+        detail={"result": name, "roll": d, "league_only": True},
+        text=f"Casualty Roll for {player.name()}: {d} — {name.upper()} ({effect}). "
+        "Beyond this match, so nothing here changes.",
+    )
+    match.apply(ev)
+    return [ev]
 
 
 _INJURY_TEXT = {

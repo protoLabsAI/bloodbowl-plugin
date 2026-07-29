@@ -39,6 +39,7 @@ from ..rules import (
     agility_target,
     dodge_modifier,
     is_marked,
+    jump_over,
     markers_of_square,
 )
 from ..skills import SkillContext, apply_value_hook, hooks_for, roll_modifier, unmodelled_skills
@@ -84,11 +85,19 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, "x and y are required")
     if not in_bounds(x, y):
         return Legality(False, f"({x},{y}) is off the pitch")
-    if not adjacent(p.x, p.y, x, y):
-        return Legality(False, "a Move goes one square at a time, to an adjacent square")
     if match.at(x, y) is not None:
         return Legality(False, f"({x},{y}) is occupied")
+    over = None if adjacent(p.x, p.y, x, y) else jump_over(match, p, x, y)
+    if not adjacent(p.x, p.y, x, y) and over is None:
+        return Legality(
+            False,
+            "a Move goes one square at a time — unless it is a Jump over a Prone or "
+            "Stunned player, into a square on the far side of them",
+        )
 
+    # A Jump moves TWO squares and costs two: "As the player is moving 2 squares
+    # when jumping, it will also cost 2 squares of Move Allowance."
+    step_cost = 2 if over is not None else 1
     # Cost of the step, including standing up first if Prone.
     stand_cost = 0
     if p.down == "prone":
@@ -96,7 +105,7 @@ def validate(match: Match, cmd: dict) -> Legality:
         stand_cost = apply_value_hook("stand_up_cost", ctx, p)
     budget = p.movement()
     used = p.ma_used + stand_cost
-    rushes_needed = max(0, (used + 1) - budget)
+    rushes_needed = max(0, (used + step_cost) - budget)
     if rushes_needed > MAX_RUSHES:
         return Legality(
             False,
@@ -107,11 +116,24 @@ def validate(match: Match, cmd: dict) -> Legality:
 
     detail = {
         "rush": rushes_needed > 0,
+        "rushes": rushes_needed,
         "stand_up_cost": stand_cost,
-        "dodge": is_marked(match, p),
+        "dodge": is_marked(match, p) and over is None,
         "dodge_modifier": dodge_modifier(match, p, x, y),
         "markers_of_target": [m.id for m in markers_of_square(match, p.side, x, y)],
     }
+    if over is not None:
+        # A Jump is its own Agility Test and is NOT a Dodge — the modifier is the
+        # WORSE of the two squares rather than the destination's.
+        here = len(markers_of_square(match, p.side, p.x, p.y))
+        there = len(markers_of_square(match, p.side, x, y))
+        detail.update(
+            jump=True,
+            jump_over=over.id,
+            cost=2,
+            jump_modifier=-max(here, there),
+            dodge=False,
+        )
     return Legality(True, "", detail)
 
 
@@ -181,8 +203,10 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     # includes it — adding `spent` again double-charged the 3 squares and
     # conjured a Rush roll out of a player who had movement to spare.
     used = p.ma_used
-    needs_rush = (used + 1) > p.movement()
-    needs_dodge = is_marked(match, p)
+    over = legal.detail.get("jump_over")
+    step_cost = 2 if over else 1
+    needs_rush = (used + step_cost) > p.movement()
+    needs_dodge = is_marked(match, p) and not over
 
     # 2. Rush FIRST when a square needs both rolls — the S3 ordering.
     if needs_rush:
@@ -195,7 +219,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 Event(
                     kind="player_moved",
                     actor=p.id,
-                    detail={"x": x, "y": y, "ma_used": used + 1},
+                    detail={"x": x, "y": y, "ma_used": used + step_cost},
                     text=f"{p.name()} Rushes into ({x},{y})…",
                 )
             )
@@ -212,6 +236,46 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 unmodelled=unmodelled,
             )
         rec.emit(Event(kind="note", actor=p.id, rolls=[r], text=f"Rush succeeds. {r.describe()}"))
+
+    # 2b. The Jump's own Agility Test, AFTER any Rush — "they will need to roll for
+    # each Rush attempt BEFORE rolling to Jump".
+    if over:
+        jumped = match.by_id(over)
+        mod = legal.detail["jump_modifier"]
+        jr = roll_target(dice, "Jump", agility_target(p), mod, note=f"over {jumped.name()}")
+        if not jr.passed and want_reroll and team_rerolls.spend(match, p, "Jump", dice, rec):
+            jr = roll_target(dice, "Jump (Team Re-roll)", agility_target(p), mod)
+        if not jr.passed:
+            # "If a natural 1 is rolled for the Agility Test, the player will
+            # instead Fall Over IN THE SQUARE THEY ARE IN"; any other failure puts
+            # them in the target square first. Two different squares, and the
+            # difference decides where a dropped ball lands.
+            if jr.dice[-1] != 1:
+                rec.emit(
+                    Event(
+                        kind="player_moved",
+                        actor=p.id,
+                        detail={"x": x, "y": y, "ma_used": used + step_cost},
+                        text=f"{p.name()} Jumps over {jumped.name()} toward ({x},{y})…",
+                    )
+                )
+            rec.emit(Event(kind="note", actor=p.id, rolls=[jr], text=f"…and lands badly. {jr.describe()}"))
+            rec.absorb(knock_down(match, p, dice, cause="Falls Over"))
+            return Outcome(
+                ok=False,
+                events=rec.events,
+                turnover=True,
+                text=f"{p.name()} failed the Jump over {jumped.name()} — turnover.",
+                unmodelled=unmodelled,
+            )
+        rec.emit(
+            Event(
+                kind="note",
+                actor=p.id,
+                rolls=[jr],
+                text=f"{p.name()} Jumps over {jumped.name()}. {jr.describe()}",
+            )
+        )
 
     # 3. Dodge, if leaving a Marked square.
     if needs_dodge:
@@ -293,7 +357,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 Event(
                     kind="player_moved",
                     actor=p.id,
-                    detail={"x": x, "y": y, "ma_used": used + 1},
+                    detail={"x": x, "y": y, "ma_used": used + step_cost},
                     text=f"{p.name()} Dodges toward ({x},{y})…",
                 )
             )
@@ -312,8 +376,8 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         Event(
             kind="player_moved",
             actor=p.id,
-            detail={"x": x, "y": y, "ma_used": used + 1},
-            text=f"{p.name()} moves to ({x},{y}).",
+            detail={"x": x, "y": y, "ma_used": used + step_cost},
+            text=f"{p.name()} " + (f"lands at ({x},{y})." if over else f"moves to ({x},{y})."),
         )
     )
 

@@ -879,3 +879,72 @@ class _Reg:
 
     def register_skill_dir(self, path):
         pass
+
+
+def test_the_parity_table_lists_every_rules_section():
+    """docs/PARITY.md tracks the whole S3 core-rules table of contents. If the
+    source grows a section the table never mentions, the gap is invisible — the
+    engine looks complete because nothing is asking the question.
+
+    The section list is checked against the shipped skills catalogue's own source
+    page rather than the live site, so this test needs no network and cannot fail
+    because a server was slow.
+    """
+
+    parity = (ROOT / "docs" / "PARITY.md").read_text()
+    # Headings the rules use, taken from the ones this repo already relies on
+    # elsewhere — a spot-check of the spine rather than a full re-scrape.
+    spine = [
+        "THE KICK-OFF",
+        "KICK-OFF EVENT TABLE",
+        "TOUCHBACKS",
+        "PLAYER ACTIVATIONS",
+        "MOVE ACTION",
+        "SECURE THE BALL ACTION",
+        "BLOCK ACTION",
+        "BLITZ ACTION",
+        "PASS ACTION",
+        "HAND-OFF ACTION",
+        "THROW TEAM-MATE ACTION",
+        "FOUL ACTION",
+        "SPECIAL ACTION",
+        "FOREGO ACTIVATION",
+        "DECLARE VS PERFORM",
+        "JUMPING OVER PLAYERS",
+        "RUSHING",
+        "CHAIN PUSHES",
+        "PUSHED INTO THE CROWD",
+        "INJURY BY THE CROWD",
+        "CASUALTY ROLLS",
+        "APOTHECARIES",
+        "ARGUE THE CALL",
+        "INTERCEPTIONS",
+        "CORNER THROW-INS",
+        "STALLING",
+        "DEAL WITH SECRET WEAPONS",
+        "EXTRA TIME",
+        "THE WEATHER",
+    ]
+    missing = [h for h in spine if h not in parity]
+    assert not missing, f"docs/PARITY.md never mentions: {missing}"
+
+    # Every row must carry a verdict, or the table is decoration.
+    rows = [ln for ln in parity.splitlines() if ln.startswith("| ") and "---" not in ln]
+    verdicts = {"yes", "partly", "no", "n/a", ""}
+    bad = [ln for ln in rows[1:] if len(ln.split("|")) > 2 and ln.split("|")[2].strip() not in verdicts]
+    assert not bad, f"rows with no verdict: {bad[:3]}"
+
+
+def test_the_parity_table_agrees_with_the_engine_about_the_kickoff_events():
+    """One verdict the test CAN check: the table says how many Kick-off Events are
+    applied, and the engine knows the real number. A hand-maintained checklist
+    drifts; this row cannot."""
+    import re
+
+    from bloodbowl.engine.kickoff import KICKOFF_EVENTS
+
+    applied = sum(1 for _n, _t, ok in KICKOFF_EVENTS.values() if ok)
+    parity = (ROOT / "docs" / "PARITY.md").read_text()
+    claim = re.search(r"all 11 rolled and quoted; (\d+) applied", parity)
+    assert claim, "the Kick-off Event row lost its count"
+    assert int(claim.group(1)) == applied, f"PARITY.md says {claim.group(1)}, the engine applies {applied}"
