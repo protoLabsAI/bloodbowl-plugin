@@ -4796,3 +4796,82 @@ def test_a_ball_still_in_the_air_is_not_reported_as_landed():
 
     game.resolve_choice(m, {"decline": True}, dice)
     assert not m.ball.in_air, "answering brings it down"
+
+
+def test_the_apothecary_offers_the_casualty_coach_a_choice_of_two_rolls():
+    """ "After a Casualty Roll is made … their Coach may declare they are using
+    their Apothecary. THE OPPOSING COACH MAKES A SECOND CASUALTY ROLL for the
+    player, and the player's controlling Coach MAY SELECT EITHER OF THE TWO
+    RESULTS to apply. If a BADLY HURT result is selected, then the player is
+    successfully Patched-up and placed into their RESERVES BOX instead of the
+    Casualty Box."
+
+    Choosing for them would be choosing whether a player comes back."""
+    from bloodbowl.engine.events import Event
+    from bloodbowl.engine.game import resolve_choice, use_apothecary
+
+    m = _match(("home", 7, 13), ("away", 7, 14))
+    m.apply(Event(kind="match_started", detail={"kicking_to": "home", "apothecary": {"home": True, "away": True}}))
+    m.apply(Event(kind="player_condition", actor="h00", detail={"outcome": "casualty"}))
+    m.apply(Event(kind="casualty_roll", actor="h00", detail={"result": "Dead", "roll": 15}))
+
+    out = use_apothecary(m, "h00", _dice([3]))  # the opposing Coach rolls a 3 — Badly Hurt
+    assert out["ok"] and m.pending.get("choice") == "apothecary", out
+    assert [r["result"] for r in out["results"]] == ["Dead", "Badly Hurt"], out["results"]
+    assert m.apothecary["home"] is False, "the Apothecary is spent on DECLARATION, win or lose"
+    assert m.by_id("h00").place == "casualty", "nothing is applied until the Coach picks"
+
+    picked = resolve_choice(m, {"result": 2}, _dice([]))
+    assert picked["ok"] and not m.pending
+    assert m.by_id("h00").place == "reserves", "a Badly Hurt result puts them in the Reserves Box"
+
+
+def test_the_apothecary_choice_can_keep_the_first_roll_and_the_casualty_stands():
+    """Either result — so the Coach can look at a worse second roll and keep the
+    first. And anything but Badly Hurt leaves them in the Casualty Box."""
+    from bloodbowl.engine.events import Event
+    from bloodbowl.engine.game import resolve_choice, use_apothecary
+
+    m = _match(("home", 7, 13), ("away", 7, 14))
+    m.apply(Event(kind="match_started", detail={"kicking_to": "home", "apothecary": {"home": True, "away": True}}))
+    m.apply(Event(kind="player_condition", actor="h00", detail={"outcome": "casualty"}))
+    m.apply(Event(kind="casualty_roll", actor="h00", detail={"result": "Seriously Hurt", "roll": 9}))
+
+    use_apothecary(m, "h00", _dice([16]))  # the second roll is DEAD — much worse
+    kept = resolve_choice(m, {"result": 1}, _dice([]))
+    assert kept["ok"], kept
+    assert m.by_id("h00").place == "casualty", "Seriously Hurt is not Badly Hurt, so the Casualty stands"
+    assert "Seriously Hurt".upper() in " ".join(e.text or "" for e in m.events)
+
+
+def test_declining_the_apothecary_choice_keeps_the_roll_they_already_had():
+    from bloodbowl.engine.events import Event
+    from bloodbowl.engine.game import resolve_choice, use_apothecary
+
+    m = _match(("home", 7, 13), ("away", 7, 14))
+    m.apply(Event(kind="match_started", detail={"kicking_to": "home", "apothecary": {"home": True, "away": True}}))
+    m.apply(Event(kind="player_condition", actor="h00", detail={"outcome": "casualty"}))
+    m.apply(Event(kind="casualty_roll", actor="h00", detail={"result": "Badly Hurt", "roll": 2}))
+
+    use_apothecary(m, "h00", _dice([15]))  # a DEAD second roll
+    assert resolve_choice(m, {"decline": True}, _dice([]))["ok"]
+    assert m.by_id("h00").place == "reserves", "the first roll was Badly Hurt, so keeping it saves them"
+
+
+def test_a_pending_apothecary_choice_survives_a_reload():
+    """The Coach answers in a SEPARATE call, and a Match is rebuilt from disk in
+    between. A question the reload forgets is a player nobody can save."""
+    from bloodbowl.engine.events import Event
+    from bloodbowl.engine.game import use_apothecary
+    from bloodbowl.engine.state import Match
+
+    m = _match(("home", 7, 13), ("away", 7, 14))
+    m.apply(Event(kind="match_started", detail={"kicking_to": "home", "apothecary": {"home": True, "away": True}}))
+    m.apply(Event(kind="player_condition", actor="h00", detail={"outcome": "casualty"}))
+    m.apply(Event(kind="casualty_roll", actor="h00", detail={"result": "Dead", "roll": 15}))
+    use_apothecary(m, "h00", _dice([3]))
+
+    back = Match.from_dict(m.to_dict())
+    assert back.pending.get("choice") == "apothecary"
+    assert [r["result"] for r in back.pending["results"]] == ["Dead", "Badly Hurt"]
+    assert back.apothecary["home"] is False

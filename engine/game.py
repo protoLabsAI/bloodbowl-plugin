@@ -209,7 +209,12 @@ def resolve_choice(match: Match, answer: dict, dice) -> dict:
         return {"ok": False, "error": "the engine is not waiting on anything"}
     kind, side = pending.get("choice"), pending.get("side")
 
-    if answer.get("decline"):
+    # Declining is "take no action" — which is a real answer to a Kick-off Event,
+    # because every one of them says the Coach "may". It is NOT an option for the
+    # Apothecary: by then the Apothecary is already spent and a second roll has
+    # been made, so there is no doing-nothing left. Its branch reads a decline as
+    # "keep the result you already had", which is the honest equivalent.
+    if answer.get("decline") and kind != "apothecary":
         done = Event(
             kind="choice_made",
             detail={"choice": kind, "declined": True},
@@ -292,6 +297,35 @@ def resolve_choice(match: Match, answer: dict, dice) -> dict:
             broken = violations(side, squares, len(squares))
             if broken:
                 return {"ok": False, "error": "; ".join(broken), "violations": broken}
+    elif kind == "apothecary":
+        # "the player's controlling Coach MAY SELECT EITHER OF THE TWO RESULTS to
+        # apply." Two rolls, one choice, and no third option — declining means
+        # keeping the one they already had.
+        offered = list(pending.get("results") or [])
+        want = answer.get("result")
+        pick = 0 if answer.get("decline") or want in (1, "1", "first") else 1 if want in (2, "2", "second") else None
+        if pick is None:
+            return {"ok": False, "error": "say result=1 for the original roll or result=2 for the Apothecary's"}
+        chosen = offered[pick] if pick < len(offered) else {}
+        p = match.by_id(str(pending.get("player") or ""))
+        kept = str(chosen.get("result") or "")
+        saved = kept == "Badly Hurt"
+        events.append(
+            Event(
+                kind="apothecary_result",
+                actor=p.id if p is not None else "",
+                detail={"result": kept, "roll": chosen.get("roll"), "which": pick + 1},
+                text=(
+                    f"{side} take the {'Apothecary' if pick else 'original'} roll — {kept.upper()}. "
+                    + (
+                        f"{p.name() if p else 'The player'} is Patched-up and goes to the Reserves Box."
+                        if saved
+                        else "The Casualty stands."
+                    )
+                ),
+            )
+        )
+
     elif kind == "charge":
         # "selects up to D3+3 Open players … may THEN be activated one at a time."
         # The selection is the answer; the activations are ordinary actions after
@@ -326,7 +360,11 @@ def resolve_choice(match: Match, answer: dict, dice) -> dict:
     done = Event(
         kind="choice_made",
         detail={"choice": kind, "moved": len(events)},
-        text=f"{side} answer the {kind.replace('_', ' ')}: {len(events)} player(s) moved.",
+        text=(
+            f"{side} answer the {kind.replace('_', ' ')}."
+            if kind == "apothecary"
+            else f"{side} answer the {kind.replace('_', ' ')}: {len(events)} player(s) moved."
+        ),
     )
     match.apply(done)
     after = _finish_kickoff(match, pending, dice)
@@ -566,15 +604,26 @@ def use_apothecary(match: Match, player_id: str, dice) -> dict:
     Knocked-out as a result of an INJURY BY THE CROWD, they are placed in the
     Reserves Box instead."
 
-    Applied after the fact rather than offered mid-resolution: the engine has no
-    way to stop and ask, and this is one of the few choices where doing it
-    afterwards lands in the same place. The exception is the Casualty branch,
-    where the rules give the Coach a choice between two rolls — that half is
-    reported as not modelled rather than decided on their behalf.
+    The KNOCKED-OUT branch is applied outright — there is nothing to decide.
+
+    The CASUALTY branch is a choice, and now a real one: "After a Casualty Roll is
+    made … their Coach MAY DECLARE THEY ARE USING THEIR APOTHECARY. The OPPOSING
+    COACH makes a SECOND Casualty Roll for the player, and the player's controlling
+    Coach MAY SELECT EITHER OF THE TWO RESULTS to apply. If a Badly Hurt result is
+    selected, then the player is successfully Patched-up and placed into their
+    Reserves Box instead of the Casualty Box."
+
+    So it rolls, then stops and asks — the same `Match.pending` the Kick-off Events
+    use. Choosing for them would be choosing whether a player comes back.
     """
+    from .dice import Roll
+    from .injury import CASUALTY_TABLE
+
     p = match.by_id(player_id)
     if p is None:
         return {"ok": False, "error": f"no player with id {player_id!r}"}
+    if match.pending:
+        return {"ok": False, "error": f"the engine is already waiting on a {match.pending.get('choice')}"}
     if not match.apothecary.get(p.side):
         return {"ok": False, "error": f"{p.side} have no Apothecary left — they are once per game"}
     if p.place not in ("knocked_out", "casualty"):
@@ -582,6 +631,53 @@ def use_apothecary(match: Match, player_id: str, dice) -> dict:
 
     crowd = any(e.kind == "player_left_pitch" and e.actor == p.id for e in match.events)
     was = p.place
+
+    if was == "casualty":
+        # The Apothecary is spent the moment it is declared — win or lose, "once
+        # per game" — so this event fires before the second roll, not after the
+        # Coach likes the look of it.
+        first = next(
+            (e for e in reversed(match.events) if e.kind == "casualty_roll" and e.actor == p.id),
+            None,
+        )
+        d = dice.dn(16)
+        roll = Roll(kind="Casualty (Apothecary)", dice=[d], total=d, note="D16, rolled by the opposing Coach")
+        dice.rolls.append(roll)
+        name, effect = next((n, e) for cap, n, e in CASUALTY_TABLE if d <= cap)
+        original = {
+            "roll": int((first.detail or {}).get("roll") or 0),
+            "result": str((first.detail or {}).get("result") or "unknown"),
+        }
+        offered = [original, {"roll": d, "result": name}]
+        text = (
+            f"The {p.side} Apothecary goes to work on {p.name()}. The opposing Coach rolls again: "
+            f"{d} — {name.upper()} ({effect}). Either result may be applied — "
+            f"the first was {original['roll']} ({original['result'].upper()})."
+        )
+        match.apply(
+            Event(
+                kind="apothecary_declared",
+                actor=p.id,
+                rolls=[roll],
+                detail={"side": p.side, "results": offered},
+                text=text,
+            )
+        )
+        match.apply(
+            Event(
+                kind="choice_pending",
+                detail={
+                    "choice": "apothecary",
+                    "side": p.side,
+                    "player": p.id,
+                    "results": offered,
+                    "text": text,
+                },
+                text=text + " Answer with bb_game_choose(result=1 or 2).",
+            )
+        )
+        return {"ok": True, "pending": dict(match.pending), "results": offered, "log": [text]}
+
     match.apply(
         Event(
             kind="apothecary_used",
@@ -591,13 +687,7 @@ def use_apothecary(match: Match, player_id: str, dice) -> dict:
             + (" — back in the Reserves Box." if crowd else " — Stunned, but still on the pitch."),
         )
     )
-    note = ""
-    if was == "casualty":
-        note = (
-            "The Casualty branch gives the Coach a choice between two Casualty Rolls, which this "
-            "engine does not offer — the player is returned, and the second roll is not made."
-        )
-    return {"ok": True, "player": p.to_dict(), "note": note}
+    return {"ok": True, "player": p.to_dict()}
 
 
 def penalty_shootout(match: Match, dice) -> dict:

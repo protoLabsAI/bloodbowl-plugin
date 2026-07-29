@@ -105,7 +105,8 @@ something (High Kick, Quick Snap!, Solid Defence, Charge!). While one is pending
 the engine refuses everything else and says what it is waiting for — the ball is
 still in the air and the first turn has not started. Declining is always legal.
 Charge! is the odd one out: answering it starts a free turn the selected players
-play through `bb_game_act`, and `bb_game_choose` again ends it.
+play through `bb_game_act`, and `bb_game_choose` again ends it. The Apothecary's
+Casualty branch asks the same way — two Casualty Rolls, and the Coach picks.
 
 **Finishing** — `bb_game_setup` · `bb_game_apothecary` · `bb_game_extra_time` · `bb_game_penalties`
 

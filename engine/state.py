@@ -417,6 +417,19 @@ class Match:
             side = str(d.get("side") or "")
             self.setups[side] = [dict(row) for row in (d.get("squares") or [])]
 
+        elif kind == "apothecary_declared":
+            # Spent on DECLARATION, not on the result: "they can use them once per
+            # game", and the second roll may come back worse than the first.
+            self.apothecary[str(d.get("side") or "")] = False
+
+        elif kind == "apothecary_result":
+            # "If a BADLY HURT result is selected, then the player is successfully
+            # Patched-up and placed into their Reserves Box instead of the Casualty
+            # Box." Anything else and the Casualty stands.
+            p = self.by_id(event.actor)
+            if p is not None and str(d.get("result") or "") == "Badly Hurt":
+                p.place, p.down = "reserves", "standing"
+
         elif kind == "apothecary_used":
             p = self.by_id(event.actor)
             side = str(d.get("side") or "")

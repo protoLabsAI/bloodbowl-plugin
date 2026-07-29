@@ -506,6 +506,13 @@ attached, and `bb_game_choose` answers it. Three things worth knowing:
   Turnover; a Turnover would advance the Turn Marker and hand over a ball that has
   not even landed.
 
+The Apothecary's CASUALTY branch rides the same rail, and is worth reading as the
+non-kick-off example: "the opposing Coach makes a second Casualty Roll … and the
+player's controlling Coach may select either of the two results to apply." It
+rolls, spends the Apothecary (on DECLARATION — win or lose), and stops. Only a
+Badly Hurt result brings the player back. Declining there means *keep the roll you
+had*, because by then there is no doing-nothing left.
+
 Whether to ASK or to state a policy is now a live judgement call, not a missing
 capability. Sidestep and Stand Firm still take a policy on purpose (`partial=`
 says so); Argue the Call does too. Ask when the choice can change the outcome.
