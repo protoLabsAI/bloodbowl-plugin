@@ -988,3 +988,73 @@ def test_the_pitch_view_ships_the_module_that_answers_a_choice(registry):
     assert (web / "js" / "choice.js").exists()
     assert 'id="choice"' in (web / "index.html").read_text()
     assert "choice.js" in (web / "js" / "game.js").read_text(), "game.js must actually import it"
+
+
+def test_the_tools_say_the_engine_is_waiting_before_an_action_is_refused(registry):
+    """A coach who has to discover the question by having their first action
+    refused has been told twice and helped once. `bb_game_new` says it, and
+    `bb_game_state` puts it at the top rather than inside the board."""
+    import bloodbowl
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+
+    for seed in range(1, 40):
+        started = json.loads(tools["bb_game_new"].invoke({"seed": seed}))
+        if started.get("pending"):
+            break
+    else:
+        raise AssertionError("no seed in 1..39 rolled a Kick-off Event that asks the Coach anything")
+
+    assert "bb_game_choose" in started["message"], started["message"]
+    state = json.loads(tools["bb_game_state"].invoke({}))
+    assert state["waiting_on"]["choice"] == started["pending"]["choice"]
+
+
+def test_a_charge_can_be_selected_and_played_end_to_end_over_http(client):
+    """Charge! is the one Kick-off Event that is a free TURN. Selecting is one
+    call; the free Actions are ordinary `act` calls after it; ending it lands the
+    ball and opens the receiving team's turn — which is the part that would
+    silently not happen if the mode forgot where the Drive was up to."""
+    base = "/api/plugins/bloodbowl"
+    for pos, x, y in [("Orc Lineman", 6, 13), ("Orc Lineman", 7, 13), ("Orc Lineman", 8, 13)]:
+        client.post(f"{base}/place", json={"side": "home", "team": "Orc", "position": pos, "x": x, "y": y})
+    for pos, x, y in [("Skaven Clanrat", 3, 20), ("Skaven Clanrat", 5, 20), ("Skaven Clanrat", 11, 20)]:
+        client.post(f"{base}/place", json={"side": "away", "team": "Skaven", "position": pos, "x": x, "y": y})
+
+    for seed in range(1, 400):
+        client.post(f"{base}/game/new", json={"seed": seed, "kicking_to": "home"})
+        m = client.get(f"{base}/game").json()["match"]
+        if (m.get("pending") or {}).get("choice") == "charge":
+            break
+    else:
+        pytest.skip("no seed in 1..399 rolled Charge! on this board")
+
+    pending = m["pending"]
+    assert pending["side"] == "away", "Charge! is the KICKING team's event"
+    # The ball is still in the air and nobody is to act until this is over.
+    assert not [e for e in client.get(f"{base}/game/log").json()["log"] if "to act" in (e.get("text") or "")]
+
+    picked = pending["eligible"][:2]
+    started = client.post(f"{base}/game/choose", json={"players": picked}).json()
+    assert started["ok"], started
+    assert started["match"]["charge"]["players"] == picked
+    assert started["match"]["clock"]["active"] == "away", "the charging team acts"
+    assert started["match"]["ball"]["in_air"], "a Charge happens with the ball still up in the air"
+
+    # An unselected player may not join in.
+    spare = next(p["id"] for p in started["match"]["players"] if p["side"] == "away" and p["id"] not in picked)
+    refused = client.post(f"{base}/game/act", json={"action": "move", "player": spare, "x": 4, "y": 19}).json()
+    assert refused["ok"] is False and "selected" in refused["text"], refused
+
+    for pid in picked:
+        client.post(f"{base}/game/act", json={"action": "forego", "player": pid})
+
+    after = client.get(f"{base}/game").json()["match"]
+    assert not after.get("charge"), "with everyone activated the Charge is over"
+    assert after["clock"]["active"] == "home", "the Drive goes back to the receiving team"
+    # `in_play` is true from the moment the kick is announced, so it proves
+    # nothing about landing. `in_air` is the one that does.
+    assert after["ball"]["in_play"] and not after["ball"]["in_air"], after["ball"]

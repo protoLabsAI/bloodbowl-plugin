@@ -307,6 +307,18 @@ def drive(base: str, *, do_checks: bool, live: bool) -> int:
     return 1 if failed else 0
 
 
+def _get_past_any_question(page) -> None:
+    """Four Kick-off Events in eleven stop and ask the Coach something, and while
+    one is open the engine refuses every other action. Any section that is about
+    something ELSE has to answer it first — otherwise it fails on the seeds that
+    happen to roll a 4, 5, 9 or 10 and reads as a broken board rather than a coin
+    toss in the setup. Declining is always legal."""
+    if page.locator("#choice").is_visible():
+        print("  (a Kick-off Event asked something — declining to get on with it)")
+        page.locator("#choiceDecline").click()
+        page.wait_for_timeout(600)
+
+
 def _play(browser, url: str, w: int, h: int) -> None:
     """Play a turn in a real browser.
 
@@ -349,13 +361,7 @@ def _play(browser, url: str, w: int, h: int) -> None:
     page.wait_for_timeout(800)
     check("a match starts", page.locator(".pc").count() > 0, f"{page.locator('.pc').count()} players")
 
-    # #newMatch takes a random seed, and three Kick-off Events in eleven stop and
-    # ask the Coach a question. Answer it before going on, or the rest of this
-    # section fails once every three or four runs and looks like a broken board.
-    if page.locator("#choice").is_visible():
-        print("  (a Kick-off Event asked something — declining to get on with it)")
-        page.locator("#choiceDecline").click()
-        page.wait_for_timeout(500)
+    _get_past_any_question(page)
     clock = page.locator("#clock").inner_text()
     check("the clock renders the half, turn and drive", "H1" in clock and "drive" in clock, clock)
     log0 = page.locator("#log").inner_text()
@@ -432,6 +438,7 @@ def _play(browser, url: str, w: int, h: int) -> None:
     if theme.exists():
         page.add_style_tag(content=theme.read_text())
     page.wait_for_timeout(500)
+    _get_past_any_question(page)
 
     blocker = page.evaluate("""async () => {
       const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
@@ -521,6 +528,7 @@ def _play(browser, url: str, w: int, h: int) -> None:
     if theme.exists():
         page.add_style_tag(content=theme.read_text())
     page.wait_for_timeout(500)
+    _get_past_any_question(page)
 
     # Ask the ENGINE who can blitz rather than guessing from the board. A player
     # picked by eye might be adjacent to their target, in which case the view
@@ -594,7 +602,12 @@ def _play(browser, url: str, w: int, h: int) -> None:
       const post = (p, b) => fetch("/api/plugins/bloodbowl" + p, {
         method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(b),
       }).then(r => r.json());
-      await post("/game/new", {seed: 7});
+      const fresh = await post("/game/new", {seed: 7});
+      // The kick-off may have asked the Coach something, and nothing else can
+      // happen until it is answered — including everything this loop tries.
+      if (fresh.match && fresh.match.pending && fresh.match.pending.choice) {
+        await post("/game/choose", {decline: true});
+      }
       for (let i = 0; i < 12; i++) {
         const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
         const down = m.players.find(p => p.place === "pitch" && p.down !== "standing");
@@ -717,82 +730,127 @@ def _choices(browser, url: str, w: int, h: int) -> None:
     page.wait_for_timeout(300)
     print("  -- kick-off choices --")
 
-    # Hunt for a seed that rolls one, rather than hoping. Which seed asks what
-    # depends on the board, so hard-coding one here would rot the first time the
-    # seeded formation changed.
-    found = page.evaluate("""async () => {
-      for (let seed = 1; seed < 60; seed++) {
+    # Hunt for a seed per KIND, rather than hoping. Which seed asks what depends
+    # on the board, so hard-coding one would rot the first time the seeded
+    # formation changed — and taking only the first match would leave three of the
+    # four kinds undriven, which is how the interesting one goes untested.
+    catalogue = page.evaluate("""async () => {
+      const seen = {};
+      for (let seed = 1; seed < 220; seed++) {
         const r = await fetch("/api/plugins/bloodbowl/game/new", {
           method: "POST", headers: {"Content-Type": "application/json"},
           body: JSON.stringify({seed}),
         });
         const m = (await r.json()).match;
-        if (m.pending && m.pending.choice) return {seed, ...m.pending};
+        const q = m.pending && m.pending.choice;
+        if (q && !seen[q]) seen[q] = {seed, ...m.pending};
       }
-      return null;
+      return seen;
     }""")
-    check("some seed rolls a Kick-off Event that asks the Coach something", found is not None, str(found)[:90])
-    if not found:
-        page.close()
-        return
+    check(
+        "the seeds turn up Kick-off Events that ask the Coach something",
+        bool(catalogue),
+        ", ".join(f"{k}@{v['seed']}" for k, v in sorted(catalogue.items())) or "none in 1..219",
+    )
+    for kind, found in sorted(catalogue.items()):
+        print(f"  -- {kind} (seed {found['seed']}) --")
+        page.evaluate(
+            """async (seed) => { await fetch("/api/plugins/bloodbowl/game/new", {
+                 method: "POST", headers: {"Content-Type": "application/json"},
+                 body: JSON.stringify({seed}),
+               }); }""",
+            found["seed"],
+        )
+        page.reload(wait_until="networkidle")
+        page.wait_for_selector(".cell", timeout=10000)
+        if theme.exists():
+            page.add_style_tag(content=theme.read_text())
+        page.wait_for_timeout(600)
+        _one_choice(page, kind, found, problems)
 
-    page.reload(wait_until="networkidle")
-    page.wait_for_selector(".cell", timeout=10000)
-    if theme.exists():
-        page.add_style_tag(content=theme.read_text())
-    page.wait_for_timeout(600)
+    print(f"  shot: {(SHOTS / 'choice.png').relative_to(ROOT)}")
+    page.close()
 
-    check("the question is on the board, not buried in the log", page.locator("#choice").is_visible())
+
+def _one_choice(page, kind: str, found: dict, problems: list) -> None:
+    """Drive one pending question from the board, all the way to answered."""
+    check(f"{kind}: the question is on the board, not buried in the log", page.locator("#choice").is_visible())
     asked = page.locator("#choiceText").inner_text()
-    check("the bar states the rule, not just the event's name", len(asked) > 30, asked[:90])
+    check(f"{kind}: the bar states the rule, not just the event's name", len(asked) > 30, asked[:90])
+    marked = page.eval_on_selector_all(".cell.choosable .pc", "ns => ns.map(n => n.dataset.id)")
     check(
-        "the players the rule allows are marked on the pitch",
-        page.locator(".cell.choosable").count() > 0,
-        f"{page.locator('.cell.choosable').count()} marked, engine offered {len(found.get('eligible') or [])}",
+        f"{kind}: the marks are exactly the players the engine named",
+        set(marked) == set(found.get("eligible") or []),
+        f"board={marked} engine={found.get('eligible')}",
     )
-    check(
-        "the marks match the ids the engine named",
-        set(page.eval_on_selector_all(".cell.choosable .pc", "ns => ns.map(n => n.dataset.id)"))
-        == set(found.get("eligible") or []),
-        f"board={page.eval_on_selector_all('.cell.choosable .pc', 'ns => ns.map(n => n.dataset.id)')}",
-    )
-    page.screenshot(path=str(SHOTS / "choice.png"), full_page=True)
+    page.screenshot(path=str(SHOTS / ("choice.png" if kind != "charge" else "charge-pick.png")), full_page=True)
 
     # A click on the board while a question is pending must not fire an action —
     # the engine would refuse it, and the coach would see an error they did not
     # cause. Clicking one of their OWN players is the natural first thing to try.
-    mine = page.locator(".cell.choosable .pc").first
-    mine.click()
+    if not marked:
+        check(f"{kind}: at least one player was eligible to click", False, "nobody is Open")
+        return
+    page.locator(".cell.choosable .pc").first.click()
     page.wait_for_timeout(400)
-    check("clicking a player while a question is open does not throw", not problems, "; ".join(problems[:2]))
+    check(f"{kind}: clicking a player while a question is open does not throw", not problems, "; ".join(problems[:2]))
 
-    if found["choice"] == "high_kick":
+    if kind == "charge":
+        # Charge stages PLAYERS and no squares, so the second click never comes:
+        # the selection is complete the moment they are named.
+        check(f"{kind}: the selection is marked as chosen, not left waiting", page.locator(".cell.chosen").count() == 1)
+        page.locator("#choiceConfirm").click()
+        page.wait_for_timeout(700)
+        state = page.evaluate("""async () => (await (await fetch("/api/plugins/bloodbowl/game")).json()).match""")
+        check(f"{kind}: sending them in starts the Charge", bool(state.get("charge")), str(state.get("charge"))[:80])
+        # The ball is still up there for the whole Charge, and drawn solid it
+        # reads as landed on a square it has not reached.
+        check(
+            f"{kind}: the ball is drawn as still in the air",
+            page.locator(".ball.air").count() == 1,
+            f"{page.locator('.ball').count()} ball(s), {page.locator('.ball.air').count()} airborne",
+        )
+        check(f"{kind}: the bar stays up to report it", page.locator("#choice").is_visible())
+        check(
+            f"{kind}: and offers the one thing the board cannot say — ending it",
+            "End the Charge" in page.locator("#choiceDecline").inner_text(),
+            page.locator("#choiceDecline").inner_text(),
+        )
+        page.screenshot(path=str(SHOTS / "charge.png"), full_page=True)
+        page.locator("#choiceDecline").click()
+        page.wait_for_timeout(800)
+        after = page.evaluate("""async () => (await (await fetch("/api/plugins/bloodbowl/game")).json()).match""")
+        check(f"{kind}: ending it hands the Drive back", not after.get("charge"), str(after.get("charge")))
+        check(
+            f"{kind}: and brings the ball down", bool((after.get("ball") or {}).get("in_play")), str(after.get("ball"))
+        )
+
+    elif kind == "high_kick":
         answered = page.evaluate("""async () => (await (await fetch("/api/plugins/bloodbowl/game")).json()).match""")
-        still = str(answered.get("pending"))
-        check("picking a player answers a High Kick outright", not answered.get("pending"), still)
+        check(
+            f"{kind}: picking a player answers it outright", not answered.get("pending"), str(answered.get("pending"))
+        )
+
     else:
         check(
-            "picking a player is visibly staged, not silently swallowed",
+            f"{kind}: picking a player is visibly staged, not silently swallowed",
             page.locator(".cell.picking").count() == 1,
             f"{page.locator('.cell.picking').count()} marked; bar says {page.locator('#choicePicked').inner_text()!r}",
         )
         # Stage a destination, then send. The staged square must be visibly
         # different from a merely-eligible one, or the coach cannot tell what
         # they have already decided.
-        here = page.locator(".cell.choosable").first
-        box = here.bounding_box()
+        box = page.locator(".cell.choosable").first.bounding_box()
         page.mouse.click(box["x"] + box["width"] / 2, box["y"] - box["height"] / 2)
         page.wait_for_timeout(300)
-        check("the staged square is marked distinctly", page.locator(".cell.chosen").count() > 0)
+        check(f"{kind}: the staged square is marked distinctly", page.locator(".cell.chosen").count() > 0)
         page.locator("#choiceConfirm").click()
         page.wait_for_timeout(700)
         state = page.evaluate("""async () => (await (await fetch("/api/plugins/bloodbowl/game")).json()).match""")
-        check("confirming answers the question", not state.get("pending"), str(state.get("pending"))[:80])
+        check(f"{kind}: confirming answers the question", not state.get("pending"), str(state.get("pending"))[:80])
 
-    check("the bar goes away once the question is answered", not page.locator("#choice").is_visible())
-    check("no page errors while answering", not problems, "; ".join(problems[:2]))
-    print(f"  shot: {(SHOTS / 'choice.png').relative_to(ROOT)}")
-    page.close()
+    check(f"{kind}: the bar goes away once it is answered", not page.locator("#choice").is_visible())
+    check(f"{kind}: no page errors while answering", not problems, "; ".join(problems[:2]))
 
 
 def main() -> int:

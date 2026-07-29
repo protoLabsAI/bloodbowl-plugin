@@ -29,7 +29,7 @@ Three verdicts, and the middle one is the important one:
 | SET-UP · TOO MANY PLAYERS | yes | all four rules enforced, every violation reported at once |
 | THE KICK-OFF · NOMINATE KICKING PLAYER · PLACE THE KICK | yes | |
 | THE KICK DEVIATES | yes | D6 distance, D8 direction |
-| THE KICK-OFF EVENT · KICK-OFF EVENT TABLE | partly | all 11 rolled and quoted; 9 applied — Charge! and Get the Ref are not |
+| THE KICK-OFF EVENT · KICK-OFF EVENT TABLE | partly | all 11 rolled and quoted; 10 applied — only Get the Ref (Inducements) is not |
 | TOUCHBACKS | yes | including a bounce that crosses back |
 | A TEAM'S TURN! · ROUNDS · TURNS | yes | |
 | PLAYER ACTIVATIONS | yes | `acted` begins one, `done` ends it |
@@ -102,9 +102,9 @@ Four things, and knowing which one a rule is waiting on is most of the work:
 1. ~~A way to ask the coach mid-resolution.~~ Done — `Match.pending` plus
    `bb_game_choose`. The engine stops, says what it is waiting for, and refuses
    every other action until it is answered; declining is always legal. Solid
-   Defence, High Kick and Quick Snap! run on it. **Charge!** is the one Kick-off
-   Event still unapplied for want of more than a choice: it is a whole free turn
-   of activations with its own stop condition, so it needs a mode, not a question.
+   Defence, High Kick and Quick Snap! run on it, and **Charge!** — a whole free
+   turn of activations with its own stop condition — runs on the same asking plus
+   a mode (`engine/charge.py`).
 2. ~~A uniform random pick.~~ Done — `Dice.dn(sides)`.
 3. **Roster facts a practice board never bought** — Fan Factor, Apothecaries,
    Inducements. The pattern is settled: take them as input, default them, and say

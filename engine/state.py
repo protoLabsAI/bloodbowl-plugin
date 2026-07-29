@@ -158,9 +158,22 @@ class Ball:
     y: int = 0
     carrier: str = ""  # player id, empty when loose
     in_play: bool = False
+    # "At this point the ball is still HIGH UP IN THE AIR and cannot be caught."
+    # `in_play` has always meant "the ball is on the board somewhere", which was
+    # indistinguishable from "it has landed" only because the kick used to land it
+    # in the same call. A Kick-off Event that stops to ask the Coach something
+    # holds it up there, and a board that drew it on the square it is heading for
+    # says it has arrived.
+    in_air: bool = False
 
     def to_dict(self) -> dict:
-        return {"x": self.x, "y": self.y, "carrier": self.carrier, "in_play": self.in_play}
+        return {
+            "x": self.x,
+            "y": self.y,
+            "carrier": self.carrier,
+            "in_play": self.in_play,
+            "in_air": self.in_air,
+        }
 
     @classmethod
     def from_dict(cls, d: dict) -> Ball:
@@ -169,6 +182,7 @@ class Ball:
             y=int(d.get("y") or 0),
             carrier=str(d.get("carrier") or ""),
             in_play=bool(d.get("in_play")),
+            in_air=bool(d.get("in_air")),
         )
 
 
@@ -239,6 +253,12 @@ class Match:
     # Exactly the shape of the Blitz declaration: split the compound thing into
     # steps the coach drives, rather than choosing on their behalf.
     pending: dict = field(default_factory=dict)
+    # CHARGE!, the one Kick-off Event that is a free TURN rather than a question.
+    # "The selected players may then be activated one at a time, EXACTLY AS IF IT
+    # WAS THEIR TEAM'S TURN" — so it borrows the whole action machinery, and the
+    # only things that make it not a turn live here: who may act, which of the
+    # three one-off Actions are still going, and where the Drive was up to.
+    charge: dict = field(default_factory=dict)
     # Cheering Fans: which side's next Turn gets a free Offensive Assist on its
     # first Block, and whether that Turn has begun yet.
     cheer: dict = field(default_factory=dict)
@@ -373,6 +393,25 @@ class Match:
 
         elif kind == "choice_made":
             self.pending = {}
+
+        elif kind == "charge_started":
+            # The kicking team acts, so the clock's active side moves to them for
+            # the duration. `was` remembers whose Drive this is; charge_ended puts
+            # it back. Nothing else in the engine needs to know a Charge is on.
+            self.charge = {k: v for k, v in d.items()}
+            self.clock.active = str(d.get("side") or self.clock.active)
+
+        elif kind == "charge_ended":
+            back = str(self.charge.get("was") or "")
+            self.charge = {}
+            if back:
+                self.clock.active = back
+
+        elif kind == "charge_action":
+            # Which of the three once-only Actions this Charge has spent.
+            used = list(self.charge.get("used") or [])
+            used.append(str(d.get("action") or ""))
+            self.charge["used"] = used
 
         elif kind == "drive_setup":
             side = str(d.get("side") or "")
@@ -509,8 +548,12 @@ class Match:
             self.ball.x, self.ball.y = int(d["x"]), int(d["y"])
             self.ball.carrier = str(d.get("carrier") or "")
             self.ball.in_play = True
+            # Only the kick's own events claim the air; everything else brings it
+            # down, so the flag clears by default rather than needing to be undone.
+            self.ball.in_air = bool(d.get("air"))
 
         elif kind == "ball_picked_up":
+            self.ball.in_air = False
             self.ball.carrier = event.actor
             p = self.by_id(event.actor)
             if p is not None:
@@ -528,6 +571,7 @@ class Match:
             self.cheer = {}
             self.setups = {}
             self.pending = {}
+            self.charge = {}
             self.setup = [dict(row) for row in (d.get("setup") or [])]
             for row in self.setup:
                 p = self.by_id(str(row.get("id") or ""))
@@ -637,6 +681,7 @@ class Match:
             "apothecary": dict(self.apothecary),
             "setups": {k: [dict(r) for r in v] for k, v in self.setups.items()},
             "pending": dict(self.pending),
+            "charge": dict(self.charge),
             "cheer": dict(self.cheer),
             "argue_banned": list(self.argue_banned),
             "turn_actions": dict(self.turn_actions),

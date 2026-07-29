@@ -7,7 +7,7 @@ plug into the same path rather than each re-deriving what a turnover does.
 
 from __future__ import annotations
 
-from . import actions
+from . import actions, charge
 from .dice import SeededDice
 from .events import Event
 from .rerolls import DEFAULT_REROLLS
@@ -135,15 +135,23 @@ def start_drive(match: Match, receiving: str, dice=None, aim=None) -> list[Event
     ]
     match.apply(events[0])
     events.extend(kick(match, dice, receiving=receiving))
-    events.append(
-        Event(
-            kind="turn_started",
-            detail={"side": receiving, "half": match.clock.half, "turn": match.clock.turn},
-            text=f"Half {match.clock.half}, turn {match.clock.turn} — {receiving} to act.",
-        )
-    )
-    match.apply(events[-1])
+    # A Kick-off Event that asked the Coach something is not finished, and the
+    # ball is still in the air. The turn cannot start over an undecided kick-off —
+    # `_finish_kickoff` runs this tail once the question is answered.
+    if not match.pending:
+        events.extend(_open_the_turn(match, receiving))
     return events
+
+
+def _open_the_turn(match: Match, receiving: str) -> list[Event]:
+    """Hand the first turn of the Drive to the receiving team."""
+    ev = Event(
+        kind="turn_started",
+        detail={"side": receiving, "half": match.clock.half, "turn": match.clock.turn},
+        text=f"Half {match.clock.half}, turn {match.clock.turn} — {receiving} to act.",
+    )
+    match.apply(ev)
+    return [ev]
 
 
 def _deal_with_secret_weapons(match: Match, dice) -> None:
@@ -185,20 +193,31 @@ def resolve_choice(match: Match, answer: dict, dice) -> dict:
     from .rules import is_open
     from .setup import violations
 
+    if charge.active(match):
+        # The Charge's own answer: stop early. "MAY then be activated" — a Coach
+        # who has seen enough is not obliged to send the rest in.
+        if answer.get("decline") or answer.get("end"):
+            return {"ok": True, "log": [e.text for e in end_charge(match, "the Coach ends it", dice) if e.text]}
+        return {
+            "ok": False,
+            "error": "the Charge is under way — activate the selected players with bb_game_act, or end it",
+            "charge": dict(match.charge),
+        }
+
     pending = match.pending
     if not pending:
         return {"ok": False, "error": "the engine is not waiting on anything"}
     kind, side = pending.get("choice"), pending.get("side")
 
     if answer.get("decline"):
-        match.apply(
-            Event(
-                kind="choice_made",
-                detail={"choice": kind, "declined": True},
-                text=f"{side} decline the {kind.replace('_', ' ')}.",
-            )
+        done = Event(
+            kind="choice_made",
+            detail={"choice": kind, "declined": True},
+            text=f"{side} decline the {kind.replace('_', ' ')}.",
         )
-        return {"ok": True, "declined": True}
+        match.apply(done)
+        after = _finish_kickoff(match, pending, dice)
+        return {"ok": True, "declined": True, "log": [e.text for e in [done, *after] if e.text]}
 
     events: list = []
     if kind == "high_kick":
@@ -273,6 +292,32 @@ def resolve_choice(match: Match, answer: dict, dice) -> dict:
             broken = violations(side, squares, len(squares))
             if broken:
                 return {"ok": False, "error": "; ".join(broken), "violations": broken}
+    elif kind == "charge":
+        # "selects up to D3+3 Open players … may THEN be activated one at a time."
+        # The selection is the answer; the activations are ordinary actions after
+        # it, so this opens the mode rather than resolving anything.
+        picked = [str(pid) for pid in (answer.get("players") or answer.get("moves") or [])]
+        limit = int(pending.get("limit", 0))
+        if len(picked) > limit:
+            return {"ok": False, "error": f"the roll allows up to {limit} players, and {len(picked)} were named"}
+        if len(set(picked)) != len(picked):
+            return {"ok": False, "error": "the same player was named twice"}
+        for pid in picked:
+            p = match.by_id(pid)
+            if p is None or p.side != side or not is_open(match, p):
+                return {"ok": False, "error": f"{pid!r} is not an Open player on {side}"}
+        if not picked:
+            return {"ok": False, "error": "name at least one player, or decline the Charge"}
+        started = charge.start(match, side, picked, land=str(pending.get("land") or ""))
+        match.apply(
+            Event(
+                kind="choice_made",
+                detail={"choice": kind, "moved": len(picked)},
+                text=f"{side} send in {len(picked)} player(s).",
+            )
+        )
+        return {"ok": True, "charge": dict(match.charge), "log": [started.text]}
+
     else:
         return {"ok": False, "error": f"nothing known about a {kind!r} choice"}
 
@@ -284,7 +329,25 @@ def resolve_choice(match: Match, answer: dict, dice) -> dict:
         text=f"{side} answer the {kind.replace('_', ' ')}: {len(events)} player(s) moved.",
     )
     match.apply(done)
-    return {"ok": True, "moved": len(events), "log": [e.text for e in [*events, done]]}
+    after = _finish_kickoff(match, pending, dice)
+    return {"ok": True, "moved": len(events), "log": [e.text for e in [*events, done, *after] if e.text]}
+
+
+def _finish_kickoff(match: Match, pending: dict, dice) -> list[Event]:
+    """Bring the ball down, now that the Kick-off Event is actually resolved.
+
+    "At this point the ball is still HIGH UP IN THE AIR and cannot be caught UNTIL
+    AFTER THE KICK-OFF EVENT HAS BEEN RESOLVED." A question the Coach has not
+    answered is not resolved, so `kickoff.kick` stops before landing it and this
+    finishes the job. Landing it first made High Kick meaningless — the player
+    would be placed under a ball that had already come down and bounced away.
+    """
+    receiving = str(pending.get("land") or "")
+    if not receiving:
+        return []
+    from .kickoff import land
+
+    return [*land(match, dice, receiving), *_open_the_turn(match, receiving)]
 
 
 def declare_setup(match: Match, side: str, squares: list[dict]) -> dict:
@@ -380,6 +443,13 @@ def act(match: Match, action: str, cmd: dict, dice=None) -> dict:
         )
         return {"ok": False, "error": why, "text": why, "pending": dict(match.pending)}
 
+    # CHARGE!: "activated one at a time, exactly as if it was their team's Turn."
+    # Everything below is that machinery unchanged; this is the fence around it.
+    if charge.active(match):
+        no = charge.refuse(match, action, str(cmd.get("player") or ""))
+        if no:
+            return {"ok": False, "error": no, "text": no, "charge": dict(match.charge)}
+
     dice = dice or dice_for(match)
 
     # "Whenever this player is activated, AFTER DECLARING THEIR ACTION they must
@@ -426,11 +496,36 @@ def act(match: Match, action: str, cmd: dict, dice=None) -> dict:
             start_drive(match, receiving=match.opponent(scorer), dice=dice)
         return _report(match, outcome, noted, touchdown=scorer)
 
+    if charge.active(match):
+        # A Charge is not a Turn, so its failures are not Turnovers. "If a selected
+        # player Falls Over or is Knocked Down … no further selected players can be
+        # activated and THE CHARGE ENDS" — a much smaller thing than a Turnover,
+        # which would advance the Turn Marker and hand over a ball that has not
+        # even landed yet.
+        outcome.events.extend(charge.note_action(match, action))
+        why = charge.should_end(match, charge.fell_over(match, outcome.events))
+        if why:
+            outcome.events.extend(end_charge(match, why, dice))
+        outcome.turnover = False
+        return _report(match, outcome, noted)
+
     if outcome.turnover:
         match.apply(Event(kind="turnover", detail={"side": match.clock.active}, text=TURNOVER_TEXT[True]))
         end_turn(match, forced=True)
 
     return _report(match, outcome, noted)
+
+
+def end_charge(match: Match, why: str, dice) -> list[Event]:
+    """Close a Charge and finish the kick-off it interrupted.
+
+    The ball is still in the air throughout — the Kick-off Event is not resolved
+    until the Charge is over — so ending it lands the ball and opens the receiving
+    team's turn, exactly as answering any other kick-off question does.
+    """
+    land_to = str(match.charge.get("land") or "")
+    events = charge.end(match, why)
+    return [*events, *_finish_kickoff(match, {"land": land_to}, dice)]
 
 
 def _end_of_game(match: Match, dice) -> None:
@@ -798,7 +893,7 @@ def state_report(match: Match) -> dict:
     the honest version of "here is the position" includes the ways the position is
     a simplification. A coach reading only the board would have to know to ask.
     """
-    return {
+    out = {
         "match": match.to_dict(include_log=False),
         "unmodelled_skills": unmodelled_on_pitch(match),
         # Both lists, always. A Skill applied in part reads as fully applied
@@ -806,6 +901,17 @@ def state_report(match: Match) -> dict:
         # two gaps because it sounds settled.
         "partly_modelled_skills": partly_modelled_on_pitch(match),
     }
+    if match.pending:
+        # Top level, not buried in `match`: while a Kick-off Event is unanswered
+        # NOTHING else can happen, so it is the first thing about the position and
+        # not a detail of it.
+        out["waiting_on"] = dict(match.pending)
+    if match.charge:
+        # Same reasoning: during a Charge only the selected players may act, and
+        # which of the three one-off Actions are left is not deducible from the
+        # board.
+        out["charge"] = dict(match.charge)
+    return out
 
 
 def legal_moves(match: Match, player_id: str) -> dict:
