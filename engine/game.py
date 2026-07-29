@@ -632,6 +632,15 @@ def _end_of_game(match: Match, dice) -> None:
             + f" {match.score.get('home', 0)}-{match.score.get('away', 0)}.",
         )
     )
+    # The POST-GAME SEQUENCE's first two steps, which are the ones about the match
+    # that just finished. The other four need a team that persists between games —
+    # see engine/postgame.py, which reports them rather than skipping them.
+    from .postgame import report as post_game
+
+    # "When you draft a team, it will automatically have a Dedicated Fans
+    # Characteristic of 1" — the same default the Pre-game step uses, and the same
+    # reason: a practice board was never drafted.
+    post_game(match, dice, dedicated=dict.fromkeys(("home", "away"), 1))
 
 
 def use_apothecary(match: Match, player_id: str, dice) -> dict:
