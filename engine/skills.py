@@ -971,6 +971,20 @@ def _stab(ctx: SkillContext) -> None:
     """
 
 
+@skill_hook("Hypnotic Gaze", "special_action")
+def _hypnotic_gaze(ctx: SkillContext) -> None:
+    """S3: "they select a Standing opposition player ADJACENT to them and roll a
+    D6. On a 1-2, nothing happens and this player's activation immediately ends.
+    On a 3+, the selected opposition player becomes DISTRACTED and this player's
+    activation immediately ends."
+
+    Either way the activation ends, which is what makes it a real cost: not a free
+    debuff, a whole player's turn spent on one. There is no once-per-turn limit —
+    "there is no limit to the number of players that can declare this Special
+    Action each Turn" — which is unusual enough to be worth saying.
+    """
+
+
 @skill_hook("Projectile Vomit", "special_action")
 def _projectile_vomit(ctx: SkillContext) -> None:
     """S3: "roll a D6. On a 2+ … Make an Armour Roll for the targeted player … On a
@@ -1319,6 +1333,44 @@ def _put_the_boot_in(ctx: SkillContext) -> None:
 # applied by the Move Action in the rules' own order. They register here so the
 # catalogue reports them as modelled and so this file stays the one list of what
 # the engine applies.
+
+
+@skill_hook("Foul Appearance", "block_reaction")
+def _foul_appearance(ctx: SkillContext) -> None:
+    """S3: "Whenever an opposition player attempts to perform a Block Action against
+    this player … they must roll a D6 BEFORE ANY OTHER DICE ARE ROLLED. On a 2+,
+    the Block Action continues as normal. On a 1, the Block Action is IMMEDIATELY
+    CANCELLED and the opposition player's activation immediately ends."
+
+    Not a Turnover — the Block simply does not happen. For a Blitz that means the
+    team's one Blitz is gone for nothing, which is the real cost of it.
+    """
+
+
+@skill_hook("Taunt", "block_reaction")
+def _taunt(ctx: SkillContext) -> None:
+    """S3: "When a player with this Skill is Pushed Back as a result of a Block
+    Action performed against them, this player's Coach MAY CHOOSE TO MAKE the
+    opposition player FOLLOW-UP."
+
+    The defender forcing the attacker forward — the opposite of Fend, which is why
+    the two cannot both apply. The engine takes it whenever it is available: a
+    defender who taunts wants the attacker off their line, and declining is never
+    the reason they took the Skill.
+    """
+
+
+@skill_hook("Eye Gouge", "block_reaction")
+def _eye_gouge(ctx: SkillContext) -> None:
+    """S3: "When an opposition player is Pushed Back by this player, the opposition
+    player CANNOT PROVIDE OFFENSIVE OR DEFENSIVE ASSISTS UNTIL AFTER THEY ARE NEXT
+    ACTIVATED."
+
+    Distracted is exactly that duration — "they will remain Distracted until they
+    are next activated" — and it already removes a Tackle Zone, which is what an
+    assist needs. So this is the existing condition rather than a second one that
+    would have to agree with it.
+    """
 
 
 @skill_hook("Tentacles", "leaving")

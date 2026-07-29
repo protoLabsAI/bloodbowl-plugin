@@ -61,6 +61,7 @@ SPECIALS = {
     "Breathe Fire": ("breathe_fire", True),
     "Chainsaw": ("chainsaw", True),
     "Monstrous Mouth": ("chomp", True),
+    "Hypnotic Gaze": ("gaze", True),
 }
 BY_ACTION = {name: (skill, marked) for skill, (name, marked) in SPECIALS.items()}
 
@@ -155,6 +156,26 @@ def _resolve(action: str, match: Match, cmd: dict, dice) -> Outcome:
         # for whoever it landed on, and that can be the player who made it.
         _unmodified_armour(match, t if r.passed else p, dice, rec, "Projectile Vomit")
         turnover = not r.passed and p.down != "standing"
+
+    elif action == "gaze":
+        # HYPNOTIC GAZE: "they select a Standing opposition player adjacent to them
+        # and roll a D6. On a 1-2, nothing happens and this player's activation
+        # immediately ends. On a 3+, the selected opposition player becomes
+        # DISTRACTED and this player's activation immediately ends."
+        #
+        # Either way the activation ends, which is what makes it a real cost: it
+        # is not a free debuff, it is a whole player's turn spent on one.
+        r = roll_target(dice, "Hypnotic Gaze", 3)
+        rec.emit(Event(kind="note", actor=p.id, rolls=[r], text=r.describe()))
+        if r.passed:
+            rec.emit(
+                Event(
+                    kind="player_status",
+                    actor=t.id,
+                    detail={"distracted": True, "skill": "Hypnotic Gaze"},
+                    text=f"{t.name()} is transfixed — Distracted until they are next activated.",
+                )
+            )
 
     elif action == "breathe_fire":
         mod = -1 if strength_of(match, t) >= 5 else 0

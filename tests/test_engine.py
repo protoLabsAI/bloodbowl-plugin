@@ -5544,3 +5544,76 @@ def test_no_ball_fails_automatically_and_no_re_roll_can_rescue_it():
     caught = catch(c, c.by_id("h00"), _dice([4, 4, 4, 4]))
     assert c.ball.carrier != "h00"
     assert not [r for e in caught for r in e.rolls if r.kind.startswith("Catch")]
+
+
+# --- What the player being Blocked can do about it ---------------------------
+
+
+def _block(m, pid, tid, dice, **cmd):
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    return actions.get("block")["resolve"](m, {"player": pid, "target": tid, **cmd}, dice)
+
+
+def test_foul_appearance_can_cancel_a_block_before_any_other_dice():
+    """S3: "…they must roll a D6 BEFORE ANY OTHER DICE ARE ROLLED. On a 2+, the
+    Block Action continues as normal. On a 1, the Block Action is IMMEDIATELY
+    CANCELLED and the opposition player's activation immediately ends."
+
+    Not a Turnover — the Block simply does not happen."""
+    m = _match(("home", 7, 13), ("away", 7, 14, 6, "3+", ["Foul Appearance"]))
+    out = _block(m, "h00", "a01", _dice([1, 4, 4, 4], block=[["pow"]]))
+    assert out.ok is False and out.turnover is False, out.text
+    assert m.by_id("h00").done, "their activation immediately ends"
+    assert not [r for e in out.events for r in e.rolls if r.kind.startswith("Block")], "no block dice at all"
+    assert m.by_id("a01").down == "standing", "and the target is untouched"
+
+    brave = _match(("home", 7, 13), ("away", 7, 14, 6, "3+", ["Foul Appearance"]))
+    out2 = _block(brave, "h00", "a01", _dice([2, 4, 4, 4, 4, 4], block=[["pow"]]))
+    assert [r for e in out2.events for r in e.rolls if r.kind.startswith("Block")], "a 2 lets it through"
+
+
+def test_taunt_drags_the_blocker_forward_even_when_they_would_rather_not():
+    """ "…this player's Coach may CHOOSE TO MAKE the opposition player Follow-up."
+    The defender forcing the attacker forward — the opposite of Fend."""
+    m = _match(("home", 7, 13), ("away", 7, 14, 6, "3+", ["Taunt"]))
+    _block(m, "h00", "a01", _dice([4, 4, 4, 4], block=[["push_back"]]), follow_up=False)
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 14), "they were dragged into the vacated square"
+
+    plain = _match(("home", 7, 13), ("away", 7, 14))
+    _block(plain, "h00", "a01", _dice([4, 4, 4, 4], block=[["push_back"]]), follow_up=False)
+    assert (plain.by_id("h00").x, plain.by_id("h00").y) == (7, 13), "…which is not what declining normally does"
+
+
+def test_eye_gouge_stops_the_pushed_player_assisting_until_they_are_next_activated():
+    """ "…the opposition player cannot provide Offensive or Defensive Assists UNTIL
+    AFTER THEY ARE NEXT ACTIVATED." Distracted is exactly that duration, and it
+    already removes the Tackle Zone an assist needs."""
+    m = _match(("home", 7, 13, 6, "3+", ["Eye Gouge"]), ("away", 7, 14))
+    _block(m, "h00", "a01", _dice([4, 4, 4, 4], block=[["push_back"]]), follow_up=False)
+    assert m.by_id("a01").distracted is True
+
+    plain = _match(("home", 7, 13), ("away", 7, 14))
+    _block(plain, "h00", "a01", _dice([4, 4, 4, 4], block=[["push_back"]]), follow_up=False)
+    assert plain.by_id("a01").distracted is False
+
+
+def test_hypnotic_gaze_distracts_on_a_three_and_ends_the_activation_either_way():
+    """ "On a 1-2, nothing happens and this player's activation immediately ends.
+    On a 3+, the selected opposition player becomes Distracted and this player's
+    activation immediately ends." Either way it costs a whole activation, which is
+    what stops it being a free debuff."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 6, "3+", ["Hypnotic Gaze"]), ("away", 7, 14))
+    out = actions.get("gaze")["resolve"](m, {"player": "h00", "target": "a01"}, _dice([4]))
+    assert out.ok, out.text
+    assert m.by_id("a01").distracted is True
+    assert m.by_id("h00").done
+
+    missed = _match(("home", 7, 13, 6, "3+", ["Hypnotic Gaze"]), ("away", 7, 14))
+    actions.get("gaze")["resolve"](missed, {"player": "h00", "target": "a01"}, _dice([2]))
+    assert missed.by_id("a01").distracted is False, "a 2 does nothing"
+    assert missed.by_id("h00").done, "…and still costs the activation"
