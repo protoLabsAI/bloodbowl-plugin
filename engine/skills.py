@@ -236,12 +236,12 @@ def pro_reroll(match, player, test: str, dice, rec) -> bool:
 #   lash_out        an adjacent Standing team-mate is Knocked Down
 
 
-def activation_gates(match, player, action: str) -> list[dict]:
+def activation_gates(match, player, action: str, target=None) -> list[dict]:
     """Every gate this player must pass before performing ``action``."""
     out = []
     for skill, fn in hooks_for("activation_gate"):
         if player.has_skill(skill):  # NOT can_use: a Trait you cannot avoid
-            ctx = SkillContext(match=match, player=player, flags={"action": action})
+            ctx = SkillContext(match=match, player=player, flags={"action": action, "target_player": target})
             fn(ctx)
             out.append({"skill": skill, "notes": ctx.notes, **ctx.flags})
     return out
@@ -653,11 +653,7 @@ def _strong_arm(ctx: SkillContext) -> None:
         ctx.notes.append("Strong Arm: +1 to the throw")
 
 
-@skill_hook(
-    "Very Long Legs",
-    "roll_modifier",
-    partial="the Cloud Burster clause — Cloud Burster is not modelled, so there is nothing to ignore",
-)
+@skill_hook("Very Long Legs", "roll_modifier")
 def _very_long_legs(ctx: SkillContext) -> None:
     """S3: "This player may apply a +1 modifier to the Agility Test whenever they
     attempt to LEAP OR JUMP, and may apply a +2 modifier to the Agility Test
@@ -763,21 +759,17 @@ def _extra_arms(ctx: SkillContext) -> None:
         ctx.notes.append(f"Extra Arms: +1 to the {str(ctx.flags.get('test')).replace('_', ' ')}")
 
 
-@skill_hook(
-    "Diving Catch",
-    "roll_modifier",
-    partial="the half that lets them Catch a ball landing in their Tackle Zone rather than "
-    "their own square — the engine only offers the +1 in the target square",
-)
+@skill_hook("Diving Catch", "roll_modifier")
 def _diving_catch(ctx: SkillContext) -> None:
     """S3: "…this player may apply a +1 modifier to their Agility Test when
     attempting to Catch the ball AS PART OF A PASS ACTION IF THEY ARE IN THE TARGET
     SQUARE."
 
-    The other half — catching a ball that lands in their Tackle Zone rather than
-    their square, but NOT one that got there by Bouncing — moves the ball to a
-    player rather than modifying a roll, and is stated as unmodelled rather than
-    quietly folded in.
+    The other half is in `ball.diving_catch`: "This player may attempt to Catch the
+    ball IF IT LANDS IN A SQUARE IN THEIR TACKLE ZONE as a result of a PASS,
+    THROW-IN or KICK-OFF. They may NOT use this Skill … as a result of a BOUNCE."
+    Three sources, and the fourth excluded by name — which is the clause a
+    paraphrase drops.
     """
     if ctx.flags.get("test") == "catch" and ctx.flags.get("target_square"):
         ctx.value += 1
@@ -1032,12 +1024,7 @@ def _blitzy(ctx: SkillContext) -> bool:
     return ctx.flags.get("action") in ("block", "blitz")
 
 
-@skill_hook(
-    "Bloodlust",
-    "activation_gate",
-    partial="the bite itself — the engine applies the failure (Distracted, the ball dropped, "
-    "the Touchdown denied) rather than offering the Thrall Lineman it has no roster for",
-)
+@skill_hook("Bloodlust", "activation_gate")
 def _bloodlust(ctx: SkillContext) -> None:
     """S3: "…they must roll a D6, ADDING 1 TO THE ROLL if they declared a Block
     Action or a Blitz Action. If they roll EQUAL TO OR HIGHER THAN the number shown
@@ -1047,9 +1034,15 @@ def _bloodlust(ctx: SkillContext) -> None:
     player was in the opposing End Zone, NO TOUCHDOWN IS SCORED."
 
     The one gate with a MODIFIER that depends on the declared Action, which is why
-    the gate mechanism carries `action` in its flags at all. The bite is the half
-    the engine cannot offer — a Thrall Lineman is a roster fact — so the failure
-    branch is the one that applies, and it is the harsher of the two.
+    the gate mechanism carries `action` in its flags at all.
+
+    The BITE is real: "at the end of their activation, this player MAY BITE AN
+    ADJACENT THRALL LINEMAN team-mate REGARDLESS OF THE STATUS of the Thrall
+    Lineman … immediately make an Injury Roll for [them], treating any Casualty
+    result as BADLY HURT; this will not cause a Turnover UNLESS the Thrall Lineman
+    was holding the ball." Thrall Lineman is a KEYWORD, and the Vampire roster
+    prints it — so the engine bites when there is one adjacent and applies the
+    failure when there is not, which is what the rule asks for either way.
     """
     import re as _re
 
@@ -1066,28 +1059,32 @@ def _bloodlust(ctx: SkillContext) -> None:
     ctx.notes.append("Bloodlust — and no Thrall Lineman to bite")
 
 
-@skill_hook(
-    "Animosity",
-    "activation_gate",
-    partial="the keyword in brackets is not checked — the engine has no team keywords, so it "
-    "applies to every team-mate, which is the Animosity (all) several rosters print",
-)
+@skill_hook("Animosity", "activation_gate")
 def _animosity(ctx: SkillContext) -> None:
     """S3: "Whenever this player attempts to perform A PASS ACTION OR A HAND-OFF
     ACTION to a team-mate WITH THE SAME KEYWORD as the one shown in brackets, roll
     a D6. ON A 1, the player REFUSES to perform the action and their activation
-    immediately ends."
+    immediately ends. Some players may have the ANIMOSITY (ALL) Trait, in which
+    case they will apply this rule to ALL of their team-mates, REGARDLESS of the
+    Keywords they have."
 
-    Keywords are a roster fact `data/rosters.json` does not carry, so the engine
-    rolls it for the two Actions the rule names and applies it against every
-    team-mate — which is Animosity (all), the version several rosters print. The
-    narrowing is stated rather than silently dropped.
+    The keyword IS checked: it was in `data/rosters.json` all along under `role`,
+    which is the parenthesised list the scraper captured after each position name.
+    So a Goblin's Animosity (Human) refuses to pass to the Human on the team and
+    not to the other Goblins, which is the whole flavour of it.
     """
+    from .rules import shares_keyword, trait_parameter
+
     if ctx.flags.get("action") not in ("pass", "handoff"):
         ctx.flags.update(skip=True)
         return
+    mate = ctx.flags.get("target_player")
+    wanted = trait_parameter(ctx.player, "Animosity")
+    if mate is not None and not shares_keyword(ctx.player, mate, wanted):
+        ctx.flags.update(skip=True)
+        return
     ctx.flags.update(target=2, modifier=0, on_fail="end_activation")
-    ctx.notes.append("Animosity — they may refuse")
+    ctx.notes.append(f"Animosity ({wanted or 'all'}) — they may refuse")
 
 
 @skill_hook("Bone Head", "activation_gate")
@@ -1164,12 +1161,7 @@ def _stab(ctx: SkillContext) -> None:
     """
 
 
-@skill_hook(
-    "Punt",
-    "special_action",
-    partial="the Kick Skill's re-roll of the direction or distance, and the Throw-in "
-    "Template's spread — the template is a diagram, like the Range Ruler",
-)
+@skill_hook("Punt", "special_action")
 def _punt(ctx: SkillContext) -> None:
     """S3: "…they can Punt it downfield. Position the Throw-in Template … Roll a D6
     to determine the DIRECTION … and then a SECOND D6 to determine HOW MANY SQUARES
@@ -1356,12 +1348,7 @@ def _lethal_flight(ctx: SkillContext) -> None:
     """
 
 
-@skill_hook(
-    "Swoop",
-    "action",
-    partial="the Throw-in Template's spread — the engine takes the direction the template "
-    "faces, as it does for the Range Ruler, because the template is a diagram",
-)
+@skill_hook("Swoop", "action")
 def _swoop(ctx: SkillContext) -> None:
     """S3: "…they may CHOOSE NOT TO SCATTER before landing as normal. If they do,
     position the Throw-in Template over this player … Roll a D6 to determine the
@@ -1665,20 +1652,15 @@ def _plague_ridden(ctx: SkillContext) -> None:
     """
 
 
-@skill_hook(
-    "Hatred",
-    "block_reroll",
-    partial="the keyword in brackets is not checked — the engine has no team keywords, "
-    "so it applies against every opponent",
-)
+@skill_hook("Hatred", "block_reroll")
 def _hatred(ctx: SkillContext) -> None:
     """S3: "Whenever this player performs a Block Action against A PLAYER WITH THE
     SAME KEYWORD AS THAT SHOWN IN BRACKETS, this player may re-roll a single Player
     Down result."
 
-    The keyword is the half this engine cannot check: keywords are a roster fact
-    and `data/rosters.json` does not carry them. Applying it against everybody is
-    the generous reading and is stated as such, rather than silently doing nothing.
+    The keyword IS checked. It was in `data/rosters.json` all along under `role` —
+    the parenthesised list the scraper captured after each position name ("Eagle
+    Warrior (Lineman, Human)") — and nothing had ever read it.
     """
 
 
@@ -1697,12 +1679,7 @@ def _frenzy(ctx: SkillContext) -> None:
     """
 
 
-@skill_hook(
-    "Multiple Block",
-    "second_action",
-    partial="the two Blocks are resolved one after another rather than truly simultaneously — "
-    "the rules allow exactly that ('you may wish to roll them separately for clarity')",
-)
+@skill_hook("Multiple Block", "second_action")
 def _multiple_block(ctx: SkillContext) -> None:
     """S3: "they may perform TWO Block Actions each targeting A DIFFERENT
     opposition player THEY ARE MARKING. If they do, then this player will REDUCE
@@ -1712,7 +1689,9 @@ def _multiple_block(ctx: SkillContext) -> None:
 
     The turnover clause is what shapes the implementation: the second Block runs
     whatever the first did, so the turnover is collected at the end rather than
-    returned from the middle.
+    returned from the middle. Rolling them one after the other is not an
+    approximation — it is the procedure the rules themselves offer, in the same
+    breath: "though YOU MAY WISH TO ROLL THEM SEPARATELY FOR CLARITY".
     """
 
 
@@ -1885,12 +1864,7 @@ def _arm_bar(ctx: SkillContext) -> None:
     a +1 modifier to either the Armour Roll or Injury Roll." """
 
 
-@skill_hook(
-    "Shadowing",
-    "leaving",
-    partial="the 'a number of times per Turn equal to their MA' bound is not counted — "
-    "it has never yet been the thing that stops one",
-)
+@skill_hook("Shadowing", "leaving")
 def _shadowing(ctx: SkillContext) -> None:
     """S3: "…roll a D6. On a 1-3, nothing happens. On a 4+, this player is
     immediately placed into the square that the opposition player vacated." """

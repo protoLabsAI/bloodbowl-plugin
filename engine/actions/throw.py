@@ -34,7 +34,7 @@ import re
 
 from ...pitch import in_bounds
 from .. import rerolls as team_rerolls
-from ..ball import bounce, catch, scatter, throw_in
+from ..ball import bounce, catch, diving_catch, scatter, throw_in
 from ..dice import roll_target
 from ..events import Event
 from ..ruler import band, in_corridor
@@ -254,19 +254,27 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     # CLOUD BURSTER: "When this player performs a Pass Action, opposition players
     # MAY NOT ATTEMPT TO INTERCEPT the ball." The thrower's Skill switching off the
     # defender's roll — and Very Long Legs is the written counter to it.
-    burst = can_use(p, "Cloud Burster") or d.get("hail_mary")
-    if burst:
+    burst = can_use(p, "Cloud Burster")
+    if burst or d.get("hail_mary"):
         rec.emit(
             Event(
                 kind="note",
                 actor=p.id,
-                detail={"skill": "Cloud Burster"},
-                text=f"{p.name()} throws a flat one — nobody may attempt to Intercept.",
+                detail={"skill": "Cloud Burster" if burst else "Hail Mary Pass"},
+                text=f"{p.name()} throws a flat one — nobody may attempt to Intercept."
+                if burst
+                else "A Hail Mary Pass cannot be Intercepted.",
             )
         )
 
     # Interceptions are checked against the square the ball is DESTINED to land in.
-    for q in [] if burst else _interceptors(match, p, lx, ly):
+    # VERY LONG LEGS: "Additionally, this player IGNORES THE CLOUD BURSTER SKILL" —
+    # the counter, on the interceptor rather than the thrower, so it is filtered
+    # here rather than switching `burst` off for everybody.
+    candidates = [] if d.get("hail_mary") else _interceptors(match, p, lx, ly)
+    if burst:
+        candidates = [q for q in candidates if q.has_skill("Very Long Legs")]
+    for q in candidates:
         marking = -len(markers_of_square(match, q.side, q.x, q.y))
         ictx = roll_modifier(match, q, "intercept", base=(-3 if accurate else -2) + marking, marking=marking)
         ir = roll_target(dice, "Intercept", agility_target(q), ictx.value, note=" ".join(ictx.notes))
@@ -296,7 +304,13 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     else:
         landed = match.at(lx, ly)
         if landed is None:
-            rec.absorb(bounce(match, dice))
+            # DIVING CATCH first: a ball landing in an EMPTY square next to one of
+            # them is theirs to dive for, and a Pass is one of the three sources
+            # the Skill names.
+            dived = diving_catch(match, lx, ly, "pass", dice)
+            rec.absorb(dived)
+            if not dived:
+                rec.absorb(bounce(match, dice))
         else:
             # Diving Catch's +1 applies only "if they are IN THE TARGET SQUARE" —
             # the square that was DECLARED, not wherever a scatter left the ball.

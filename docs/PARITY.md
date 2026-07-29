@@ -95,21 +95,35 @@ Three verdicts, and the middle one is the important one:
 quotable through `bb_get_skill`. `bb_list_skills(only_unmodelled=True)` is the live
 version of this count and now returns nothing.
 
-**"Modelled" is not the same as "complete", and 18 of them say so.** A Skill with a
+**"Modelled" is not the same as "complete", and 9 of them say so.** A Skill with a
 `partial=` is applied with a named clause left out, and `bb_game_state` reports
-those on the pitch under `partly_modelled_skills` every turn. They fall into four
-groups, and none of them is a gap in something that exists:
+those on the pitch under `partly_modelled_skills` every turn.
 
-* **A diagram the rules never put numbers to** — the Throw-in Template (Swoop,
-  Punt) and the Range Ruler, exactly as `engine/ruler.py` already says.
-* **A coach's free choice the engine takes for them, and says so** — Sidestep,
-  Stand Firm, Safe Pair of Hands, Trickster, Multiple Block's ordering.
-* **A roster fact the data does not carry** — team KEYWORDS (Hatred, Animosity)
-  and Thrall Linemen (Bloodlust). `data/rosters.json` has no keyword column
-  because the source tables do not print one.
+Nine were closed outright once the reason they were open turned out to be wrong:
+
+* **The keywords were there all along.** `data/rosters.json` carries every
+  positional's Keywords under `role` — the parenthesised list after each position
+  name, "Eagle Warrior (Lineman, Human)" — and nothing had ever read it. That
+  closed HATRED, ANIMOSITY and BLOODLUST's bite (Thrall Lineman is a Keyword, and
+  the Vampire roster prints it).
+* **Very Long Legs' Cloud Burster clause** was stale: Cloud Burster is modelled, so
+  there is something to ignore, and Very Long Legs is its written counter.
+* **Shadowing's per-Turn bound** is counted now, from the log rather than a field.
+* **Diving Catch's other half** — catching a ball that lands in your Tackle Zone
+  from a Pass, Throw-in or Kick-off, but NOT from a Bounce — is implemented.
+* **Multiple Block and the two template Skills were not partial at all.** Rolling
+  a Multiple Block's halves separately is the procedure the rules themselves offer
+  ("you may wish to roll them separately for clarity"), and the Throw-in Template
+  is the same diagram the Range Ruler is — see the section above.
+
+The five that remain are all one of two things, and both are stated:
+
+* **A coach's free choice the engine takes for them** — Sidestep, Stand Firm, Safe
+  Pair of Hands, Trickster. `Match.pending` could ask; whether a board should stop
+  and ask four times a turn is a judgement about the game, not a missing rule.
 * **A League ledger the engine does not keep** — Star Player Points (Violent
   Innovator), the Team Draft List (Insignificant), the post-game hire (Plague
-  Ridden).
+  Ridden), and On the Ball's mid-Pass interrupt.
 
 ## The Range Ruler, and why it is `yes`
 

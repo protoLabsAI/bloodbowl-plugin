@@ -336,7 +336,12 @@ def throw_in(match, dice, lx: int, ly: int) -> list[Event]:
     match.apply(ev)
     events.append(ev)
     landed = match.at(nx, ny)
-    events.extend(catch(match, landed, dice) if landed is not None else bounce(match, dice))
+    if landed is not None:
+        events.extend(catch(match, landed, dice))
+        return events
+    # DIVING CATCH: a THROW-IN is the third of the three sources it names.
+    dived = diving_catch(match, nx, ny, "throw_in", dice)
+    events.extend(dived or bounce(match, dice))
     return events
 
 
@@ -401,6 +406,46 @@ def _safest_square(match, player):
             if best is None or (far, -x, -y) > best:
                 best, chosen = (far, -x, -y), (x, y)
     return chosen
+
+
+def diving_catch(match, x: int, y: int, source: str, dice) -> list[Event]:
+    """DIVING CATCH: "This player may attempt to Catch the ball IF IT LANDS IN A
+    SQUARE IN THEIR TACKLE ZONE as a result of a PASS, THROW-IN or KICK-OFF. They
+    MAY NOT use this Skill to attempt to Catch the ball if it lands in a square in
+    their Tackle Zone AS A RESULT OF A BOUNCE."
+
+    Three sources, and the fourth excluded by name — which is the clause a
+    paraphrase drops, and the reason `source` is a parameter rather than assumed.
+
+    Returns the events if somebody dived for it, [] otherwise. The square must be
+    EMPTY: a ball landing on a player is that player's catch, not a neighbour's.
+    """
+    from .rules import adjacent, has_tackle_zone
+
+    if source not in ("pass", "throw_in", "kick_off") or match.at(x, y) is not None:
+        return []
+    divers = sorted(
+        (
+            q
+            for q in match.on_pitch()
+            if has_tackle_zone(q) and q.has_skill("Diving Catch") and adjacent(q.x, q.y, x, y)
+        ),
+        key=lambda q: q.id,
+    )
+    if not divers:
+        return []
+    who = divers[0]
+    events = [
+        Event(
+            kind="player_pushed",
+            actor=who.id,
+            detail={"x": x, "y": y, "skill": "Diving Catch"},
+            text=f"Diving Catch: {who.name()} throws themselves into ({x},{y}) after the ball.",
+        )
+    ]
+    match.apply(events[0])
+    events.extend(catch(match, who, dice, target_square=True))
+    return events
 
 
 def check_touchdown(match, player) -> list[Event]:

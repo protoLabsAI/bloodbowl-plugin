@@ -357,6 +357,49 @@ def assist_count(
     return total
 
 
+def keywords(p: PlayerState) -> set[str]:
+    """The player's Keywords, casefolded.
+
+    S3: "Each type of player has a number of KEYWORDS associated with them found in
+    their profile. These denote a number of things such as the player's race,
+    position … a player may have a Skill that affects 'all Blitzer players', in
+    which case any player with the Blitzer keyword would be affected."
+
+    They were in `data/rosters.json` all along, under `role` — the scraper captured
+    the parenthesised list after each position name ("Eagle Warrior (Lineman,
+    Human)") and nothing ever read it. Hatred and Animosity both turn on them.
+    """
+    raw = getattr(p.player, "role", "") or ""
+    return {k.strip().casefold() for k in raw.split(",") if k.strip()}
+
+
+def shares_keyword(a: PlayerState, b: PlayerState, wanted: str) -> bool:
+    """Does ``b`` have the Keyword ``wanted``, which ``a``'s Trait named?
+
+    "(all)" is the version several rosters print — Animosity (all) "will apply this
+    rule to ALL of their team-mates, REGARDLESS of the Keywords they have."
+    """
+    want = (wanted or "").strip().casefold()
+    if not want or want == "all":
+        return True
+    return want in keywords(b)
+
+
+def trait_parameter(p: PlayerState, trait: str) -> str:
+    """What is in a parameterised Trait's brackets — "Hatred (Elf)" -> "Elf".
+
+    Returns "" when the player does not have it, and "all" is returned as written
+    so the caller can tell "everybody" from "unspecified".
+    """
+    want = trait.casefold()
+    for raw in p.player.skills or []:
+        if raw.split("(")[0].strip().casefold() != want:
+            continue
+        inside = raw.partition("(")[2].rpartition(")")[0]
+        return inside.strip()
+    return ""
+
+
 def strength_of(match: Match, p: PlayerState) -> int:
     try:
         return int(str(p.player.ST).strip() or 0)
