@@ -5905,18 +5905,28 @@ def test_pro_will_not_touch_an_armour_or_injury_roll():
         assert pro_reroll(m, m.by_id("h00"), banned, _dice([6, 6, 6]), rec) is False, banned
 
 
-def test_hatred_re_rolls_a_player_down_the_way_brawler_re_rolls_a_both_down():
-    """ "…this player may re-roll a single PLAYER DOWN result." Free, like
-    Brawler's, so it goes before any Team Re-roll is considered."""
-    m = _match(("home", 7, 13, 6, "3+", ["Hatred (Elf)"]), ("away", 7, 14), ("away", 2, 20))
-    out = _block(m, "h00", "a01", _dice([4] * 10, block=[["player_down"], ["push_back"]]))
+def test_hatred_re_rolls_a_player_down_but_only_against_the_named_keyword():
+    """ "Whenever this player performs a Block Action against A PLAYER WITH THE SAME
+    KEYWORD AS THAT SHOWN IN BRACKETS, this player may re-roll a single PLAYER DOWN
+    result." Free, like Brawler's, so it goes before any Team Re-roll — and the
+    KEYWORD is the half that used to be missing, because nothing read the `role`
+    the scraper had captured all along."""
+    hated = _match(("home", 7, 13, 6, "3+", ["Hatred (Elf)"]), ("away", 7, 14), ("away", 2, 20))
+    hated.by_id("a01").player.role = "Blitzer, Elf"
+    out = _block(hated, "h00", "a01", _dice([4] * 10, block=[["player_down"], ["push_back"]]))
     assert out.ok, out.text
     assert [r for e in out.events for r in e.rolls if r.kind == "Block (re-roll)"], "it should have gone again"
-    assert m.by_id("h00").down == "standing"
+    assert hated.by_id("h00").down == "standing"
+
+    # The same Skill against somebody they have no quarrel with does nothing.
+    liked = _match(("home", 7, 13, 6, "3+", ["Hatred (Elf)"]), ("away", 7, 14), ("away", 2, 20))
+    liked.by_id("a01").player.role = "Blitzer, Orc"
+    out2 = _block(liked, "h00", "a01", _dice([4] * 10, block=[["player_down"], ["push_back"]]))
+    assert out2.turnover is True and liked.by_id("h00").down != "standing"
 
     plain = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
-    out2 = _block(plain, "h00", "a01", _dice([4] * 10, block=[["player_down"], ["push_back"]]))
-    assert out2.turnover is True and plain.by_id("h00").down != "standing"
+    out3 = _block(plain, "h00", "a01", _dice([4] * 10, block=[["player_down"], ["push_back"]]))
+    assert out3.turnover is True
 
 
 def test_saboteur_trades_its_owner_for_the_blockers_feet():
@@ -6121,3 +6131,105 @@ def test_a_bribe_undoes_a_sending_off_and_the_turnover_with_it():
     assert n.by_id("h00").place == "sent_off"
     assert out2.turnover is True
     assert n.bribes["home"] == 0, "lost either way"
+
+
+# --- Closing the partials ----------------------------------------------------
+
+
+def test_very_long_legs_is_the_written_counter_to_cloud_burster():
+    """S3, Very Long Legs: "Additionally, this player IGNORES THE CLOUD BURSTER
+    SKILL." Cloud Burster switches every Interception off; this switches it back on
+    for one player, which is why the clause exists at all."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(
+        ("home", 7, 5, 6, "3+", ["Cloud Burster"]),
+        ("home", 7, 11),
+        ("away", 7, 8, 6, "3+", ["Very Long Legs"]),
+    )
+    m.by_id("h00").player.PA = "2+"
+    m.ball.carrier, m.ball.in_play = "h00", True
+    out = actions.get("pass")["resolve"](m, {"player": "h00", "x": 7, "y": 11}, _dice([5] * 8))
+    assert [r for e in out.events for r in e.rolls if r.kind == "Intercept"], "they ignore Cloud Burster"
+
+    ordinary = _match(("home", 7, 5, 6, "3+", ["Cloud Burster"]), ("home", 7, 11), ("away", 7, 8))
+    ordinary.by_id("h00").player.PA = "2+"
+    ordinary.ball.carrier, ordinary.ball.in_play = "h00", True
+    out2 = actions.get("pass")["resolve"](ordinary, {"player": "h00", "x": 7, "y": 11}, _dice([5] * 8))
+    assert not [r for e in out2.events for r in e.rolls if r.kind == "Intercept"], "…and nobody else does"
+
+
+def test_shadowing_runs_out_after_ma_uses_in_a_turn():
+    """ "This player may only use this Skill A NUMBER OF TIMES PER TURN EQUAL TO
+    THEIR MA." Counted from the log, so it survives a fold."""
+    from bloodbowl.engine import leaving
+    from bloodbowl.engine.events import Event
+
+    m = _match(("home", 7, 13), ("away", 7, 14, 2, "3+", ["Shadowing"]))
+    m.apply(Event(kind="turn_started", detail={"side": "home", "half": 1, "turn": 1}))
+    shadow = m.by_id("a01")
+    for _ in range(2):  # MA 2, so two uses are allowed
+        m.apply(Event(kind="player_pushed", actor=shadow.id, detail={"x": shadow.x, "y": shadow.y, "shadowing": True}))
+    rec = _rec(m)
+    leaving.shadowing(m, m.by_id("h00"), [shadow], _dice([6, 6]), rec, (7, 12))
+    assert any("out of puff" in (e.text or "") for e in rec.events), [e.text for e in rec.events]
+
+
+def test_diving_catch_takes_a_ball_landing_beside_them_but_not_a_bounce():
+    """ "This player may attempt to Catch the ball IF IT LANDS IN A SQUARE IN THEIR
+    TACKLE ZONE as a result of a PASS, THROW-IN or KICK-OFF. They MAY NOT use this
+    Skill … as a result of a BOUNCE." Three sources, the fourth excluded by name."""
+    from bloodbowl.engine.ball import diving_catch
+
+    for source, expected in (("pass", True), ("kick_off", True), ("throw_in", True), ("bounce", False)):
+        m = _match(("home", 7, 13, 6, "2+", ["Diving Catch"]), ("away", 2, 20))
+        m.ball.in_play, m.ball.x, m.ball.y = True, 7, 12
+        events = diving_catch(m, 7, 12, source, _dice([5, 5, 5]))
+        assert bool(events) is expected, f"{source} should{'' if expected else ' not'} let them dive"
+        if expected:
+            assert m.ball.carrier == "h00", source
+
+
+def test_hatred_and_animosity_read_the_keywords_the_roster_always_had():
+    """Keywords were in `data/rosters.json` all along, under `role` — the
+    parenthesised list after each position name. Nothing had ever read it."""
+    from bloodbowl.engine.rules import keywords, shares_keyword, trait_parameter
+    from bloodbowl.pitch import player_from_roster
+
+    p, err = player_from_roster("home", 7, 13, "Vampire", "Thrall Lineman")
+    assert p is not None, err
+    holder = type("S", (), {"player": p})()
+    assert {"human", "lineman", "thrall"} <= keywords(holder), keywords(holder)
+
+    hater = _match(("home", 7, 13, 6, "3+", ["Hatred (Elf)", "Animosity (all)"]), ("away", 7, 14))
+    assert trait_parameter(hater.by_id("h00"), "Hatred") == "Elf"
+    assert trait_parameter(hater.by_id("h00"), "Animosity") == "all"
+    hater.by_id("a01").player.role = "Blitzer, Elf"
+    assert shares_keyword(hater.by_id("h00"), hater.by_id("a01"), "Elf")
+    assert not shares_keyword(hater.by_id("h00"), hater.by_id("a01"), "Orc")
+    # "(all) … regardless of the Keywords they have"
+    assert shares_keyword(hater.by_id("h00"), hater.by_id("a01"), "all")
+
+
+def test_a_vampire_bites_an_adjacent_thrall_and_carries_on():
+    """S3, Bloodlust: "at the end of their activation, this player MAY BITE AN
+    ADJACENT THRALL LINEMAN team-mate REGARDLESS OF THE STATUS of the Thrall
+    Lineman … treating any Casualty result as BADLY HURT; this will not cause a
+    Turnover unless the Thrall Lineman was holding the ball."
+
+    Thrall Lineman is a KEYWORD, and the Vampire roster prints it."""
+    from bloodbowl.engine.game import act
+
+    m = _match(("home", 7, 13, 6, "3+", ["Bloodlust (4+)"]), ("home", 8, 13), ("away", 2, 20))
+    m.by_id("h01").player.role = "Human, Lineman, Thrall"
+    out = act(m, "move", {"player": "h00", "x": 7, "y": 12}, _dice([2, 4, 4, 4, 4, 4, 4, 4]))
+    assert any("sinks their teeth" in (e.get("text") or "") for e in out.get("log", [])) or any(
+        "sinks their teeth" in (e.text or "") for e in m.events
+    ), [e.text for e in m.events]
+    assert not m.by_id("h00").distracted, "a fed Vampire carries on as normal"
+
+    # With no Thrall to bite, the failure lands instead.
+    alone = _match(("home", 7, 13, 6, "3+", ["Bloodlust (4+)"]), ("home", 8, 13), ("away", 2, 20))
+    act(alone, "move", {"player": "h00", "x": 7, "y": 12}, _dice([2, 4, 4, 4, 4, 4]))
+    assert alone.by_id("h00").distracted, "no Thrall, so the Trait bites them instead"

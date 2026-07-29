@@ -56,6 +56,23 @@ from .rules import strength_of
 from .skills import can_use
 
 
+def _shadowed_this_turn(match, shadow) -> int:
+    """How many times this player has already Shadowed since the turn began.
+
+    Derived from the log for the same reason everything else here is: a count kept
+    on the object is a count a folded match plays without.
+    """
+    start = 0
+    for i, e in enumerate(match.events):
+        if e.kind == "turn_started":
+            start = i
+    return sum(
+        1
+        for e in match.events[start:]
+        if e.kind == "player_pushed" and e.actor == shadow.id and (e.detail or {}).get("shadowing")
+    )
+
+
 def _one_of(markers, skill: str):
     """The single opponent who gets to use ``skill`` — "only one of those players
     may use this Skill". Lowest id, so a replay picks the same one."""
@@ -134,12 +151,23 @@ def arm_bar(match, p, markers, rec) -> int:
 def shadowing(match, p, markers, dice, rec, vacated: tuple[int, int]) -> None:
     """Follow an opponent who got away, on a 4+.
 
-    "This player may only use this Skill a number of times per Turn EQUAL TO THEIR
-    MA" — a bound so generous it has never yet been the thing that stops one, so
-    the engine reports the count rather than tracking a counter nobody would hit.
+    "This player may only use this Skill A NUMBER OF TIMES PER TURN EQUAL TO THEIR
+    MA." Counted from the log rather than tracked on the player: every use emits a
+    `player_pushed` carrying `shadowing`, so the count is derivable and survives a
+    fold — which a counter on the object would not.
     """
     shadow = _one_of(markers, "Shadowing")
     if shadow is None or match.at(*vacated) is not None:
+        return
+    if _shadowed_this_turn(match, shadow) >= shadow.movement():
+        rec.emit(
+            Event(
+                kind="note",
+                actor=shadow.id,
+                detail={"skill": "Shadowing", "spent": True},
+                text=f"{shadow.name()} has shadowed {shadow.movement()} times this Turn and is out of puff.",
+            )
+        )
         return
     d = dice.d6()
     roll = Roll(kind="Shadowing", dice=[d], total=d, target=4, passed=d >= 4)

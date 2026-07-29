@@ -33,7 +33,9 @@ from ..rules import (
     block_dice,
     has_tackle_zone,
     push_squares,
+    shares_keyword,
     strength_of,
+    trait_parameter,
 )
 from ..skills import SkillContext, can_use, hooks_for, unmodelled_skills
 from ..state import Match
@@ -614,7 +616,12 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     # HATRED: "…this player may re-roll A SINGLE PLAYER DOWN RESULT." Brawler's
     # twin on the other bad face, and free like Brawler is — so it goes before any
     # Team Re-roll is considered.
-    elif face == "player_down" and can_use(p, "Hatred") and not cmd.get("_hated"):
+    elif (
+        face == "player_down"
+        and can_use(p, "Hatred")
+        and shares_keyword(p, t, trait_parameter(p, "Hatred"))
+        and not cmd.get("_hated")
+    ):
         faces = dice.block(n)
         face = faces[_choose(faces, chooser, "attacker", cmd.get("choice"))]
         again = Roll(kind="Block (re-roll)", dice=list(faces), note="Hatred, a single Player Down")

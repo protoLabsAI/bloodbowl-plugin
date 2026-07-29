@@ -28,7 +28,7 @@ the alternative is a coach believing a Blitz happened when nothing moved.
 from __future__ import annotations
 
 from ..pitch import LENGTH, LOS_ROWS, in_bounds
-from .ball import DIRECTIONS, bounce, catch, scatter
+from .ball import DIRECTIONS, bounce, catch, diving_catch, scatter
 from .dice import Roll, roll_2d6
 from .events import Event
 from .weather import from_roll as weather_from_roll
@@ -567,7 +567,11 @@ def land(match, dice, receiving: str) -> list[Event]:
 
     standing = match.at(x, y)
     if standing is None:
-        events.extend(bounce(match, dice))
+        # DIVING CATCH: a KICK-OFF is the second of the three sources it names.
+        dived = diving_catch(match, x, y, "kick_off", dice)
+        events.extend(dived)
+        if not dived:
+            events.extend(bounce(match, dice))
     else:
         events.extend(catch(match, standing, dice))
 

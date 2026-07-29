@@ -225,12 +225,16 @@ def risk_injury(match, player, dice, by=None, armour_modifier: int = 0, bonus: i
     return events
 
 
-def injury_roll(match, player, dice, bonus: int = 0) -> list[Event]:
+def injury_roll(match, player, dice, bonus: int = 0, cap_casualty: bool = False) -> list[Event]:
     """The Injury Roll itself, and the condition it leaves the player in.
 
     Split out because the Crowd goes straight here: "INJURY BY THE CROWD: Make an
     Injury Roll for a player Pushed into the Crowd" — no Armour Roll at all, which
     is the whole reason being shoved off the pitch is worse than being hit.
+
+    ``cap_casualty`` is Bloodlust's bite: "treating any Casualty result as BADLY
+    HURT". Badly Hurt is the mildest row on the Casualty Table, so the player is
+    hurt but keeps their game — the Vampire is feeding, not killing.
     """
     events: list[Event] = []
     injury = roll_2d6(dice, "Injury", KO_MAX + 1, modifier=bonus, note="Mighty Blow +1" if bonus else "")
@@ -243,6 +247,13 @@ def injury_roll(match, player, dice, bonus: int = 0) -> list[Event]:
         if player.has_skill(skill):
             fn(tctx)
     outcome = tctx.flags["outcome"]
+    if cap_casualty and outcome == "casualty":
+        # "treating any Casualty result as Badly Hurt" — the mildest row, so they
+        # are out of this match and no worse. Knocked-out is the closest thing this
+        # engine has to "hurt but not a Casualty" and is what Badly Hurt means for
+        # the rest of the game.
+        outcome = "knocked_out"
+        tctx.notes.append("the bite is capped at Badly Hurt")
 
     injury.passed = outcome != "stunned"
     injury.note = (injury.note + f" · {outcome}").strip(" ·")

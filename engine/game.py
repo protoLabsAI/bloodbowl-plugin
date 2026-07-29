@@ -789,7 +789,7 @@ def _run_activation_gates(match: Match, action: str, cmd: dict, dice) -> dict | 
     p = match.by_id(str(cmd.get("player") or ""))
     if p is None or p.acted or p.side != match.clock.active:
         return None
-    gates = activation_gates(match, p, action)
+    gates = activation_gates(match, p, action, target=match.by_id(str(cmd.get("target") or "")))
     if p.distracted:
         match.apply(
             Event(
@@ -813,6 +813,14 @@ def _run_activation_gates(match: Match, action: str, cmd: dict, dice) -> dict | 
         match.apply(ev)
         events.append(ev)
         if r.passed:
+            continue
+
+        # BLOODLUST's bite, before the failure lands: "at the end of their
+        # activation, this player MAY BITE AN ADJACENT THRALL LINEMAN team-mate
+        # REGARDLESS OF THE STATUS of the Thrall Lineman … treating any Casualty
+        # result as BADLY HURT; this will not cause a Turnover UNLESS the Thrall
+        # Lineman was holding the ball." A bitten Vampire carries on as normal.
+        if gate["skill"] == "Bloodlust" and _bite_a_thrall(match, p, dice, events):
             continue
 
         fail = gate["on_fail"]
@@ -865,6 +873,43 @@ def _run_activation_gates(match: Match, action: str, cmd: dict, dice) -> dict | 
         events.append(ev)
         return _gate_report(match, p, events, turnover=False, text=ev.text)
     return None
+
+
+def _bite_a_thrall(match: Match, p, dice, events: list) -> bool:
+    """Feed a failed Bloodlust roll. Returns True if the Vampire fed and may carry
+    on. See the quote in `_run_activation_gates`.
+
+    "REGARDLESS OF THE STATUS of the Thrall Lineman" — Prone, Stunned, it does not
+    matter, which is the grisly point. Thrall Lineman is a KEYWORD, and the Vampire
+    roster prints it on exactly one positional.
+    """
+    from .events import Event
+    from .injury import injury_roll
+    from .rules import adjacent, keywords
+
+    thrall = next(
+        (
+            q
+            for q in match.on_pitch(p.side)
+            if q.id != p.id and "thrall" in keywords(q) and adjacent(q.x, q.y, p.x, p.y)
+        ),
+        None,
+    )
+    if thrall is None:
+        return False
+    events.append(
+        Event(
+            kind="note",
+            actor=p.id,
+            detail={"skill": "Bloodlust", "bit": thrall.id},
+            text=f"{p.name()} sinks their teeth into {thrall.name()} and carries on.",
+        )
+    )
+    match.apply(events[-1])
+    # "treating any Casualty result as Badly Hurt" — which the Injury Roll's own
+    # Casualty branch would not do, so the roll is made and the branch capped.
+    events.extend(injury_roll(match, thrall, dice, cap_casualty=True))
+    return True
 
 
 def _pick_me_up(match: Match, dice) -> None:
