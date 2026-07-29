@@ -1101,6 +1101,69 @@ def _guard(ctx: SkillContext) -> None:
     ctx.flags["assists_anyway"] = True
 
 
+# --- Skills about where the ball ends up ---------------------------------
+
+
+@skill_hook("Safe Pass", "ball")
+def _safe_pass(ctx: SkillContext) -> None:
+    """S3: "If this player rolls A NATURAL 1 when making a Passing Ability Test,
+    then it will not result in a Fumbled Pass. Instead, the player RETAINS
+    POSSESSION of the ball and their activation immediately ends. NO TURNOVER is
+    caused."
+
+    Natural 1 only. A fumble that came from modifiers — "if the Passing Ability
+    Test is a 1 AFTER MODIFIERS" — is still a fumble, and the rule is careful
+    about the difference.
+    """
+
+
+@skill_hook("Give and Go", "ball")
+def _give_and_go(ctx: SkillContext) -> None:
+    """S3: "If this player performs a Pass Action that is A QUICK PASS, or performs
+    a HAND-OFF Action, then, SO LONG AS A TURNOVER ISN'T CAUSED, their activation
+    does not end … they may continue with their Move Action using any movement
+    they have remaining." Quick Foul's cousin on the other half of the pitch."""
+
+
+@skill_hook(
+    "Safe Pair of Hands",
+    "ball",
+    partial="the engine picks the square — 'any adjacent unoccupied square' is a coach's "
+    "choice, and it takes the one furthest from the nearest opponent",
+)
+def _safe_pair_of_hands(ctx: SkillContext) -> None:
+    """S3: "If this player would be Knocked Down, Fall Over or be Placed Prone
+    WHILST IN POSSESSION OF THE BALL then, BEFORE THEY BECOME PRONE, they may
+    place the ball in any adjacent unoccupied square … INSTEAD OF BOUNCING the
+    ball as normal."
+
+    Placed, not bounced: not a scatter with better odds, a choice of square.
+    """
+
+
+@skill_hook("Strip Ball", "ball")
+def _strip_ball(ctx: SkillContext) -> None:
+    """S3: "…if an opposition player is Pushed Back then they will DROP THE BALL IN
+    THE SQUARE THEY ARE PUSHED BACK INTO, at which point it will Bounce from that
+    square. This Bounce will happen BEFORE the opposition player becomes Prone (if
+    applicable) but AFTER this player chooses to Follow-up."
+
+    One of the few orderings the rules spell out, so the bounce is deferred to
+    after the Follow-up rather than happening where it reads most naturally.
+    """
+
+
+@skill_hook("Fumblerooski", "ball")
+def _fumblerooski(ctx: SkillContext) -> None:
+    """S3: "When this player performs a Move Action whilst they are in possession
+    of the ball, they may choose to PLACE the ball on the ground in any square
+    they MOVE OUT OF during their Move Action. THIS WILL NOT CAUSE A TURNOVER."
+
+    A choice, so `bb_game_act(action="move", drop_ball=True)` asks for it rather
+    than the engine deciding to put the ball down on somebody's behalf.
+    """
+
+
 # --- The Foul Action's own Skills ----------------------------------------
 #
 # Five Devious Skills, all applied in engine/actions/foul.py. They register here

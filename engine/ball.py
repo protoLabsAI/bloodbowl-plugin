@@ -291,7 +291,19 @@ def throw_in(match, dice, lx: int, ly: int) -> list[Event]:
 
 
 def drop(match, player, dice, reason: str = "goes down") -> list[Event]:
-    """The carrier loses the ball where they stand, and it bounces."""
+    """The carrier loses the ball where they stand, and it bounces.
+
+    SAFE PAIR OF HANDS: "If this player would be Knocked Down, Fall Over or be
+    Placed Prone WHILST IN POSSESSION OF THE BALL then, BEFORE THEY BECOME PRONE,
+    they may place the ball in ANY ADJACENT UNOCCUPIED SQUARE to the square they
+    will become Prone in INSTEAD OF BOUNCING the ball as normal."
+
+    Placed, not bounced — so it is not a scatter with better odds, it is a choice
+    of square. The engine takes the one furthest from the nearest opponent, which
+    is the only reading of "any" that does not amount to handing the ball over.
+    """
+    from .skills import can_use
+
     if match.ball.carrier != player.id:
         return []
     ev = Event(
@@ -301,7 +313,44 @@ def drop(match, player, dice, reason: str = "goes down") -> list[Event]:
         text=f"{player.name()} {reason} and drops the ball.",
     )
     match.apply(ev)
+
+    if can_use(player, "Safe Pair of Hands"):
+        square = _safest_square(match, player)
+        if square is not None:
+            placed = Event(
+                kind="ball_moved",
+                detail={"x": square[0], "y": square[1], "carrier": ""},
+                text=f"Safe Pair of Hands: {player.name()} places the ball in ({square[0]},{square[1]}) "
+                "rather than letting it bounce.",
+            )
+            match.apply(placed)
+            return [ev, placed]
     return [ev, *bounce(match, dice)]
+
+
+def _safest_square(match, player):
+    """The adjacent unoccupied square furthest from the nearest opponent.
+
+    "Any adjacent unoccupied square" is a coach's choice with no rule to guide it,
+    so the engine states a policy rather than picking at random: put it where the
+    opposition has furthest to walk. Ties break on coordinates so a replay places
+    it in the same square.
+    """
+    from ..pitch import in_bounds
+
+    foes = [q for q in match.on_pitch(match.opponent(player.side))]
+    best, chosen = None, None
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            if not dx and not dy:
+                continue
+            x, y = player.x + dx, player.y + dy
+            if not in_bounds(x, y) or match.at(x, y) is not None:
+                continue
+            far = min((max(abs(q.x - x), abs(q.y - y)) for q in foes), default=99)
+            if best is None or (far, -x, -y) > best:
+                best, chosen = (far, -x, -y), (x, y)
+    return chosen
 
 
 def check_touchdown(match, player) -> list[Event]:

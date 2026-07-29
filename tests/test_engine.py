@@ -5295,3 +5295,112 @@ def test_put_the_boot_in_assists_a_foul_through_a_tackle_zone_and_nothing_else()
     assert assist_count(d, "away", d.by_id("h00"), exclude={"a02"}, fouling=True) == assist_count(
         d, "away", d.by_id("h00"), exclude={"a02"}
     )
+
+
+# --- Skills about where the ball ends up -------------------------------------
+
+
+def test_safe_pass_saves_a_natural_one_and_nothing_else():
+    """S3: "If this player rolls A NATURAL 1 … it will not result in a Fumbled
+    Pass. Instead, the player retains possession … NO TURNOVER is caused."
+
+    Natural 1 only — "if the Passing Ability Test is a 1 AFTER MODIFIERS" is still
+    a fumble, and the rule is careful about the difference."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 5, 6, "3+", ["Safe Pass"]), ("home", 7, 9))
+    m.by_id("h00").player.PA = "3+"
+    m.ball.carrier, m.ball.in_play = "h00", True
+    out = actions.get("pass")["resolve"](m, {"player": "h00", "x": 7, "y": 9}, _dice([1, 4, 4, 4, 4]))
+    assert out.ok and out.turnover is False, out.text
+    assert m.ball.carrier == "h00", "they keep the ball"
+    assert m.by_id("h00").done, "…and their activation immediately ends"
+
+    plain = _match(("home", 7, 5), ("home", 7, 9))
+    plain.by_id("h00").player.PA = "3+"
+    plain.ball.carrier, plain.ball.in_play = "h00", True
+    out2 = actions.get("pass")["resolve"](plain, {"player": "h00", "x": 7, "y": 9}, _dice([1, 4, 4, 4, 4]))
+    assert out2.turnover is True, "without the Skill the same 1 is a fumble and a turnover"
+
+
+def test_give_and_go_keeps_the_activation_open_after_a_quick_pass_only():
+    """ "…a Pass Action that is A QUICK PASS, or … a Hand-off Action" — a Short
+    Pass is not on the list, and that is the half worth checking."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    quick = _match(("home", 7, 5, 6, "3+", ["Give and Go"]), ("home", 8, 6))
+    quick.by_id("h00").player.PA = "2+"
+    quick.ball.carrier, quick.ball.in_play = "h00", True
+    out = actions.get("pass")["resolve"](quick, {"player": "h00", "x": 8, "y": 6}, _dice([5, 5, 5, 5, 5]))
+    assert out.ok, out.text
+    assert not quick.by_id("h00").done, "a Quick Pass leaves them free to move on"
+
+    far = _match(("home", 7, 5, 6, "3+", ["Give and Go"]), ("home", 7, 11))
+    far.by_id("h00").player.PA = "2+"
+    far.ball.carrier, far.ball.in_play = "h00", True
+    out2 = actions.get("pass")["resolve"](far, {"player": "h00", "x": 7, "y": 11}, _dice([5, 5, 5, 5, 5]))
+    assert out2.ok, out2.text
+    assert far.by_id("h00").done, "a longer pass still ends it"
+
+
+def test_safe_pair_of_hands_places_the_ball_instead_of_bouncing_it():
+    """ "…they may PLACE the ball in any adjacent unoccupied square to the square
+    they will become Prone in INSTEAD OF BOUNCING the ball as normal." Placed, not
+    bounced — not a scatter with better odds, a choice of square."""
+    from bloodbowl.engine.injury import knock_down
+
+    m = _match(("home", 7, 13, 6, "3+", ["Safe Pair of Hands"]), ("away", 8, 14))
+    m.ball.carrier, m.ball.in_play = "h00", True
+    m.ball.x, m.ball.y = 7, 13
+    out = knock_down(m, m.by_id("h00"), _dice([4, 4, 4, 4, 4, 4]))
+    assert not m.ball.carrier
+    assert not [r for e in out for r in e.rolls if r.kind == "Direction"], "no bounce should be rolled"
+    assert max(abs(m.ball.x - 7), abs(m.ball.y - 13)) == 1, f"it should be beside them: {m.ball.x},{m.ball.y}"
+    # Away from the opponent, which is the stated policy for "any".
+    assert max(abs(m.ball.x - 8), abs(m.ball.y - 14)) > 1, "and out of the nearest opponent's reach"
+
+
+def test_strip_ball_knocks_the_ball_loose_on_a_push():
+    """ "…if an opposition player is Pushed Back then they will drop the ball in
+    the square they are Pushed Back INTO … This Bounce will happen BEFORE the
+    opposition player becomes Prone but AFTER this player chooses to Follow-up."
+    """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 6, "3+", ["Strip Ball"]), ("away", 7, 14))
+    m.ball.carrier, m.ball.in_play = "a01", True
+    out = actions.get("block")["resolve"](
+        m, {"player": "h00", "target": "a01"}, _dice([4, 4, 4, 4], block=[["push_back"]])
+    )
+    assert m.ball.carrier != "a01", "they should not still have it"
+    assert any("Strip Ball" in (e.text or "") for e in out.events), [e.text for e in out.events]
+
+    plain = _match(("home", 7, 13), ("away", 7, 14))
+    plain.ball.carrier, plain.ball.in_play = "a01", True
+    actions.get("block")["resolve"](
+        plain, {"player": "h00", "target": "a01"}, _dice([4, 4, 4, 4], block=[["push_back"]])
+    )
+    assert plain.ball.carrier == "a01", "an ordinary push does not strip it"
+
+
+def test_fumblerooski_leaves_the_ball_behind_without_a_turnover():
+    """ "…they may choose to PLACE the ball on the ground in any square they MOVE
+    OUT OF during their Move Action. THIS WILL NOT CAUSE A TURNOVER." A choice, so
+    the engine is asked rather than deciding to put the ball down."""
+    m = _match(("home", 7, 13, 6, "3+", ["Fumblerooski"]), ("away", 2, 20))
+    m.ball.carrier, m.ball.in_play = "h00", True
+    m.ball.x, m.ball.y = 7, 13
+    out = _move(m, "h00", 7, 12, _dice([4, 4, 4, 4]), drop_ball=True)
+    assert out.ok and out.turnover is False, out.text
+    assert not m.ball.carrier and (m.ball.x, m.ball.y) == (7, 13), f"{m.ball.x},{m.ball.y}"
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 12), "and the player moved on"
+
+    # Not asked for: the ball goes with them, as always.
+    keep = _match(("home", 7, 13, 6, "3+", ["Fumblerooski"]), ("away", 2, 20))
+    keep.ball.carrier, keep.ball.in_play = "h00", True
+    keep.ball.x, keep.ball.y = 7, 13
+    _move(keep, "h00", 7, 12, _dice([4, 4, 4, 4]))
+    assert keep.ball.carrier == "h00"

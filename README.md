@@ -97,7 +97,7 @@ Ten of the eleven kick-off events say plainly that they were rolled but not appl
 `bb_preset_delete`
 
 **Playing** — `bb_game_new` · `bb_game_state` · `bb_game_legal` · `bb_game_odds` ·
-`bb_game_act` · `bb_game_end_turn` · `bb_game_kickoff` · `bb_game_log` ·
+`bb_game_act` (`drop_ball=True` for a Fumblerooski) · `bb_game_end_turn` · `bb_game_kickoff` · `bb_game_log` ·
 `bb_game_abandon` · `bb_pass_ranges`
 
 **Choosing** — `bb_game_choose` answers a Kick-off Event that asks the Coach

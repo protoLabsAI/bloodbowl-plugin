@@ -12,7 +12,7 @@ from __future__ import annotations
 from ..ball import catch
 from ..events import Event
 from ..rules import adjacent
-from ..skills import unmodelled_skills
+from ..skills import can_use, unmodelled_skills
 from ..state import Match
 from . import Legality, Outcome, Recorder, ended, refuse_if_spent, register
 
@@ -65,7 +65,20 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     )
     rec.absorb(catch(match, t, dice, team_reroll=bool(cmd.get("team_reroll"))))
 
-    rec.emit(ended(p.id, "handoff", f"{p.name()}'s Hand-off Action is over."))
+    # GIVE AND GO: "…or performs a Hand-off Action, then, so long as a Turnover
+    # isn't caused, their activation does not end … they may continue with their
+    # Move Action using any movement they have remaining."
+    if can_use(p, "Give and Go"):
+        rec.emit(
+            Event(
+                kind="note",
+                actor=p.id,
+                detail={"skill": "Give and Go"},
+                text=f"{p.name()} gives and goes — their activation continues.",
+            )
+        )
+    else:
+        rec.emit(ended(p.id, "handoff", f"{p.name()}'s Hand-off Action is over."))
     held = match.ball.carrier == t.id
     return Outcome(
         ok=held,
