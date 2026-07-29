@@ -464,7 +464,11 @@ def _tools(cfg: dict):
 
     @tool
     def bb_game_choose(
-        decline: bool = False, player: str = "", moves: list | None = None, players: list | None = None
+        decline: bool = False,
+        player: str = "",
+        moves: list | None = None,
+        players: list | None = None,
+        result: int = 0,
     ) -> str:
         """Answer whatever the engine stopped to ask.
 
@@ -478,8 +482,12 @@ def _tools(cfg: dict):
           Quick Snap!    ``moves`` — [{"id","x","y"}], each Open player one square
           Solid Defence  ``moves`` — up to D3+3 Open players set up again
           Charge!        ``players`` — up to D3+3 Open players to send in
+          Apothecary     ``result`` — 1 for the original Casualty Roll, 2 for the
+                         Apothecary's second one
 
         ``decline=True`` is always a legal answer; every one of these says "may".
+        For the Apothecary it means keeping the roll you already had — by then the
+        Apothecary is spent and there is no doing-nothing left.
 
         A Charge is different after that: the selected players take their free
         Actions through ``bb_game_act`` like any other activation (a Move each,
@@ -494,7 +502,13 @@ def _tools(cfg: dict):
             return json.dumps({"ok": False, "error": "no match in progress"})
         out = resolve_choice(
             m,
-            {"decline": decline, "player": player, "moves": moves or [], "players": players or []},
+            {
+                "decline": decline,
+                "player": player,
+                "moves": moves or [],
+                "players": players or [],
+                "result": int(result or 0),
+            },
             dice_for(m),
         )
         if out.get("ok"):
@@ -533,10 +547,19 @@ def _tools(cfg: dict):
     def bb_game_apothecary(player: str) -> str:
         """Patch a Knocked-out or Casualtied player up. ONCE PER GAME per side.
 
-        A Knocked-out player comes back Stunned in the square they were in —
-        which is a real swing, because they are back on the pitch. One taken out
-        by the crowd goes to the Reserves Box instead. Only available if the match
-        was started with ``apothecary=True``.
+        A KNOCKED-OUT player comes back Stunned in the square they were in — which
+        is a real swing, because they are back on the pitch. One taken out by the
+        crowd goes to the Reserves Box instead.
+
+        A CASUALTY works differently and this tool does not finish the job: "the
+        opposing Coach makes a second Casualty Roll … and the player's controlling
+        Coach may select either of the two results to apply." So it rolls, then
+        stops and asks — answer with ``bb_game_choose(result=1)`` for the original
+        or ``result=2`` for the Apothecary's. Only a Badly Hurt result brings them
+        back (to the Reserves Box); anything else and the Casualty stands.
+
+        The Apothecary is spent the moment it is declared, win or lose. Only
+        available if the match was started with ``apothecary=True``.
         """
         from .engine.game import dice_for, use_apothecary
         from .store import load_match, save_match

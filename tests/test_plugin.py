@@ -1058,3 +1058,36 @@ def test_a_charge_can_be_selected_and_played_end_to_end_over_http(client):
     # `in_play` is true from the moment the kick is announced, so it proves
     # nothing about landing. `in_air` is the one that does.
     assert after["ball"]["in_play"] and not after["ball"]["in_air"], after["ball"]
+
+
+def test_the_apothecary_casualty_choice_works_through_the_tools(registry):
+    """The tool has to hand the question on rather than answering it — and the
+    answer has to reach the saved match, because the Coach replies in a separate
+    call and the board is reloaded from disk in between."""
+    import bloodbowl
+    from bloodbowl.engine.events import Event
+    from bloodbowl.store import load_match, save_match
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+    tools["bb_game_new"].invoke({"seed": 4, "apothecary": True})
+
+    m = load_match()
+    m.apply(Event(kind="player_condition", actor="h00", detail={"outcome": "casualty"}))
+    m.apply(Event(kind="casualty_roll", actor="h00", detail={"result": "Dead", "roll": 15}))
+    save_match(m)
+
+    asked = json.loads(tools["bb_game_apothecary"].invoke({"player": "h00"}))
+    assert asked["ok"] and asked["pending"]["choice"] == "apothecary", asked
+    assert len(asked["results"]) == 2
+
+    state = json.loads(tools["bb_game_state"].invoke({}))
+    assert state["waiting_on"]["choice"] == "apothecary", "a reloaded match must still be waiting"
+
+    best = 1 + max(range(2), key=lambda i: asked["results"][i]["result"] == "Badly Hurt")
+    answered = json.loads(tools["bb_game_choose"].invoke({"result": best}))
+    assert answered["ok"], answered
+    after = load_match()
+    assert not after.pending, "the answer has to reach the SAVED match"

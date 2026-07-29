@@ -65,7 +65,7 @@ Three verdicts, and the middle one is the important one:
 | BROKEN ARM · DISLOCATED HIP · BROKEN SHOULDER | n/a | League Play |
 | GETTING EVEN | n/a | League Play |
 | INJURY BY THE CROWD | yes | no Armour Roll; Stunned means the Reserves Box |
-| APOTHECARIES | partly | the Knocked-out patch-up; the Casualty branch's choice of two rolls is not offered |
+| APOTHECARIES | yes | Knocked-out patch-up, and the Casualty branch's choice of two rolls is asked |
 | FOUL ACTIONS! · PERFORMING A FOUL ACTION | yes | |
 | BEING SENT-OFF · ARGUE THE CALL | yes | the Argue roll is made for you — see §6 |
 | PASS ACTIONS! · PERFORMING A PASS ACTION | yes | |
