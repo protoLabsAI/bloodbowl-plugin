@@ -15,6 +15,22 @@ import { $, api, apiOrNull, esc, fail, json, ok } from "./api.js";
 import { at, clearMarks, key } from "./board.js";
 import { hideCard, posCard, showCard } from "./card.js";
 import * as choice from "./choice.js";
+import * as drag from "./drag.js";
+
+/* Every mark `paintLegal` can put on a square, in one place because it was in
+ * SEVEN and they had already drifted: `passable` was in none of them, so arming
+ * a pass and cancelling it left the throw targets lit up across the pitch. */
+const MARKS = [
+  "legal",
+  "needsroll",
+  "blockable",
+  "blitzable",
+  "foulable",
+  "securable",
+  "handoffable",
+  "passable",
+  "droptarget",
+];
 
 export const state = {
   match: null,
@@ -41,7 +57,7 @@ export function teardown() {
   if (ball) ball.remove();
   state.selected = null;
   state.legal = null;
-  clearMarks("legal", "needsroll", "blockable", "blitzable", "foulable", "securable", "handoffable");
+  clearMarks(...MARKS);
 }
 
 export function render() {
@@ -94,6 +110,20 @@ export function render() {
       if (blitz) return declareBlitz(blitz);
       select(p);
     });
+    // Drag to move. Click-then-click still works and is still the accessible
+    // path; this is the direct one. Only a player who could be activated is
+    // draggable — dragging the opposition, or anyone on a board that is not
+    // yours to move, would be a gesture the engine can only refuse.
+    drag.draggable(node, {
+      canDrag: () => canActivate(p),
+      onStart: () => {
+        hideCard();
+        if (state.selected !== p.id) select(p);
+      },
+      onEnter: (sq) => markDropTarget(sq),
+      onDrop: (sq) => dropOn(p, sq),
+      onEnd: () => markDropTarget(null),
+    });
     at(p.x, p.y).appendChild(node);
     state.nodes.set(k, node);
   }
@@ -144,12 +174,63 @@ export function render() {
   }
 }
 
+/** Could this player be activated right now? The gate on dragging them. */
+function canActivate(p) {
+  const m = state.match;
+  if (!m || m.over) return false;
+  if (p.side !== m.clock.active) return false;
+  // A head-to-head board may only move one side. `not-my-turn` is already the
+  // rule the rest of the view obeys; a draggable opposition player would just be
+  // a refusal dressed up as an affordance.
+  const who = m.controllers || {};
+  const mine = Object.keys(who).find((s) => who[s] === "human");
+  if (mine && m.clock.active !== mine) return false;
+  return !p.acted;
+}
+
+let lastDropTarget = null;
+
+/**
+ * Light the square under the pointer.
+ *
+ * Tracks its own cell rather than calling `clearMarks("droptarget")`, because
+ * `clearMarks` REMOVES EVERY ODDS BADGE whatever classes it is handed — read it
+ * before using it. Called on every pointer move, it stripped the Dodge, Rush and
+ * dice tags off the whole board mid-drag: the marks a coach is dragging BY.
+ */
+function markDropTarget(sq) {
+  if (lastDropTarget) lastDropTarget.classList.remove("droptarget");
+  lastDropTarget = null;
+  if (!sq) return;
+  const cell = at(sq.x, sq.y);
+  if (!cell) return;
+  cell.classList.add("droptarget");
+  lastDropTarget = cell;
+}
+
+/**
+ * A player was dropped on a square.
+ *
+ * Routed through `onCellClick` rather than reimplemented, so a drop and a click
+ * can never disagree about what a square MEANS — the dispatch that decides
+ * between Secure, a pass and a move lives in exactly one place.
+ *
+ * The selection is ensured first: `onStart` fires `select` without awaiting it
+ * (a pointer gesture cannot wait on a fetch), so a fast drag can arrive here
+ * before the move list does.
+ */
+async function dropOn(p, sq) {
+  if (state.selected !== p.id || !state.legal) await select(p);
+  if (!state.legal || !state.legal.ok) return;
+  await onCellClick(sq.x, sq.y);
+}
+
 /** Take a board the server just handed back, and redraw everything from it. */
 async function adopt(match) {
   state.match = match;
   state.selected = null;
   state.legal = null;
-  clearMarks("legal", "needsroll", "blockable", "blitzable", "foulable", "securable", "handoffable");
+  clearMarks(...MARKS);
   describeSelection(null, null);
   render();
   await renderLog();
@@ -160,7 +241,7 @@ async function select(p) {
     // Not an error — you are allowed to look at the opposition. Just no move list.
     state.selected = p.id;
     state.legal = null;
-    clearMarks("legal", "needsroll", "blockable", "blitzable", "foulable", "securable", "handoffable");
+    clearMarks(...MARKS);
     describeSelection(p, null);
     render();
     return;
@@ -179,7 +260,7 @@ async function select(p) {
 }
 
 function paintLegal() {
-  clearMarks("legal", "needsroll", "blockable", "blitzable", "foulable", "securable", "handoffable");
+  clearMarks(...MARKS);
   if (!state.legal || !state.legal.ok) return;
 
   // Blockable opponents, labelled with the dice and — the part that decides
@@ -404,7 +485,7 @@ async function ballAction(action, extra) {
   // move list is stale either way.
   state.selected = null;
   state.legal = null;
-  clearMarks("legal", "needsroll", "blockable", "blitzable", "foulable", "securable", "handoffable");
+  clearMarks(...MARKS);
   describeSelection(null, null);
   render();
   await renderLog();
@@ -451,7 +532,7 @@ async function throwBlock(block) {
     if (report.turnover || !still || still.done || still.down !== "standing") {
       state.selected = null;
       state.legal = null;
-      clearMarks("legal", "needsroll", "blockable", "blitzable", "foulable", "securable", "handoffable");
+      clearMarks(...MARKS);
       describeSelection(null, null);
     } else {
       state.legal = await api(`/game/legal?player=${encodeURIComponent(state.selected)}`);
@@ -492,7 +573,7 @@ export async function onCellClick(x, y) {
     if (report.turnover || !still || still.down !== "standing") {
       state.selected = null;
       state.legal = null;
-      clearMarks("legal", "needsroll", "blockable", "blitzable", "foulable", "securable", "handoffable");
+      clearMarks(...MARKS);
       describeSelection(null, null);
     } else {
       state.legal = await api(`/game/legal?player=${encodeURIComponent(state.selected)}`);
@@ -550,7 +631,7 @@ export function wire(onChanged) {
       state.match = r.match;
       state.selected = null;
       state.legal = null;
-      clearMarks("legal", "needsroll", "blockable", "blitzable", "foulable", "securable", "handoffable");
+      clearMarks(...MARKS);
       describeSelection(null, null);
       ok();
     } catch (e) {
@@ -587,6 +668,11 @@ export function wire(onChanged) {
 
 /** The poller's play-mode half. Re-renders only when the match actually moved. */
 export async function poll() {
+  // NOT WHILE A DRAG IS IN FLIGHT. `render()` replaces a player's node whenever
+  // its signature changes, which tears the node out from under the pointer and
+  // kills the gesture with no error at all. The setup board shipped exactly this
+  // bug; standing the poller down is how it was fixed there too.
+  if (drag.state.active) return false;
   const r = await apiOrNull("/game");
   const next = r && r.ok ? r.match : null;
   if (JSON.stringify(next) === JSON.stringify(state.match)) return false;

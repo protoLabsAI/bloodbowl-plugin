@@ -147,6 +147,45 @@ button.primary { background: var(--pl-color-accent); color: var(--pl-color-fg-on
 .pc.sel { outline: 2px solid var(--pl-color-focus); outline-offset: 2px; }
 .pc:active { cursor: grabbing; }
 
+/* DRAGGING A PLAYER.
+   `touch-action: none` is load-bearing rather than decorative: without it a
+   touch drag scrolls the page instead, and the gesture does nothing at all on
+   the device most likely to try it. */
+.pc { touch-action: none; }
+
+/* The original stays where it was, dimmed, so the square a move STARTED from is
+   still readable while the follower is somewhere else. Declared after `.pc.acted`
+   because both set opacity and this one has to win. */
+.pc.ghost { opacity: .3; }
+
+/* The thing under the pointer. `pointer-events: none` is what makes the hit test
+   work at all — `elementFromPoint` would otherwise return the follower itself and
+   never the square beneath it. Sized off `--cell` like everything else, so it
+   matches the board rather than the viewport. */
+.pc.follower {
+  position: fixed; z-index: 60; pointer-events: none; inset: auto;
+  /* DELIBERATELY SMALLER THAN A SQUARE. At 88% scaled 1.15 it covered the cell
+     entirely — including the drop-target outline inset within it, so the mark
+     showing WHERE THE PLAYER WOULD LAND was hidden underneath the player. The
+     thing you are aiming with must not blot out the thing you are aiming at. */
+  width: calc(var(--cell, 26px) * .66); height: calc(var(--cell, 26px) * .66);
+  transform: translate(-50%, -50%);
+  opacity: .93;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .55);
+}
+
+/* The square the pointer is over. An OUTLINE rather than a fill, so it reads on
+   top of a legal square's green and bare turf alike — a fill would either hide
+   the legality or be hidden by it.
+
+   IN --pl-color-fg, NOT --pl-color-focus. Focus is an accent, and an accent is
+   free to be any hue a theme likes: on the live agent's theme it resolves to
+   oklch(0.720 0.190 24), which is the same gold as a `needsroll` square. The
+   aiming mark was invisible against precisely the squares that matter — the ones
+   costing a Dodge. Foreground is the one token guaranteed to contrast with the
+   background in every theme, light or dark, which is the whole job here. */
+.cell.droptarget { outline: 3px solid var(--pl-color-fg); outline-offset: -3px; z-index: 4; }
+
 /* A player on the ground has to read as down at a glance, not just in a tooltip. */
 .pc.prone { transform: rotate(-58deg); opacity: .72; border-radius: 2px; }
 .pc.stunned { transform: rotate(-58deg); opacity: .5; border-radius: 2px; filter: grayscale(.7); }

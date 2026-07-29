@@ -312,6 +312,55 @@ def test_render_is_incremental_so_a_poll_cannot_tear_out_the_drag_target():
     assert "state.dragging" in _web("js/main.js"), "the poller must stand down mid-drag"
 
 
+def test_the_play_board_drag_uses_pointer_events_not_html5_drag_and_drop():
+    """The divergence from setup.js is deliberate and both reasons are load-bearing.
+
+    HTML5 `draggable` does not fire on a touchscreen at all, and Playwright — the
+    only thing that can tell whether a drag LANDS — drives pointer events natively
+    and HTML5 drag-and-drop badly. A gesture that cannot be tested is one that
+    breaks silently, which is the defect class this view keeps producing.
+    """
+    page = _web("js/drag.js")
+    assert "pointerdown" in page and "pointermove" in page and "pointerup" in page
+    assert "draggable = true" not in page, "HTML5 DnD is what this module exists to avoid"
+    assert "setPointerCapture" in page, "the gesture must survive leaving a one-square node"
+
+
+def test_a_drag_stands_the_play_poller_down_too():
+    """Setup shipped this bug: a re-render mid-drag tears the node out from under
+    the pointer and the gesture dies with no error. The play board polls too."""
+    assert "drag.state.active" in _web("js/game.js"), "game.poll must stand down mid-drag"
+
+
+def test_the_follower_cannot_swallow_its_own_hit_test():
+    """`elementFromPoint` returns the topmost element, and during a drag that is
+    the thing following the pointer — so it must not be hit-testable or every drop
+    lands on the follower instead of a square."""
+    css = _web("style.css")
+    assert ".pc.follower" in css
+    follower = css.split(".pc.follower")[1].split("}")[0]
+    assert "pointer-events: none" in follower
+    assert "touch-action: none" in css, "without it a touch drag scrolls the page instead"
+
+
+def test_a_drop_and_a_click_cannot_disagree_about_what_a_square_means():
+    """The dispatch between Secure, a pass and a move lives in `onCellClick`. A
+    drop routes through it rather than reimplementing it."""
+    page = _web("js/game.js")
+    assert "await onCellClick(sq.x, sq.y)" in page
+
+
+def test_every_mark_the_board_paints_is_also_cleared():
+    """`passable` was in the paint list and in NONE of the seven clear lists, so
+    arming a pass and cancelling it left the throw targets lit across the pitch.
+    One list now, because seven had already drifted."""
+    page = _web("js/game.js")
+    marks = page.split("const MARKS = [")[1].split("]")[0]
+    for painted in ("legal", "needsroll", "blockable", "blitzable", "foulable", "securable", "handoffable", "passable"):
+        assert f'"{painted}"' in marks, f"{painted} is painted but never cleared"
+    assert 'clearMarks("legal"' not in page, "the hand-written mark lists are what drifted"
+
+
 def test_undo_exists_and_posts_a_whole_board():
     page = _web("js/setup.js")
     assert "state.undo" in page and 'api("/replace"' in page
