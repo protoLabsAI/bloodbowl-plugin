@@ -200,7 +200,7 @@ def _free_around(match: Match, target) -> list[tuple[int, int]]:
     ]
 
 
-def _push_to(match: Match, blocker, target, prefer: tuple | None = None):
+def _push_to(match: Match, blocker, target, prefer: tuple | None = None, sidestep_to: tuple | None = None):
     """Where a pushed player ends up, and whether that is off the pitch.
 
     Returns (square, kind) with kind in {"empty", "crowd", "occupied"}. A square
@@ -215,11 +215,15 @@ def _push_to(match: Match, blocker, target, prefer: tuple | None = None):
               Back to, this player's Coach may choose any adjacent unoccupied
               square."
 
-    Sidestep belongs to the player being shoved, so the engine plays it for them:
-    the square FURTHEST from the blocker, which is the one thing a coach being
-    pushed always wants and the one thing an arbitrary pick never guarantees.
-    Grab belongs to the acting coach, so it honours ``push_to`` — the same command
+    Grab belongs to the ACTING coach, so it honours ``push_to`` — the same command
     field an ordinary push already takes, just with more squares to reach.
+
+    Sidestep belongs to the player being SHOVED, which is a different coach, so it
+    has its own field: ``sidestep_to``. When nobody names a square the engine takes
+    the one FURTHEST from the blocker, which is what a coach being pushed almost
+    always wants — but the choice is theirs to make and the field is how they make
+    it. Same for ``stand_firm``: refusing a push is a decision, and the engine only
+    takes it unasked when the alternative is the Crowd.
     """
     options = push_squares(blocker.x, blocker.y, target.x, target.y)
     on_pitch = [(x, y) for x, y in options if in_bounds(x, y)]
@@ -236,6 +240,14 @@ def _push_to(match: Match, blocker, target, prefer: tuple | None = None):
     elif target.has_skill("Sidestep"):
         wider = _free_around(match, target)
         if wider:
+            # SIDESTEP belongs to the player being SHOVED — "instead of the OPPOSING
+            # Coach choosing … THIS player's Coach may choose any adjacent
+            # unoccupied square." So `sidestep_to` is the DEFENDER's field, distinct
+            # from `push_to` which is the attacker's: naming a square here is the
+            # defending coach exercising their Skill, and the engine's
+            # furthest-from-the-blocker pick is the default when nobody says.
+            if sidestep_to and tuple(sidestep_to) in wider:
+                return tuple(sidestep_to), "empty"
             away = max(wider, key=lambda sq: max(abs(sq[0] - blocker.x), abs(sq[1] - blocker.y)))
             return away, "empty"
 
@@ -251,7 +263,18 @@ def _push_to(match: Match, blocker, target, prefer: tuple | None = None):
     return on_pitch[0], "occupied"
 
 
-def _do_push(match: Match, blocker, target, dice, rec: Recorder, pushed: list, prefer=None, depth: int = 0) -> None:
+def _do_push(
+    match: Match,
+    blocker,
+    target,
+    dice,
+    rec: Recorder,
+    pushed: list,
+    prefer=None,
+    depth: int = 0,
+    sidestep_to=None,
+    stand_firm=None,
+) -> None:
     """Push one player, following the chain if the square is taken.
 
     Everyone shoved is collected in ``pushed`` rather than scored here. S3 lets a
@@ -264,7 +287,7 @@ def _do_push(match: Match, blocker, target, dice, rec: Recorder, pushed: list, p
     if depth > 12:  # a ring of players cannot push forever
         return
 
-    square, kind = _push_to(match, blocker, target, prefer)
+    square, kind = _push_to(match, blocker, target, prefer, sidestep_to=sidestep_to)
 
     # Take Root: "cannot be Pushed Back, and may not leave their current square
     # for any reason". Unlike Stand Firm this is not a choice, so it comes first
@@ -284,13 +307,33 @@ def _do_push(match: Match, blocker, target, dice, rec: Recorder, pushed: list, p
     # including during a Chain Push, they can choose to not be Pushed Back and
     # instead remain in their current square."
     #
-    # It is a CHOICE, and the engine only has one coach at the table. So it is
-    # taken in the one case where the alternative is unambiguously worse: the
-    # Crowd, which is an Injury Roll with no armour behind it. Anywhere else,
-    # staying put versus being shoved is positional, and the engine declines to
-    # guess on the defence's behalf — it says so in the log instead.
+    # It is a CHOICE, and it belongs to the DEFENDING coach. `stand_firm` is how
+    # they make it — True to refuse the push, False to accept one they would
+    # otherwise have refused. Unset, the engine takes it in the one case where the
+    # alternative is unambiguously worse: the Crowd, which is an Injury Roll with
+    # no armour behind it. Anywhere else, staying put versus being shoved is
+    # positional, and a default that guessed would be worse than one that says so.
     if target.has_skill("Stand Firm") and not _juggernaut_suppresses(match, blocker):
-        if kind == "crowd":
+        if stand_firm is not None:
+            if stand_firm:
+                rec.emit(
+                    Event(
+                        kind="note",
+                        actor=target.id,
+                        detail={"skill": "Stand Firm", "used": True},
+                        text=f"{target.name()} uses Stand Firm and stays exactly where they are.",
+                    )
+                )
+                return
+            rec.emit(
+                Event(
+                    kind="note",
+                    actor=target.id,
+                    detail={"skill": "Stand Firm", "used": False},
+                    text=f"{target.name()} has Stand Firm and takes the push anyway.",
+                )
+            )
+        elif kind == "crowd":
             rec.emit(
                 Event(
                     kind="note",
@@ -300,15 +343,16 @@ def _do_push(match: Match, blocker, target, dice, rec: Recorder, pushed: list, p
                 )
             )
             return
-        rec.emit(
-            Event(
-                kind="note",
-                actor=target.id,
-                detail={"skill": "Stand Firm", "used": False},
-                text=f"{target.name()} has Stand Firm and could refuse this push; the engine only "
-                "uses it to avoid the Crowd.",
+        else:
+            rec.emit(
+                Event(
+                    kind="note",
+                    actor=target.id,
+                    detail={"skill": "Stand Firm", "used": False},
+                    text=f"{target.name()} has Stand Firm and could refuse this push — say "
+                    "stand_firm=true on the Block to use it.",
+                )
             )
-        )
 
     if kind == "crowd":
         rec.absorb(injure_by_crowd(match, target, dice))
@@ -359,7 +403,7 @@ def _would_fall(match: Match, who) -> bool:
     return not _uses_block(match, who)[0]
 
 
-def _both_down_choice(match: Match, p, t) -> tuple[str, str]:
+def _both_down_choice(match: Match, p, t, juggernaut=None, wrestle=None) -> tuple[str, str]:
     """What to do about a Both Down, and who is doing it.
 
     Three Skills offer a choice here and all three say "may", so the engine needs
@@ -379,10 +423,15 @@ def _both_down_choice(match: Match, p, t) -> tuple[str, str]:
     (Brawler is the third, and is applied to the DICE before this is asked — it
     re-rolls rather than reinterpreting, so it belongs beside the roll.)
 
+    Both policies are DEFAULTS, and both are overridable: `juggernaut=` and
+    `wrestle=` on the Block are how a coach says otherwise. "May" is the rules'
+    word, and a stated default that cannot be refused is not the same thing.
+
     Returns (choice, actor id) with choice in {"", "push", "wrestle"}.
     """
     blocker_falls = _would_fall(match, p)
-    if blocker_falls and p.has_skill("Juggernaut") and not declared_a_block(match, p):
+    jugger = p.has_skill("Juggernaut") and not declared_a_block(match, p) and juggernaut is not False
+    if jugger and (juggernaut or blocker_falls):
         return "push", p.id
     for who in (t, p):
         if who.has_skill("Wrestle") and _would_fall(match, who) and not _juggernaut_suppresses(match, p):
@@ -525,7 +574,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     # Blocked, just somewhere better. Which is why it has to happen up here, above
     # the strength comparison, rather than beside the other reactions.
     if can_use(t, "Trickster"):
-        spot = _fewest_assists(match, p, t)
+        spot = _fewest_assists(match, p, t, cmd.get("trickster_to"))
         if spot is not None:
             rec.emit(
                 Event(
@@ -667,7 +716,17 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     def _push_and_follow(knock_after: bool) -> None:
         vacated = (t.x, t.y)
         had_ball = match.ball.carrier == t.id
-        _do_push(match, p, t, dice, rec, pushed, prefer=cmd.get("push_to"))
+        _do_push(
+            match,
+            p,
+            t,
+            dice,
+            rec,
+            pushed,
+            prefer=cmd.get("push_to"),
+            sidestep_to=cmd.get("sidestep_to"),
+            stand_firm=cmd.get("stand_firm"),
+        )
         # STRIP BALL: "if an opposition player is Pushed Back then they will DROP
         # THE BALL IN THE SQUARE THEY ARE PUSHED BACK INTO, at which point it will
         # Bounce from that square. This Bounce will happen BEFORE the opposition
@@ -786,7 +845,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         turnover = True
 
     elif face == "both_down":
-        choice, actor = _both_down_choice(match, p, t)
+        choice, actor = _both_down_choice(match, p, t, juggernaut=cmd.get("juggernaut"), wrestle=cmd.get("wrestle"))
 
         if choice == "push":
             rec.emit(
@@ -964,15 +1023,21 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     )
 
 
-def _fewest_assists(match: Match, blocker, p) -> tuple[int, int] | None:
+def _fewest_assists(match: Match, blocker, p, want=None) -> tuple[int, int] | None:
     """Trickster's landing square: adjacent to the blocker, unoccupied, and with as
     few opposition assists reaching it as possible.
 
-    "Any other unoccupied square" is a coach's choice with no rule to guide it, so
+    "Any other unoccupied square" is a coach's choice with no rule to guide it, and
+    it belongs to the player being Blocked. ``want`` is that choice; without one
     the engine states a policy — fewest assists is the only thing about the square
     that changes the Block, which is what the Trait is for.
     """
     from ...pitch import in_bounds as _in
+
+    if want:
+        wx, wy = int(want[0]), int(want[1])
+        if _in(wx, wy) and match.at(wx, wy) is None and max(abs(wx - blocker.x), abs(wy - blocker.y)) == 1:
+            return (wx, wy)
 
     best, chosen = None, None
     for dx in (-1, 0, 1):

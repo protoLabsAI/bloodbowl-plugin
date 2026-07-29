@@ -2741,20 +2741,29 @@ def test_juggernaut_suppresses_fend_and_stand_firm_but_only_on_a_blitz():
 def test_a_partly_modelled_skill_says_which_half_is_missing():
     """ "Modelled" and "not modelled" is a binary that flatters. A Skill with two
     clauses of which one is applied would report as modelled and quietly do half
-    its job — which sounds settled, and is worse than saying nothing."""
-    from bloodbowl.engine.game import state_report
-    from bloodbowl.engine.skills import describe_skill, partly_modelled_on_pitch
+    its job — which sounds settled, and is worse than saying nothing.
 
-    jug = describe_skill("Juggernaut")
-    assert jug["modelled"] is True
-    assert "Both Down" in jug["partial"], jug.get("partial")
+    JUGGERNAUT AND STAND FIRM USED TO BE THE EXAMPLES HERE, and both have since
+    been closed: a coach's free choice is not a missing half once there is a
+    command field to make it with. The mechanism is unchanged, so this now uses
+    whichever Skills still carry a `partial=` and asserts the reporting, not the
+    membership."""
+    from bloodbowl.engine.game import state_report
+    from bloodbowl.engine.skills import describe_skill, partial_skills, partly_modelled_on_pitch
+
+    partials = sorted(partial_skills())
+    assert partials, "nothing is partial — this fixture needs rewriting, happily"
+    for name in partials:
+        assert describe_skill(name)["modelled"] is True
+        assert len(describe_skill(name)["partial"]) > 20, name
     assert describe_skill("Grab").get("partial") is None, "a fully modelled skill needs no caveat"
 
-    m = _match(("home", 7, 13, 6, "3+", ["Juggernaut"]), ("away", 7, 14, 6, "3+", ["Stand Firm"]))
-    rows = {r["skill"]: r for r in partly_modelled_on_pitch(m)}
-    assert set(rows) == {"Juggernaut", "Stand Firm"}
-    assert rows["Stand Firm"]["players"] == ["a01"]
-    assert "Crowd" in rows["Stand Firm"]["not_applied"]
+    on_pitch = partials[0].title()
+    m = _match(("home", 7, 13, 6, "3+", [on_pitch]), ("away", 7, 14))
+    rows = {r["skill"].casefold(): r for r in partly_modelled_on_pitch(m)}
+    assert partials[0] in rows, rows
+    assert rows[partials[0]]["players"] == ["h00"]
+    assert len(rows[partials[0]]["not_applied"]) > 20
     assert state_report(m)["partly_modelled_skills"] == partly_modelled_on_pitch(m)
 
 
@@ -6233,3 +6242,240 @@ def test_a_vampire_bites_an_adjacent_thrall_and_carries_on():
     alone = _match(("home", 7, 13, 6, "3+", ["Bloodlust (4+)"]), ("home", 8, 13), ("away", 2, 20))
     act(alone, "move", {"player": "h00", "x": 7, "y": 12}, _dice([2, 4, 4, 4, 4, 4]))
     assert alone.by_id("h00").distracted, "no Thrall, so the Trait bites them instead"
+
+
+# --- Star Player Points ------------------------------------------------------
+
+
+def test_spp_are_earned_for_the_five_things_that_happen_on_the_pitch():
+    """S3: Completion 1, Interception 2, Casualty 2, Touchdown 3 — all recorded
+    DURING the game, whatever they are spent on after one: "it's important to keep
+    track of every time a player does something that generates SPP during a
+    game." """
+    from bloodbowl.engine import actions
+    from bloodbowl.engine.spp import CASUALTY, COMPLETION, INTERCEPTION, TOUCHDOWN
+
+    actions.load_all()
+    # COMPLETION: an accurate Pass caught by a team-mate with no bounce.
+    m = _match(("home", 7, 5, 6, "2+"), ("home", 8, 6))
+    m.by_id("h00").player.PA = "2+"
+    m.ball.carrier, m.ball.in_play = "h00", True
+    actions.get("pass")["resolve"](m, {"player": "h00", "x": 8, "y": 6}, _dice([5, 5, 5, 5, 5]))
+    assert m.spp.get("h00") == COMPLETION, m.spp
+
+    # INTERCEPTION.
+    i = _match(("home", 7, 5, 6, "2+"), ("home", 7, 11), ("away", 7, 8, 6, "2+"))
+    i.by_id("h00").player.PA = "2+"
+    i.ball.carrier, i.ball.in_play = "h00", True
+    actions.get("pass")["resolve"](i, {"player": "h00", "x": 7, "y": 11}, _dice([5] * 8))
+    assert i.spp.get("a02") == INTERCEPTION, i.spp
+
+    # CASUALTY, from a Block.
+    c = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
+    c.by_id("a01").player.AV = "3+"
+    _block(c, "h00", "a01", _dice([6, 6, 6, 6, 12] + [4] * 8, block=[["pow"]]), follow_up=False)
+    assert c.spp.get("h00") == CASUALTY, c.spp
+
+    # TOUCHDOWN.
+    from bloodbowl.engine.ball import check_touchdown
+
+    t = _match(("home", 7, 25), ("away", 2, 2))
+    t.ball.carrier, t.ball.in_play = "h00", True
+    t.by_id("h00").move_to(7, 26)
+    check_touchdown(t, t.by_id("h00"))
+    assert t.spp.get("h00") == TOUCHDOWN, t.spp
+
+
+def test_a_special_action_casualty_earns_nothing_unless_they_are_a_violent_innovator():
+    """ "Other methods, SUCH AS SPECIAL ACTIONS or by Injury by the Crowd, do not
+    generate SPP." And Violent Innovator is the single sentence that overturns it:
+    "if an opposition player suffers a Casualty as a result of a SPECIAL ACTION
+    this player performed, this player WILL earn Star Player Points."
+
+    Also pins the separation the Stab guard forced: who CAUSED the Casualty and who
+    MODIFIES the roll are different questions, because "this Armour Roll cannot be
+    modified in any way"."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    script = [6, 6, 6, 6, 12] + [4] * 8
+    plain = _match(("home", 7, 13, 6, "3+", ["Stab"]), ("away", 7, 14), ("away", 2, 20))
+    plain.by_id("a01").player.AV = "3+"
+    out = actions.get("stab")["resolve"](plain, {"player": "h00", "target": "a01"}, _dice(script))
+    armour = next(r for e in out.events for r in e.rolls if r.kind == "Armour")
+    assert armour.modifier == 0, "a Stab's Armour Roll cannot be modified in any way"
+    assert not plain.spp, plain.spp
+
+    keen = _match(("home", 7, 13, 6, "3+", ["Stab", "Violent Innovator"]), ("away", 7, 14), ("away", 2, 20))
+    keen.by_id("a01").player.AV = "3+"
+    out2 = actions.get("stab")["resolve"](keen, {"player": "h00", "target": "a01"}, _dice(script))
+    assert next(r for e in out2.events for r in e.rolls if r.kind == "Armour").modifier == 0
+    assert keen.spp.get("h00") == 2, keen.spp
+
+
+def test_a_star_player_earns_no_spp_at_all():
+    """ "Star Players DO NOT generate SPP AT ALL during the course of a game." They
+    are hired for one match; there is nothing to advance."""
+    from bloodbowl.engine.spp import award
+
+    m = _match(("home", 7, 13), ("away", 2, 20))
+    m.by_id("h00").player.role = "star"
+    assert award(m, m.by_id("h00"), 3, "a Touchdown") == []
+    assert not m.spp
+
+
+def test_the_mvp_is_rolled_at_full_time_and_is_worth_four():
+    """ "Each Coach nominates six players … They then roll a D6 … The player that is
+    given the MVP award generates 4 SPP." """
+    from bloodbowl.engine.spp import MVP, mvp
+
+    m = _match(("home", 7, 13), ("home", 8, 13), ("away", 7, 20), ("away", 8, 20))
+    mvp(m, _dice([1, 2]))
+    awarded = {pid: n for pid, n in m.spp.items() if n == MVP}
+    assert len(awarded) == 2, f"one per side: {m.spp}"
+
+
+def test_plague_ridden_adds_a_lineman_to_the_reserves_box_and_the_fold_agrees():
+    """S3: "ONCE PER GAME, when a player with this Trait causes a Casualty … as a
+    result of a BLOCK ACTION, and that player suffers a DEAD result … you may
+    IMMEDIATELY ADD ONE NEW LINEMAN PLAYER from your team's Team Roster TO YOUR
+    RESERVES BOX."
+
+    And the added player must survive a fold, which is why `apply` builds them from
+    the event rather than the helper appending one: a player who exists until the
+    next reload is the exact trap this engine's event model exists to avoid."""
+    from bloodbowl.engine.injury import casualty_roll
+    from bloodbowl.engine.state import Match
+
+    m = _match(("home", 7, 13, 6, "3+", ["Plague Ridden"]), ("away", 7, 14), ("away", 2, 20))
+    m.home_team = "Orc"
+    m.by_id("h00").player.team = "Orc"
+    before = len(m.players)
+    casualty_roll(m, m.by_id("a01"), _dice([15]), causer=m.by_id("h00"))  # 15-16 is Dead
+    assert len(m.players) == before + 1, "a new Lineman should be in the Reserves Box"
+    added = m.players[-1]
+    assert added.place == "reserves" and added.player.position == "Orc Lineman", added.player.position
+
+    # …and a fold rebuilds them.
+    back = Match.from_dict(m.to_dict())
+    assert back.by_id(added.id) is not None, "the fold lost the added player"
+    assert back.by_id(added.id).player.position == "Orc Lineman"
+
+    # Once per game.
+    casualty_roll(m, m.by_id("a02"), _dice([16]), causer=m.by_id("h00"))
+    assert len(m.players) == before + 1, "only once per game"
+
+
+def test_plague_ridden_cannot_be_used_against_the_four_it_names():
+    """ "This Trait CANNOT BE USED against BIG GUY players, or any player with the
+    DECAY, REGENERATION or STUNTY Traits." The first is a Keyword; the other three
+    are Traits, and a paraphrase would treat all four the same way."""
+    from bloodbowl.engine.injury import casualty_roll
+
+    for role, skills in (("Big Guy, Troll", []), ("Lineman, Orc", ["Decay"]), ("Lineman, Orc", ["Stunty"])):
+        m = _match(("home", 7, 13, 6, "3+", ["Plague Ridden"]), ("away", 7, 14, 6, "3+", skills))
+        m.home_team = "Orc"
+        m.by_id("h00").player.team = "Orc"
+        m.by_id("a01").player.role = role
+        before = len(m.players)
+        casualty_roll(m, m.by_id("a01"), _dice([15, 4]), causer=m.by_id("h00"))
+        assert len(m.players) == before, f"{role} / {skills} should be immune"
+
+
+# --- The coach's choices, made by the coach ----------------------------------
+
+
+def test_sidestep_and_stand_firm_are_the_defenders_choices_to_make():
+    """Both say "MAY", and both belong to the player being shoved rather than the
+    one shoving. `sidestep_to` and `stand_firm` are how that coach makes them; the
+    engine's policy is what happens when nobody says."""
+    # Sidestep: the default is furthest from the blocker; a named square wins.
+    default = _match(("home", 7, 13), ("away", 7, 14, 6, "3+", ["Sidestep"]), ("away", 2, 20))
+    _block(default, "h00", "a01", _dice([4] * 6, block=[["push_back"]]), follow_up=False)
+    away = default.by_id("a01")
+    assert (away.x, away.y) != (7, 14)
+
+    chosen = _match(("home", 7, 13), ("away", 7, 14, 6, "3+", ["Sidestep"]), ("away", 2, 20))
+    _block(chosen, "h00", "a01", _dice([4] * 6, block=[["push_back"]]), follow_up=False, sidestep_to=(6, 14))
+    assert (chosen.by_id("a01").x, chosen.by_id("a01").y) == (6, 14), "the defending coach picked"
+
+    # Stand Firm: unasked it only avoids the Crowd; asked, it refuses any push.
+    firm = _match(("home", 7, 13), ("away", 7, 14, 6, "3+", ["Stand Firm"]), ("away", 2, 20))
+    _block(firm, "h00", "a01", _dice([4] * 6, block=[["push_back"]]), follow_up=False, stand_firm=True)
+    assert (firm.by_id("a01").x, firm.by_id("a01").y) == (7, 14), "they refused the push"
+
+    loose = _match(("home", 7, 13), ("away", 7, 14, 6, "3+", ["Stand Firm"]), ("away", 2, 20))
+    _block(loose, "h00", "a01", _dice([4] * 6, block=[["push_back"]]), follow_up=False, stand_firm=False)
+    assert (loose.by_id("a01").x, loose.by_id("a01").y) != (7, 14), "…and can decline to"
+
+
+def test_trickster_and_safe_pair_of_hands_take_a_named_square():
+    """Both are "any … square" with no rule to guide the pick, so both take one."""
+    m = _match(("home", 7, 13), ("away", 7, 14, 6, "3+", ["Trickster"]), ("away", 2, 20))
+    _block(m, "h00", "a01", _dice([4] * 8, block=[["push_back"]]), follow_up=False, trickster_to=(6, 12))
+    assert any((e.detail or {}).get("skill") == "Trickster" for e in m.events)
+
+    from bloodbowl.engine.ball import drop
+
+    b = _match(("home", 7, 13, 6, "3+", ["Safe Pair of Hands"]), ("away", 2, 20))
+    b.ball.carrier, b.ball.in_play = "h00", True
+    b.ball.x, b.ball.y = 7, 13
+    drop(b, b.by_id("h00"), _dice([4] * 4), place_at=(8, 12))
+    assert (b.ball.x, b.ball.y) == (8, 12), "the coach picked the square"
+
+
+def test_juggernauts_both_down_conversion_can_be_declined():
+    """ "They MAY treat any result of Both Down as Pushed Back." May — so a coach
+    who wants the Both Down keeps it, and `juggernaut=false` is how they say so."""
+    from bloodbowl.engine.events import Event
+
+    def board():
+        m = _match(("home", 7, 13, 6, "3+", ["Juggernaut", "Block"]), ("away", 7, 14), ("away", 2, 20))
+        m.apply(Event(kind="blitz_declared", actor="h00", detail={"player": "h00", "target": "a01"}))
+        return m
+
+    taken = board()
+    _block(taken, "h00", "a01", _dice([4] * 8, block=[["both_down"]]), follow_up=False)
+    assert taken.by_id("a01").down != "standing" or (taken.by_id("a01").x, taken.by_id("a01").y) != (7, 14)
+
+    declined = board()
+    out = _block(declined, "h00", "a01", _dice([4] * 8, block=[["both_down"]]), follow_up=False, juggernaut=False)
+    assert not any((e.detail or {}).get("skill") == "Juggernaut" for e in out.events), [e.text for e in out.events]
+
+
+def test_on_the_ball_closes_on_a_declared_pass_before_the_dice():
+    """ "When AN OPPOSITION PLAYER performs a Pass Action, AFTER THE TARGET SQUARE
+    HAS BEEN DECLARED but BEFORE THE PASSING ABILITY TEST IS ROLLED, this player
+    may move up to 3 squares … they CANNOT RUSH." """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 5, 6, "2+"), ("home", 7, 11), ("away", 2, 11, 6, "3+", ["On the Ball"]))
+    m.by_id("h00").player.PA = "2+"
+    m.ball.carrier, m.ball.in_play = "h00", True
+    out = actions.get("pass")["resolve"](m, {"player": "h00", "x": 7, "y": 11}, _dice([5] * 8))
+    runner = m.by_id("a02")
+    assert (runner.x, runner.y) != (2, 11), "they should have broken toward the target square"
+    assert max(abs(runner.x - 2), abs(runner.y - 11)) <= 3, "at most three squares, and no Rush"
+    moved = [e for e in out.events if (e.detail or {}).get("skill") == "On the Ball"]
+    rolled = [i for i, e in enumerate(out.events) if any(r.kind == "Pass" for r in e.rolls)]
+    assert moved and out.events.index(moved[0]) < rolled[0], "before the Passing Ability Test"
+
+
+def test_insignificant_is_checked_against_the_only_list_the_engine_keeps():
+    """ "When creating a Team Draft List, you may not include MORE players with this
+    Trait THAN players WITHOUT this Trait." The nearest thing to a Draft List here
+    is the board, so it is checked there and REPORTED — like every other limit."""
+    from bloodbowl.pitch import Player, Scenario
+
+    sc = Scenario(name="t", home_team="Orc", away_team="Skaven")
+    sc.players = [
+        Player(side="home", x=5 + i, y=13, position="Snotling", team="Orc", skills=["Insignificant"]) for i in range(3)
+    ] + [Player(side="home", x=9, y=13, position="Orc Lineman", team="Orc")]
+    review = sc.review("home")
+    assert review["insignificant"] == 3
+    assert any("Insignificant" in p for p in review["problems"]), review["problems"]
+
+    sc.players.append(Player(side="home", x=10, y=13, position="Orc Lineman", team="Orc"))
+    sc.players.append(Player(side="home", x=11, y=13, position="Orc Lineman", team="Orc"))
+    assert not any("Insignificant" in p for p in sc.review("home")["problems"])

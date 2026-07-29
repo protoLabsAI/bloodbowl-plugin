@@ -345,7 +345,7 @@ def throw_in(match, dice, lx: int, ly: int) -> list[Event]:
     return events
 
 
-def drop(match, player, dice, reason: str = "goes down") -> list[Event]:
+def drop(match, player, dice, reason: str = "goes down", place_at=None) -> list[Event]:
     """The carrier loses the ball where they stand, and it bounces.
 
     SAFE PAIR OF HANDS: "If this player would be Knocked Down, Fall Over or be
@@ -353,9 +353,11 @@ def drop(match, player, dice, reason: str = "goes down") -> list[Event]:
     they may place the ball in ANY ADJACENT UNOCCUPIED SQUARE to the square they
     will become Prone in INSTEAD OF BOUNCING the ball as normal."
 
-    Placed, not bounced — so it is not a scatter with better odds, it is a choice
-    of square. The engine takes the one furthest from the nearest opponent, which
-    is the only reading of "any" that does not amount to handing the ball over.
+    Placed, not bounced — so it is not a scatter with better odds, it is a CHOICE
+    of square, and it belongs to the coach whose player is going down. ``place_at``
+    is how they make it; unset, the engine takes the square furthest from the
+    nearest opponent, which is the only reading of "any" that does not amount to
+    handing the ball over.
     """
     from .skills import can_use
 
@@ -370,7 +372,7 @@ def drop(match, player, dice, reason: str = "goes down") -> list[Event]:
     match.apply(ev)
 
     if can_use(player, "Safe Pair of Hands"):
-        square = _safest_square(match, player)
+        square = _safest_square(match, player, place_at)
         if square is not None:
             placed = Event(
                 kind="ball_moved",
@@ -383,15 +385,20 @@ def drop(match, player, dice, reason: str = "goes down") -> list[Event]:
     return [ev, *bounce(match, dice)]
 
 
-def _safest_square(match, player):
+def _safest_square(match, player, place_at=None):
     """The adjacent unoccupied square furthest from the nearest opponent.
 
-    "Any adjacent unoccupied square" is a coach's choice with no rule to guide it,
-    so the engine states a policy rather than picking at random: put it where the
-    opposition has furthest to walk. Ties break on coordinates so a replay places
-    it in the same square.
+    "Any adjacent unoccupied square" is a coach's choice with no rule to guide it.
+    ``place_at`` is that choice; without one the engine states a policy rather than
+    picking at random: put it where the opposition has furthest to walk. Ties break
+    on coordinates so a replay places it in the same square.
     """
     from ..pitch import in_bounds
+
+    if place_at:
+        x, y = int(place_at[0]), int(place_at[1])
+        if in_bounds(x, y) and match.at(x, y) is None and max(abs(x - player.x), abs(y - player.y)) == 1:
+            return (x, y)
 
     foes = [q for q in match.on_pitch(match.opponent(player.side))]
     best, chosen = None, None
@@ -461,6 +468,8 @@ def check_touchdown(match, player) -> list[Event]:
         return []
     if player.y != touchdown_row(player.side):
         return []
+    from . import spp
+
     ev = Event(
         kind="touchdown",
         actor=player.id,
@@ -468,7 +477,8 @@ def check_touchdown(match, player) -> list[Event]:
         text=f"TOUCHDOWN! {player.name()} scores for {player.side}.",
     )
     match.apply(ev)
-    return [ev]
+    # "When a player scores a Touchdown, they are awarded 3 SPP."
+    return [ev, *spp.award(match, player, spp.TOUCHDOWN, "a Touchdown")]
 
 
 def standing_opponents_within(match, side: str, x: int, y: int, distance: int) -> list:

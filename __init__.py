@@ -339,6 +339,10 @@ def _tools(cfg: dict):
         team_reroll: bool = False,
         drop_ball: bool = False,
         second_target: str = "",
+        sidestep_to: list | None = None,
+        stand_firm: bool | None = None,
+        trickster_to: list | None = None,
+        juggernaut: bool | None = None,
     ) -> str:
         """Take an action.
 
@@ -400,6 +404,16 @@ def _tools(cfg: dict):
         stronger. Ask bb_game_odds first: it tells you how many dice you get and
         who picks them. ``follow_up`` moves into the vacated square after a push.
 
+        FOUR OF THESE BELONG TO THE DEFENDER, and all four say "may" in the rules,
+        so the engine's policy is a default rather than the rule:
+
+          ``sidestep_to``  [x, y] — SIDESTEP: where the pushed player goes
+          ``stand_firm``   true to refuse the push outright, false to take one the
+                           engine would otherwise have refused
+          ``trickster_to`` [x, y] — TRICKSTER: where they slip to before the dice
+                           are counted
+          ``juggernaut``   false to keep a Both Down the Skill would have converted
+
         ``second_target`` on a Block is a MULTIPLE BLOCK — "two Block Actions each
         targeting a different opposition player they are Marking", at ST -2 and
         with no Follow-up from either. It needs the Skill.
@@ -430,6 +444,17 @@ def _tools(cfg: dict):
             cmd.update({"target": target, "choice": int(choice), "follow_up": bool(follow_up)})
             if second_target:
                 cmd["second_target"] = second_target
+            # The DEFENDER's choices. Each belongs to the coach being Blocked
+            # rather than the one Blocking, and each says "may" in the rules — so
+            # the engine's policy is a default, not the rule.
+            for field, value in (
+                ("sidestep_to", tuple(sidestep_to) if sidestep_to else None),
+                ("stand_firm", stand_firm),
+                ("trickster_to", tuple(trickster_to) if trickster_to else None),
+                ("juggernaut", juggernaut),
+            ):
+                if value is not None:
+                    cmd[field] = value
         elif action in ("handoff", "blitz", "foul", "throwteam"):
             cmd["target"] = target
         before = len(m.events)

@@ -34,6 +34,7 @@ import re
 
 from ...pitch import in_bounds
 from .. import rerolls as team_rerolls
+from .. import spp
 from ..ball import bounce, catch, diving_catch, scatter, throw_in
 from ..dice import roll_target
 from ..events import Event
@@ -144,6 +145,42 @@ def _interceptors(match: Match, passer, lx: int, ly: int) -> list:
     return out
 
 
+def _on_the_ball(match: Match, passer, x: int, y: int) -> list[Event]:
+    """Opposition players with On the Ball, closing on the target square.
+
+    "If MULTIPLE PLAYERS have this Skill, then they may ALL use it during the same
+    Pass Action, though they must do so ONE AT A TIME, and IF ONE OF THEM FALLS
+    OVER before the others have had the chance to move, then they may not do so."
+
+    They cannot Rush, so nobody can fall over on this move — the failure the last
+    clause guards against needs a Rush or a Dodge, and this move has neither. So
+    all of them move, in id order, which is "one at a time" made deterministic.
+    """
+    from ...pitch import in_bounds
+
+    out: list[Event] = []
+    for q in sorted(match.on_pitch(match.opponent(passer.side)), key=lambda z: z.id):
+        if not q.has_skill("On the Ball") or q.down != "standing":
+            continue
+        cx, cy = q.x, q.y
+        for _ in range(3):
+            step = (cx + (x > cx) - (x < cx), cy + (y > cy) - (y < cy))
+            if step == (cx, cy) or not in_bounds(*step) or match.at(*step) is not None:
+                break
+            cx, cy = step
+        if (cx, cy) == (q.x, q.y):
+            continue
+        ev = Event(
+            kind="player_pushed",
+            actor=q.id,
+            detail={"x": cx, "y": cy, "skill": "On the Ball"},
+            text=f"On the Ball: {q.name()} breaks toward ({x},{y}) and reaches ({cx},{cy}).",
+        )
+        match.apply(ev)
+        out.append(ev)
+    return out
+
+
 def resolve(match: Match, cmd: dict, dice) -> Outcome:
     legal = validate(match, cmd)
     if not legal.ok:
@@ -156,6 +193,16 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     rec = Recorder(match)
     unmodelled = unmodelled_skills(p)
     d = legal.detail
+
+    # ON THE BALL, the half that interrupts: "When AN OPPOSITION PLAYER performs a
+    # Pass Action, AFTER THE TARGET SQUARE HAS BEEN DECLARED but BEFORE THE PASSING
+    # ABILITY TEST IS ROLLED, this player may move up to 3 squares, following all
+    # the usual rules for a Move Action, WITH THE EXCEPTION THAT THEY CANNOT RUSH."
+    #
+    # The window is one step wide and it is exactly here — the target square is
+    # settled (validate has run) and no die has been thrown. Each mover goes toward
+    # the target square, which is the only reason to spend the Skill.
+    rec.absorb(_on_the_ball(match, p, x, y))
 
     # Accurate (+1 on a Quick or Short Pass) and Nerves of Steel (ignore Marking)
     # both land here; the band and the Marking penalty ride along so each Skill can
@@ -286,6 +333,9 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 text=f"{q.name()} INTERCEPTS the pass! {ir.describe()}",
             )
             rec.emit(ev)
+            # "Should a player successfully Intercept a Pass Action made by an
+            # opposition player, the player that made the Interception gains 2 SPP."
+            rec.absorb(spp.award(match, q, spp.INTERCEPTION, "an Interception"))
             rec.emit(ended(p.id, "pass"))
             return Outcome(
                 ok=False,
@@ -326,6 +376,11 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
 
     holder = match.by_id(match.ball.carrier) if match.ball.carrier else None
     ours = holder is not None and holder.side == p.side
+    # COMPLETION: "an ACCURATE Pass … SUCCESSFULLY CAUGHT BY A TEAM-MATE WITHOUT
+    # THE BALL HITTING THE GROUND and Bouncing". All three conditions, which is why
+    # it is checked here rather than at the throw.
+    if accurate and ours and holder.id != p.id and not any(e.kind == "ball_bounced" for e in rec.events):
+        rec.absorb(spp.award(match, p, spp.COMPLETION, "a Completion"))
     # GIVE AND GO: "If this player performs a Pass Action that is A QUICK PASS …
     # then, SO LONG AS A TURNOVER ISN'T CAUSED, their activation does not end once
     # the Pass is resolved. Instead, they may continue with their Move Action using

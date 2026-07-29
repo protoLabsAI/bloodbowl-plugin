@@ -170,8 +170,20 @@ class Scenario:
                 problems.append(f"{len(zone)} in the {label} Wide Zone — no more than {MAX_PER_WIDE_ZONE} are allowed.")
         if wrong_half:
             problems.append(f"{len(wrong_half)} deployed beyond the Line of Scrimmage into the opponent's half.")
+        # INSIGNIFICANT: "When creating a Team Draft List, you may NOT include MORE
+        # players with this Trait THAN players WITHOUT this Trait." A drafting rule,
+        # and the nearest thing this engine has to a Draft List is the board — so
+        # it is checked against the board and REPORTED, which is what the practice
+        # board does with every other limit.
+        small = [p for p in mine if any(s.split("(")[0].strip().casefold() == "insignificant" for s in p.skills)]
+        if len(small) > len(mine) - len(small):
+            problems.append(
+                f"{len(small)} of {len(mine)} have Insignificant — a team may not include more "
+                "players with that Trait than without it."
+            )
         return {
             "side": side,
+            "insignificant": len(small),
             "count": len(mine),
             "on_line_of_scrimmage": len(on_los),
             "wide_left": len(wide_l),

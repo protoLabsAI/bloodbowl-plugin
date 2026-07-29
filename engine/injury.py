@@ -123,7 +123,16 @@ def knock_down(match, player, dice, by=None, cause: str = "Knocked Down", bonus:
     return events
 
 
-def risk_injury(match, player, dice, by=None, armour_modifier: int = 0, bonus: int = 0) -> list[Event]:
+def risk_injury(
+    match,
+    player,
+    dice,
+    by=None,
+    armour_modifier: int = 0,
+    bonus: int = 0,
+    from_block: bool = True,
+    credit=None,
+) -> list[Event]:
     """Armour, and the injury behind it if the armour breaks.
 
     ``armour_modifier`` exists for the Foul Action, which is the one route here
@@ -220,12 +229,38 @@ def risk_injury(match, player, dice, by=None, armour_modifier: int = 0, bonus: i
     if not armour.passed:
         return events
 
+    # SPP: "If a player is Knocked Down AS A RESULT OF A BLOCK ACTION and suffers a
+    # Casualty … the player that knocked them down is said to have caused a
+    # Casualty [and] will gain 2 SPP." A Block Action, and only one — "other
+    # methods, SUCH AS SPECIAL ACTIONS or by Injury by the Crowd, do not generate
+    # SPP" — unless the causer has VIOLENT INNOVATOR, which is precisely the clause
+    # that overturns it.
+    # WHO CAUSED IT and WHO MODIFIES THE ROLL are two different questions, and
+    # conflating them is a real bug: Stab's "this Armour Roll cannot be modified in
+    # any way" means it may pass nobody as `by`, but the Stabber still caused the
+    # Casualty. `credit` answers the first, `by` the second, and only `by` ever
+    # reaches Mighty Blow or Claws.
+    def _spp_for_casualty(produced: list) -> list:
+        from .skills import can_use
+        from .spp import CASUALTY as _CAS
+        from .spp import award
+
+        who = credit if credit is not None else by
+        casualty = any(e.kind == "injury_roll" and (e.detail or {}).get("outcome") == "casualty" for e in produced)
+        if not casualty or who is None:
+            return []
+        if from_block or can_use(who, "Violent Innovator"):
+            return award(match, who, _CAS, "causing a Casualty")
+        return []
+
     bonus = mighty - spent_on_armour
-    events.extend(injury_roll(match, player, dice, bonus=bonus))
+    hurt = injury_roll(match, player, dice, bonus=bonus, causer=credit if credit is not None else by)
+    events.extend(hurt)
+    events.extend(_spp_for_casualty(hurt))
     return events
 
 
-def injury_roll(match, player, dice, bonus: int = 0, cap_casualty: bool = False) -> list[Event]:
+def injury_roll(match, player, dice, bonus: int = 0, cap_casualty: bool = False, causer=None) -> list[Event]:
     """The Injury Roll itself, and the condition it leaves the player in.
 
     Split out because the Crowd goes straight here: "INJURY BY THE CROWD: Make an
@@ -280,7 +315,7 @@ def injury_roll(match, player, dice, bonus: int = 0, cap_casualty: bool = False)
         ),
     )
     if outcome == "casualty":
-        events.extend(casualty_roll(match, player, dice))
+        events.extend(casualty_roll(match, player, dice, causer=causer))
     return events
 
 
@@ -325,7 +360,65 @@ CASUALTY_TABLE = (
 )
 
 
-def casualty_roll(match, player, dice) -> list[Event]:
+def _plague_ridden(match, victim, causer, result: str) -> list[Event]:
+    """PLAGUE RIDDEN: "ONCE PER GAME, when a player with this Trait causes a
+    Casualty against an opposition player as a result of a BLOCK ACTION, and that
+    player suffers a DEAD result on their Casualty Roll AND IS NOT SAVED BY AN
+    APOTHECARY, you may IMMEDIATELY ADD ONE NEW LINEMAN PLAYER FROM YOUR TEAM'S
+    TEAM ROSTER TO YOUR RESERVES BOX."
+
+    Immediately, and to the Reserves Box — so the in-match half is real, and the
+    Lineman is in `data/rosters.json` (the positional with the 0-16 limit, which is
+    the same one `flesh_out` picks for a preset token).
+
+    "This Trait CANNOT BE USED against Big Guy players, or any player with the
+    DECAY, REGENERATION or STUNTY Traits." Four exclusions, and the first is a
+    Keyword rather than a Trait — which is why `keywords` is asked as well.
+    """
+    from ..pitch import find_team, player_from_roster
+    from .rules import keywords
+    from .skills import can_use
+
+    if causer is None or result != "Dead" or not can_use(causer, "Plague Ridden"):
+        return []
+    if any(e.kind == "player_added" and e.detail.get("skill") == "Plague Ridden" for e in match.events):
+        return []  # once per game
+    if "big guy" in keywords(victim) or any(victim.has_skill(x) for x in ("Decay", "Regeneration", "Stunty")):
+        return []
+    team_name = causer.player.team or (match.home_team if causer.side == "home" else match.away_team)
+    team = find_team(team_name or "")
+    if team is None or not team.get("positionals"):
+        return []
+    lineman = max(team["positionals"], key=lambda q: _qty_max(q.get("qty", "")))
+    fresh, _err = player_from_roster(causer.side, 0, 0, team["name"], lineman["position"])
+    if fresh is None:
+        return []
+    # Everything `apply` needs to REBUILD this player from the log alone. The
+    # helper does not append: `fold(events)` has to produce the same match, and a
+    # player added here rather than there would exist until the next reload.
+    ev = Event(
+        kind="player_added",
+        actor=f"{causer.side[0]}{len(match.players):02d}",
+        detail={
+            "side": causer.side,
+            "team": team["name"],
+            "position": lineman["position"],
+            "skill": "Plague Ridden",
+        },
+        text=f"The plague spreads: a new {lineman['position']} shuffles into {causer.side}'s Reserves Box.",
+    )
+    match.apply(ev)
+    return [ev]
+
+
+def _qty_max(qty: str) -> int:
+    import re as _re
+
+    found = _re.findall(r"\d+", str(qty or ""))
+    return int(found[-1]) if found else 0
+
+
+def casualty_roll(match, player, dice, causer=None) -> list[Event]:
     """The D16 Casualty Table. Reported, not applied — everything on it is a
     League consequence, and "in all instances the player will miss the rest of the
     current game" either way.
@@ -375,7 +468,7 @@ def casualty_roll(match, player, dice) -> list[Event]:
         "Beyond this match, so nothing here changes.",
     )
     match.apply(ev)
-    return [*events, ev]
+    return [*events, ev, *_plague_ridden(match, player, causer, name)]
 
 
 _INJURY_TEXT = {

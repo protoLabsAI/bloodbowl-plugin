@@ -614,6 +614,14 @@ def _end_of_game(match: Match, dice) -> None:
     rather than about the match. The engine says the game is drawn and that Extra
     Time is available; `bb_game_extra_time` starts it.
     """
+    # "At the end of each game you will need to determine who your Most Valuable
+    # Player for the game was … The player that is given the MVP award generates
+    # 4 SPP." The last thing that happens, and the only SPP award that is not a
+    # consequence of something on the pitch.
+    from .spp import mvp
+
+    mvp(match, dice)
+
     drawn = match.score.get("home", 0) == match.score.get("away", 0)
     match.apply(
         Event(

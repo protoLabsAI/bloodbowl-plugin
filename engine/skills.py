@@ -943,12 +943,7 @@ def _pass(ctx: SkillContext) -> None:
 # and so this file stays the one place that lists what the engine applies.
 
 
-@skill_hook(
-    "Stand Firm",
-    "push",
-    partial="the engine only refuses a push that would go into the Crowd; refusing any "
-    "other push is a coach's judgement it does not make",
-)
+@skill_hook("Stand Firm", "push")
 def _stand_firm(ctx: SkillContext) -> None:
     """S3: "When this player would be Pushed Back during a Block Action, including
     during a Chain Push, they can choose to not be Pushed Back and instead remain
@@ -961,12 +956,7 @@ def _stand_firm(ctx: SkillContext) -> None:
     """
 
 
-@skill_hook(
-    "Sidestep",
-    "push",
-    partial="the engine picks the square furthest from the blocker; the rules let the "
-    "coach pick any adjacent unoccupied one",
-)
+@skill_hook("Sidestep", "push")
 def _sidestep(ctx: SkillContext) -> None:
     """S3: "Whenever this player is Pushed Back for any reason, then instead of the
     opposing Coach choosing where this player is Pushed Back to, this player's
@@ -999,12 +989,7 @@ def _fend(ctx: SkillContext) -> None:
     """
 
 
-@skill_hook(
-    "Juggernaut",
-    "push",
-    partial="both clauses are applied, but the Both Down conversion is taken only when "
-    "the blocker would otherwise be Knocked Down — the rules leave it a free choice",
-)
+@skill_hook("Juggernaut", "push")
 def _juggernaut(ctx: SkillContext) -> None:
     """S3: "when this player performs a Block Action as part of a Blitz Action,
     opposition players cannot use the Fend, Stand Firm or Wrestle Skills."
@@ -1284,19 +1269,15 @@ def _secret_weapon(ctx: SkillContext) -> None:
     """
 
 
-@skill_hook(
-    "Insignificant",
-    "draft",
-    partial="the whole Skill — it constrains a TEAM DRAFT LIST, and this engine starts "
-    "matches from a practice board rather than drafting a team",
-)
+@skill_hook("Insignificant", "draft")
 def _insignificant(ctx: SkillContext) -> None:
     """S3: "When creating a Team Draft List, you may not include more players with
     this Trait than players without this Trait."
 
-    Nothing in a match turns on it. Registered as a stated partial rather than left
-    unmodelled, because "not modelled" would suggest the engine is missing
-    something it could do — it is missing a drafting phase it does not have.
+    The nearest thing this engine has to a Draft List is the BOARD, so the
+    constraint is checked against the board and REPORTED by `Scenario.review` —
+    which is exactly what the practice board does with the four Set-up limits. A
+    drafting rule enforced on the only list the engine keeps.
     """
 
 
@@ -1515,12 +1496,7 @@ def _give_and_go(ctx: SkillContext) -> None:
     they have remaining." Quick Foul's cousin on the other half of the pitch."""
 
 
-@skill_hook(
-    "Safe Pair of Hands",
-    "ball",
-    partial="the engine picks the square — 'any adjacent unoccupied square' is a coach's "
-    "choice, and it takes the one furthest from the nearest opponent",
-)
+@skill_hook("Safe Pair of Hands", "ball")
 def _safe_pair_of_hands(ctx: SkillContext) -> None:
     """S3: "If this player would be Knocked Down, Fall Over or be Placed Prone
     WHILST IN POSSESSION OF THE BALL then, BEFORE THEY BECOME PRONE, they may
@@ -1619,27 +1595,26 @@ def _put_the_boot_in(ctx: SkillContext) -> None:
 # --- The Skills that make a Block into more than one thing ----------------
 
 
-@skill_hook(
-    "Violent Innovator",
-    "scoring",
-    partial="the whole Skill — it awards STAR PLAYER POINTS, which are a post-game ledger this engine does not keep",
-)
+@skill_hook("Violent Innovator", "scoring")
 def _violent_innovator(ctx: SkillContext) -> None:
     """S3: "If an opposition player suffers a Casualty as a result of a Special
     Action this player performed, this player WILL EARN STAR PLAYER POINTS for
     causing a Casualty as appropriate."
 
-    Nothing in a match turns on it. Stated rather than left unmodelled, because
-    "not modelled" implies a gap the engine could close — SPP are a League ledger,
-    not a rule about the pitch.
+    It matters because SPP are EARNED during a game, whatever they are spent on
+    after one: "it's important to keep track of every time a player does something
+    that generates SPP DURING A GAME." The default is that a Casualty only counts
+    when it came from a Block Action — "other methods, such as SPECIAL ACTIONS or
+    by Injury by the Crowd, do not generate SPP" — and this Skill is the single
+    exception to that sentence. See `engine/spp.py`.
     """
 
 
 @skill_hook(
     "Plague Ridden",
     "scoring",
-    partial="the whole Trait — it adds a player to a TEAM ROSTER between matches, and "
-    "this engine has no roster to add to",
+    partial="the POST-GAME half — 'during the Post-game Sequence, this player may be hired in "
+    "the same manner as any Journeyman', which needs a league and a Treasury",
 )
 def _plague_ridden(ctx: SkillContext) -> None:
     """S3: "Once per game, when a player with this Trait causes a Casualty … and
@@ -1647,8 +1622,15 @@ def _plague_ridden(ctx: SkillContext) -> None:
     player from your team's Team Roster to your RESERVES BOX … During the Post-game
     Sequence, this player may be hired…"
 
-    The Reserves Box half would be in scope, but the player added comes from a Team
-    Roster the engine does not have, and the rest is explicitly Post-game.
+    The in-match half is real and is applied: "you may IMMEDIATELY add one new
+    Lineman player from your team's Team Roster to your RESERVES BOX", and the
+    Lineman is in `data/rosters.json` — the positional with the 0-16 limit, the
+    same one `flesh_out` picks for a preset token. Four exclusions come with it
+    ("cannot be used against BIG GUY players, or any player with the DECAY,
+    REGENERATION or STUNTY Traits"), and the first of those is a Keyword rather
+    than a Trait.
+
+    What is left is the sentence after: hiring them permanently is Post-game.
     """
 
 
@@ -1734,13 +1716,7 @@ def _saboteur_skill(ctx: SkillContext) -> None:
     """
 
 
-@skill_hook(
-    "Trickster",
-    "block_reaction",
-    partial="the engine picks the square — 'any other unoccupied square adjacent to the "
-    "player performing the Action' is a coach's choice, and it takes the one with fewest "
-    "opposition assists",
-)
+@skill_hook("Trickster", "block_reaction")
 def _trickster(ctx: SkillContext) -> None:
     """S3: "Whenever an opposition player attempts to perform a Block Action against
     this player … BEFORE DETERMINING HOW MANY DICE ARE ROLLED, this player may be
@@ -1778,21 +1754,17 @@ def _pick_me_up(ctx: SkillContext) -> None:
     """
 
 
-@skill_hook(
-    "On the Ball",
-    "reaction",
-    partial="only the KICK-OFF half — 'after the Kick Deviates but before the Kick-off Event "
-    "is rolled'. The Pass-Action half needs the engine to interrupt an opponent's Action, "
-    "which nothing else in here does",
-)
+@skill_hook("On the Ball", "reaction")
 def _on_the_ball(ctx: SkillContext) -> None:
     """S3, two halves. The one the engine applies: "during the Start of Drive
     Sequence, AFTER THE KICK DEVIATES but BEFORE THE KICK-OFF EVENT IS ROLLED, a
     single OPEN player on the RECEIVING team with this Skill may move UP TO 3
     SQUARES … they cannot Rush … may not move into the opposition half."
 
-    The other half interrupts an opponent's Pass Action mid-declaration, which is
-    a shape nothing else in this engine has, and is stated rather than faked.
+    The other half interrupts an opponent's Pass Action: "AFTER THE TARGET SQUARE
+    HAS BEEN DECLARED but BEFORE THE PASSING ABILITY TEST IS ROLLED". That window
+    is one step wide and it is inside `throw.resolve` — validate has settled the
+    square and no die has been thrown. See `throw._on_the_ball`.
     """
 
 
