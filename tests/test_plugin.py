@@ -1277,3 +1277,55 @@ def test_the_agent_is_paced_so_a_turn_is_something_you_can_watch(registry):
         assert time.monotonic() - began < 1
     finally:
         pace.configure(0)
+
+
+def test_a_match_remembers_which_chat_it_is_played_in(registry):
+    """The agent only acts when a turn is enqueued into a SESSION, so a head-to-head
+    has to know which conversation the game belongs to — otherwise your opponent's
+    moves arrive somewhere you are not looking.
+
+    `bb_game_new` takes it from the tool's injected graph state. Here that state is
+    passed straight in, which is what the host does for real."""
+    import bloodbowl
+    from bloodbowl.store import load_match
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+
+    tools["bb_game_new"].invoke({"seed": 4, "you": "home", "state": {"session_id": "chat-42"}})
+    assert load_match().session_id == "chat-42"
+
+    # …and the handover carries it, which is what routes the turn.
+    from bloodbowl.engine import handover
+
+    owed = handover.owed(load_match())
+    assert owed.get("session_id") == "chat-42", owed
+
+
+def test_a_board_started_match_can_be_pulled_into_a_chat(client, registry):
+    """A match started from the BOARD has no conversation behind it — its turns fall
+    back to the Activity thread until somebody says "play it here"."""
+    import bloodbowl
+    from bloodbowl.store import load_match
+
+    base = "/api/plugins/bloodbowl"
+    client.post(f"{base}/place", json={"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    client.post(f"{base}/place", json={"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+    client.post(f"{base}/game/new", json={"seed": 4, "you": "home"})
+    assert load_match().session_id == "", "the board has no chat to bind"
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    out = json.loads(tools["bb_game_here"].invoke({"state": {"session_id": "chat-7"}}))
+    assert out["ok"] and out["session_id"] == "chat-7", out
+    assert load_match().session_id == "chat-7"
+
+    # It survives the reload, because it is an event like everything else.
+    from bloodbowl.engine.state import Match
+
+    assert Match.from_dict(load_match().to_dict()).session_id == "chat-7"
+
+    # And with no session to bind it says so rather than binding nothing.
+    assert json.loads(tools["bb_game_here"].invoke({}))["ok"] is False

@@ -243,7 +243,21 @@ somebody called the route.
 
 **The nudge.** `engine/handover.py` works out who the match is waiting on and
 whether that CHANGED; `__init__.announce` publishes `bloodbowl.turn_ready`; and
-`register()` wires `sdk.react_on` to run an agent turn from it. Three notes:
+`register()` subscribes and calls `sdk.run_in_session` to run an agent turn from it.
+
+**NOT `sdk.react_on`**, which is the obvious tool and the wrong one: it binds ONE
+session at registration, and the session varies per match. The whole point is that
+the opponent's turn arrives in the chat you are playing in.
+
+**Which chat is `match.session_id`**, recorded by `bb_game_new` from the tool's
+`InjectedState`. `current_session_id()` reads EMPTY in a tool body — the tracing
+contextvar does not survive the hop — and graph state is the reliable carrier. The
+import is GUARDED: `langgraph` is a host dependency, this plugin's suite and its
+harness register with no host, and losing the binding is exactly what "no host"
+should cost. A board-started match has no chat at all and falls back to the
+Activity thread; `bb_game_here` is how a person moves it into their own.
+
+Three more notes:
 
 * `handover.changed` is what stops it firing on every action of the agent's own
   turn. The moment the ball passes over is the news; the state of it having passed

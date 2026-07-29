@@ -104,8 +104,12 @@ other's team**. The board refuses with a reason, and so do the tools — the che
 in the engine they share, because neither surface can be trusted to police itself.
 
 When the turn comes round, the plugin publishes `bloodbowl.turn_ready` and the host
-turns that into an agent turn. You end your turn on the board; its coach starts
-playing without you having to ask.
+turns that into an agent turn **in the chat the match belongs to** — you end your
+turn on the board and its coach plays where you are looking, without being asked.
+
+A match you start with `bb_game_new` is bound to the chat you started it in. One
+started **from the board** has no conversation behind it, so its turns land in the
+Activity thread until you say `bb_game_here` — "play it here".
 
 **The agent is paced** (`bloodbowl.agent_pace_s`, default 2s between its actions).
 A model can take eight activations in under a second, which is a diff rather than a
@@ -124,7 +128,7 @@ Charge! is the odd one out: answering it starts a free turn the selected players
 play through `bb_game_act`, and `bb_game_choose` again ends it. The Apothecary's
 Casualty branch asks the same way — two Casualty Rolls, and the Coach picks.
 
-**Finishing** — `bb_game_setup` · `bb_game_apothecary` · `bb_game_extra_time` · `bb_game_penalties`
+**Finishing** — `bb_game_here` · `bb_game_setup` · `bb_game_apothecary` · `bb_game_extra_time` · `bb_game_penalties`
 
 `bb_game_legal` and `bb_game_odds` are free and side-effect-free — ask them as
 often as you like. They exist so the coach never has to work out a dodge modifier

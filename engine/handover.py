@@ -45,6 +45,7 @@ def owed(match: Match) -> dict:
             return {
                 "side": side,
                 "controller": who,
+                "session_id": match.session_id,
                 "why": "answer",
                 "question": str(pending.get("text") or pending.get("choice") or ""),
                 "half": match.clock.half,
@@ -59,6 +60,7 @@ def owed(match: Match) -> dict:
     return {
         "side": side,
         "controller": who,
+        "session_id": match.session_id,
         "why": "turn",
         "half": match.clock.half,
         "turn": match.clock.turn,

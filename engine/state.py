@@ -271,6 +271,14 @@ class Match:
     # a game. Empty means nobody has claimed a side, which is the practice-board
     # default and stays permissive.
     controllers: dict = field(default_factory=dict)
+    # WHICH CHAT THIS MATCH IS BEING PLAYED IN. The agent only acts when something
+    # asks it to, and "something" is a turn enqueued into a session — so a
+    # head-to-head has to know WHICH conversation the game belongs to, or the
+    # opponent's moves arrive somewhere the person playing is not looking.
+    #
+    # Empty means nobody has claimed it: a match started from the board has no chat
+    # behind it, and the nudge falls back to the durable Activity thread.
+    session_id: str = ""
     # Set-ups declared for the NEXT Drive, per side. "The kicking team must set up
     # first followed by the receiving team", so the order is recorded too.
     setups: dict = field(default_factory=dict)
@@ -339,6 +347,7 @@ class Match:
             apo = d.get("apothecary") or {}
             self.apothecary = {"home": bool(apo.get("home")), "away": bool(apo.get("away"))}
             self.controllers = {k: str(v) for k, v in (d.get("controllers") or {}).items()}
+            self.session_id = str(d.get("session_id") or "")
 
         elif kind == "turn_started":
             self.clock.active = str(d.get("side") or self.clock.active)
@@ -505,6 +514,12 @@ class Match:
                 )
                 if fresh is not None:
                     self.players.append(PlayerState(player=fresh, id=event.actor, place="reserves"))
+
+        elif kind == "session_bound":
+            # "Play it here" — a match moving to the chat the coach is in. Recorded
+            # rather than set, like everything else, so a reload keeps playing in
+            # the same place.
+            self.session_id = str(d.get("session_id") or "")
 
         elif kind == "spp_earned":
             self.spp[event.actor] = int(self.spp.get(event.actor, 0)) + int(d.get("points") or 0)
@@ -768,6 +783,7 @@ class Match:
             "bribes": dict(self.bribes),
             "spp": dict(self.spp),
             "controllers": dict(self.controllers),
+            "session_id": self.session_id,
             "setups": {k: [dict(r) for r in v] for k, v in self.setups.items()},
             "pending": dict(self.pending),
             "charge": dict(self.charge),
