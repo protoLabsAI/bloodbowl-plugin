@@ -369,7 +369,7 @@ block, blitz, foul, hand-off, Secure the Ball, pass → injuries → touchdowns 
 drives → half-time → full time.
 
 Actions: `move`, `block`, `blitz`, `foul`, `handoff`, `secure`, `pass`.
-Skills modelled — **89 of 108**. The other 74 are reported as unmodelled *and can still be quoted* —
+Skills modelled — **94 of 108**. The other 74 are reported as unmodelled *and can still be quoted* —
 `bb_get_skill` returns the rulebook's text for all 108 whether or not the engine
 applies them.
 
@@ -562,9 +562,9 @@ says so); Argue the Call does too. Ask when the choice can change the outcome.
      declared, once per turn, its own roll, its own consequence.
    - **Throw Team-mate** and its retinue (Right Stuff, Always Hungry, Bombardier,
      Bullseye) — a subsystem, not a skill.
-   - **Frenzy**, which is the genuinely hard one: "they MUST perform a second
-     Block Action" makes the engine take an action nobody asked for, and nothing
-     in here does that yet.
+   - ~~**Frenzy**~~ — done. "They MUST perform a second Block Action" makes the
+     engine take an Action nobody asked for; `resolve` recurses exactly once, and
+     `_frenzied` is what stops it being a chain.
    - The rest are ordinary hook registrations against machinery that exists.
 2. ~~A match started from a preset has statless players.~~ Fixed — `state.flesh_out`
    gives every statless token the team's LINEMAN (cheapest positional, the only

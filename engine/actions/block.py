@@ -50,7 +50,16 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, f"{p.name()} is not on the pitch")
     if p.side != match.clock.active:
         return Legality(False, f"it is {match.clock.active}'s turn, and that player is {p.side}")
-    if p.down != "standing":
+    # A MULTIPLE BLOCK's two halves "happen SIMULTANEOUSLY … BOTH Block Actions are
+    # resolved in full, EVEN IF ONE OF THEM RESULTS IN A TURNOVER". The engine
+    # rolls them one after the other — which the rules explicitly permit, "you may
+    # wish to roll them separately for clarity" — so the second is thrown from the
+    # state the pair was DECLARED in. That is exactly the three preconditions
+    # below: standing, not yet acted, and still projecting a Tackle Zone. All
+    # three are true at declaration and any of them can be false by the time the
+    # second roll happens, which is the whole point of the clause.
+    simultaneous = bool(cmd.get("_multi"))
+    if p.down != "standing" and not simultaneous:
         return Legality(False, f"a {p.down} player cannot Block; they must stand up first")
 
     t = match.by_id(str(cmd.get("target") or ""))
@@ -67,12 +76,12 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, f"{t.name()} is {t.down} — a Block may only target a Standing player")
 
     blitzing = is_blitzing(match, p, t)
-    if p.acted and not blitzing:
+    if p.acted and not blitzing and not simultaneous:
         return Legality(False, f"{p.name()} has already acted this turn")
 
     if not adjacent(p.x, p.y, t.x, t.y):
         return Legality(False, "a Block targets a player you are Marking — they must be adjacent")
-    if not has_tackle_zone(p):
+    if not has_tackle_zone(p) and not simultaneous:
         return Legality(False, "a player with no Tackle Zone is not Marking anyone and cannot Block")
 
     # A Blitz's Block costs a point of Move Allowance, and a player who has none
@@ -398,6 +407,15 @@ def _choose(faces: list[str], chooser: str, acting: str, choice) -> int:
 
 
 def resolve(match: Match, cmd: dict, dice) -> Outcome:
+    # MULTIPLE BLOCK is two Block Actions, so it is decided BEFORE the first one
+    # starts: "they may perform TWO Block Actions each targeting A DIFFERENT
+    # opposition player THEY ARE MARKING. If they do, then this player will REDUCE
+    # THEIR STRENGTH CHARACTERISTIC BY 2 for the duration … These Block Actions
+    # happen SIMULTANEOUSLY … BOTH Block Actions are resolved in full, EVEN IF ONE
+    # OF THEM RESULTS IN A TURNOVER. This player CANNOT FOLLOW-UP during either."
+    if cmd.get("second_target") and not cmd.get("_multi"):
+        return _multiple_block(match, cmd, dice)
+
     legal = validate(match, cmd)
     if not legal.ok:
         return Outcome(ok=False, text=legal.reason)
@@ -738,6 +756,104 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     for who in pushed:
         rec.absorb(check_touchdown(match, who))
 
+    # PILE DRIVER: "When an opposition player is KNOCKED DOWN by this player during
+    # a Block Action, this player MAY perform a FREE FOUL ACTION against the
+    # opposition player SO LONG AS THEY ARE STILL STANDING AND ARE STILL MARKING
+    # the opposition player. This player is then PLACED PRONE and their activation
+    # immediately ends."
+    #
+    # Placed Prone rather than Knocked Down, so it costs them their feet but not an
+    # Armour Roll — and the activation ends whatever the Foul achieved. Taken
+    # whenever it is available: it is a free Foul, and its cost is one the coach
+    # accepted when they threw the Block.
+    if (
+        can_use(p, "Pile Driver")
+        and t.place == "pitch"
+        and t.down != "standing"
+        and p.down == "standing"
+        and p.place == "pitch"
+        and adjacent(p.x, p.y, t.x, t.y)
+    ):
+        from . import get as _get_action
+
+        rec.emit(
+            Event(
+                kind="note",
+                actor=p.id,
+                detail={"skill": "Pile Driver", "target": t.id},
+                text=f"{p.name()} drops a knee on {t.name()} — a free Foul, and then they are down too.",
+            )
+        )
+        free = _get_action("foul")["resolve"](match, {"player": p.id, "target": t.id}, dice)
+        rec.absorb(free.events)
+        # The Foul's own sending-off is a Turnover; the Pile Driver itself is not.
+        turnover = turnover or free.turnover
+        if p.place == "pitch" and p.down == "standing":
+            rec.absorb(place_prone(match, p, dice, reason="Pile Driver"))
+        rec.emit(ended(p.id, "block", f"{p.name()}'s activation ends after the Pile Driver."))
+        return Outcome(
+            ok=not turnover,
+            events=rec.events,
+            turnover=turnover,
+            text=first.text,
+            unmodelled=unmodelled,
+        )
+
+    # HIT AND RUN: "after FULLY RESOLVING the Action, they may immediately move ONE
+    # FREE SQUARE IGNORING TACKLE ZONES, so long as they are STILL STANDING. The
+    # player must ensure that AFTER THIS FREE MOVE THEY ARE NOT MARKED BY OR
+    # MARKING ANY OPPOSITION PLAYERS."
+    #
+    # That last sentence is the constraint that makes it a retreat rather than a
+    # reposition: there has to BE a square with nobody adjacent, or the Skill
+    # cannot be used at all.
+    if can_use(p, "Hit and Run") and not turnover and p.down == "standing" and p.place == "pitch":
+        away = _clear_square(match, p)
+        if away is not None:
+            rec.emit(
+                Event(
+                    kind="player_pushed",
+                    actor=p.id,
+                    detail={"x": away[0], "y": away[1], "skill": "Hit and Run"},
+                    text=f"Hit and Run: {p.name()} steps away to ({away[0]},{away[1]}), clear of everyone.",
+                )
+            )
+
+    # FRENZY: "if after the target is Pushed Back they are STILL STANDING, then
+    # this player MUST perform A SECOND Block Action targeting THE SAME opposition
+    # player." Must — it is not a choice, and it is the one Skill that makes the
+    # engine take an Action nobody asked for. Exactly one extra: "a second Block
+    # Action", so the recursion is one deep and `_frenzied` says so.
+    if (
+        can_use(p, "Frenzy")
+        and not cmd.get("_frenzied")
+        and not cmd.get("_multi")
+        and not turnover
+        and p.down == "standing"
+        and p.place == "pitch"
+        and t.place == "pitch"
+        and t.down == "standing"
+        and any(e.kind in ("player_pushed", "player_followed_up") for e in rec.events)
+        and adjacent(p.x, p.y, t.x, t.y)
+    ):
+        rec.emit(
+            Event(
+                kind="note",
+                actor=p.id,
+                detail={"skill": "Frenzy", "target": t.id},
+                text=f"{p.name()} is in a Frenzy and MUST Block {t.name()} again.",
+            )
+        )
+        second = resolve(match, {**cmd, "_frenzied": True, "follow_up": True}, dice)
+        rec.absorb(second.events)
+        return Outcome(
+            ok=second.ok,
+            events=rec.events,
+            turnover=second.turnover,
+            text=first.text,
+            unmodelled=unmodelled,
+        )
+
     # "After the player has performed the Block Action, they can continue their
     # Move Action using any remaining Move Allowance they have left." So a Blitz's
     # Block does NOT end the activation — the one Block that doesn't.
@@ -758,7 +874,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
                 else f"{p.name()} has no Move Allowance left, but may still Rush.",
             )
         )
-    else:
+    elif not cmd.get("_multi"):
         rec.emit(ended(p.id, "blitz" if blitzing else "block", f"{p.name()}'s Block Action is over."))
 
     return Outcome(
@@ -768,6 +884,78 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         text=first.text,
         unmodelled=unmodelled,
     )
+
+
+def _multiple_block(match: Match, cmd: dict, dice) -> Outcome:
+    """Two Block Actions at once. See the quote in `resolve`.
+
+    "EVEN IF ONE OF THEM RESULTS IN A TURNOVER" is the clause that shapes this:
+    the second Block is resolved in full whatever the first did, so the turnover
+    is collected and reported at the end rather than returned from the middle.
+    """
+    p = match.by_id(str(cmd.get("player") or ""))
+    if p is None or not can_use(p, "Multiple Block"):
+        return Outcome(ok=False, text="only a player with Multiple Block may name two targets")
+    first_id, second_id = str(cmd.get("target") or ""), str(cmd.get("second_target") or "")
+    if first_id == second_id:
+        return Outcome(ok=False, text="the two Blocks must target DIFFERENT opposition players")
+    targets = [match.by_id(first_id), match.by_id(second_id)]
+    if any(q is None for q in targets):
+        return Outcome(ok=False, text="both targets must be players in this match")
+    if any(not adjacent(p.x, p.y, q.x, q.y) or q.side == p.side for q in targets):
+        return Outcome(ok=False, text="a Multiple Block targets two opposition players this player is MARKING")
+
+    rec = Recorder(match)
+    rec.emit(
+        Event(
+            kind="note",
+            actor=p.id,
+            detail={"skill": "Multiple Block", "targets": [first_id, second_id]},
+            text=f"{p.name()} throws themselves at {targets[0].name()} and {targets[1].name()} at once "
+            "— ST -2 for both, and no Follow-up.",
+        )
+    )
+    # "reduce their Strength Characteristic by 2 FOR THE DURATION of the Block
+    # Actions" — restored afterwards however they end, which is why it is a
+    # try/finally rather than an event: it is not a state a replay needs, it is an
+    # argument to two rolls.
+    was = p.player.ST
+    turned_over = False
+    try:
+        p.player.ST = str(max(1, strength_of(match, p) - 2))
+        for target in (first_id, second_id):
+            out = resolve(match, {**cmd, "target": target, "follow_up": False, "_multi": True}, dice)
+            rec.absorb(out.events)
+            turned_over = turned_over or out.turnover
+    finally:
+        p.player.ST = was
+
+    rec.emit(ended(p.id, "block", f"{p.name()}'s Multiple Block is over."))
+    return Outcome(
+        ok=not turned_over,
+        events=rec.events,
+        turnover=turned_over,
+        text=f"{p.name()} Blocked two players at once.",
+    )
+
+
+def _clear_square(match: Match, p):
+    """The nearest adjacent square where this player is neither Marked by nor
+    Marking anybody — Hit and Run's own condition, and the reason it is a retreat
+    rather than a reposition. None if there is no such square."""
+    from ...pitch import in_bounds as _in
+
+    foes = [q for q in match.on_pitch(match.opponent(p.side)) if q.down == "standing"]
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            if not dx and not dy:
+                continue
+            x, y = p.x + dx, p.y + dy
+            if not _in(x, y) or match.at(x, y) is not None:
+                continue
+            if not any(adjacent(q.x, q.y, x, y) for q in foes):
+                return (x, y)
+    return None
 
 
 register("block", validate, resolve)
