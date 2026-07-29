@@ -530,7 +530,7 @@ def _tools(cfg: dict):
         x: int = 0,
         y: int = 0,
         target: str = "",
-        choice: int = 0,
+        choice: int = -1,
         follow_up: bool = True,
         team_reroll: bool = False,
         drop_ball: bool = False,
@@ -600,6 +600,11 @@ def _tools(cfg: dict):
         stronger. Ask bb_game_odds first: it tells you how many dice you get and
         who picks them. ``follow_up`` moves into the vacated square after a push.
 
+        ``choice`` is WHICH BLOCK DIE to apply, indexed into the faces the roll
+        shows. Leave it out and the engine takes the best one for whoever is
+        choosing — it is not a hidden default, it is the engine playing the side
+        that is entitled to pick.
+
         FOUR OF THESE BELONG TO THE DEFENDER, and all four say "may" in the rules,
         so the engine's policy is a default rather than the rule:
 
@@ -638,7 +643,14 @@ def _tools(cfg: dict):
             "drop_ball": bool(drop_ball),
         }
         if action == "block":
-            cmd.update({"target": target, "choice": int(choice), "follow_up": bool(follow_up)})
+            cmd.update({"target": target, "follow_up": bool(follow_up)})
+            # ONLY when a choice was actually made. The default used to be 0, which
+            # the engine could not tell apart from "I pick the first die" — so an
+            # agent that simply did not answer the question got faces[0] and was
+            # told, in the log, that it had chosen. Absent means absent now, and
+            # the engine picks the best face for whoever is choosing.
+            if int(choice) >= 0:
+                cmd["choice"] = int(choice)
             if second_target:
                 cmd["second_target"] = second_target
             # The DEFENDER's choices. Each belongs to the coach being Blocked

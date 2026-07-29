@@ -1412,3 +1412,38 @@ def test_a_lost_nudge_can_be_re_sent_without_throwing_the_game_away(client):
     assert out["ok"] and out["nudged"]["side"] == "home", out
     # Twice in a row: the whole point is that it does NOT suppress a repeat.
     assert client.post(f"{base}/game/nudge", json={}).json()["ok"]
+
+
+def test_not_choosing_a_block_die_is_not_the_same_as_choosing_the_first_one(registry, monkeypatch):
+    """The engine learned to pick the best face when no `choice` was given (#53) —
+    and it still never got the chance, because the TOOL defaulted `choice` to 0.
+    "I did not choose" and "I choose die 0" arrived identically.
+
+    The agent hit this live, twice, and reported it against itself both times:
+    "I didn't pass `choice` to the engine so it picked the Skull." It had, because
+    the tool always did. A default that cannot be told apart from an answer is the
+    same bug as an arbitrary default; it had just moved one layer out.
+
+    So this asserts the CONTRACT rather than an outcome: an unanswered question
+    must reach the engine as ABSENT."""
+    import bloodbowl
+    from bloodbowl.engine import game
+
+    seen: list[dict] = []
+
+    def _spy(match, action, cmd, dice=None, by=""):
+        seen.append(dict(cmd))
+        return {"ok": True, "events": [], "log": []}
+
+    monkeypatch.setattr(game, "act", _spy)
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 7, "y": 14})
+    tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home"})
+
+    tools["bb_game_act"].invoke({"action": "block", "player": "h00", "target": "a00"})
+    assert "choice" not in seen[-1], f"an unanswered question reached the engine as an answer: {seen[-1]}"
+
+    tools["bb_game_act"].invoke({"action": "block", "player": "h00", "target": "a00", "choice": 0})
+    assert seen[-1].get("choice") == 0, "…and a real choice of the first die still gets through"
