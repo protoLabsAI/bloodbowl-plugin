@@ -101,8 +101,11 @@ Ten of the eleven kick-off events say plainly that they were rolled but not appl
 `bb_game_abandon` · `bb_pass_ranges`
 
 **Choosing** — `bb_game_choose` answers a Kick-off Event that asks the Coach
-something (High Kick, Quick Snap!, Solid Defence). While one is pending the engine
-refuses everything else and says what it is waiting for; declining is legal.
+something (High Kick, Quick Snap!, Solid Defence, Charge!). While one is pending
+the engine refuses everything else and says what it is waiting for — the ball is
+still in the air and the first turn has not started. Declining is always legal.
+Charge! is the odd one out: answering it starts a free turn the selected players
+play through `bb_game_act`, and `bb_game_choose` again ends it.
 
 **Finishing** — `bb_game_setup` · `bb_game_apothecary` · `bb_game_extra_time` · `bb_game_penalties`
 

@@ -272,7 +272,14 @@ def _tools(cfg: dict):
             apothecary=bool(apothecary),
         )
         save_match(m)
-        return json.dumps({"ok": True, "match": m.to_dict(include_log=False), "message": m.events[0].text})
+        out = {"ok": True, "match": m.to_dict(include_log=False), "message": m.events[0].text}
+        if m.pending:
+            # The kick-off can end with a question, and the ball is still in the
+            # air until it is answered. Say so HERE rather than letting the coach
+            # discover it by having their first action refused.
+            out["pending"] = dict(m.pending)
+            out["message"] = str(m.pending.get("text") or "") + " Answer with bb_game_choose, or decline."
+        return json.dumps(out)
 
     @tool
     def bb_game_state() -> str:
@@ -456,19 +463,28 @@ def _tools(cfg: dict):
         return json.dumps({"ok": True, **describe()})
 
     @tool
-    def bb_game_choose(decline: bool = False, player: str = "", moves: list | None = None) -> str:
+    def bb_game_choose(
+        decline: bool = False, player: str = "", moves: list | None = None, players: list | None = None
+    ) -> str:
         """Answer whatever the engine stopped to ask.
 
-        Several Kick-off Events say "the Coach selects…", and the engine will not
+        Four Kick-off Events say "the Coach selects…", and the engine will not
         choose for you — it pauses the Drive, says what it is waiting for in
-        ``bb_game_state``'s ``pending``, and refuses other actions until you
-        answer. Nothing else can happen in between.
+        ``bb_game_state``'s ``waiting_on``, and refuses other actions until you
+        answer. Nothing else can happen in between: the ball is still in the air
+        and the first turn has not started.
 
           High Kick      ``player`` — one Open player, placed where the ball lands
-          Quick Snap     ``moves`` — [{"id","x","y"}], each Open player one square
-          Solid Defence  ``moves`` — up to D3+3 Open players re-placed in your half
+          Quick Snap!    ``moves`` — [{"id","x","y"}], each Open player one square
+          Solid Defence  ``moves`` — up to D3+3 Open players set up again
+          Charge!        ``players`` — up to D3+3 Open players to send in
 
         ``decline=True`` is always a legal answer; every one of these says "may".
+
+        A Charge is different after that: the selected players take their free
+        Actions through ``bb_game_act`` like any other activation (a Move each,
+        plus at most one Blitz, one Throw Team-mate and one Kick Team-mate for the
+        whole Charge). Call this again with ``decline=True`` to end it early.
         """
         from .engine.game import dice_for, resolve_choice
         from .store import load_match, save_match
@@ -476,7 +492,11 @@ def _tools(cfg: dict):
         m = load_match()
         if m is None:
             return json.dumps({"ok": False, "error": "no match in progress"})
-        out = resolve_choice(m, {"decline": decline, "player": player, "moves": moves or []}, dice_for(m))
+        out = resolve_choice(
+            m,
+            {"decline": decline, "player": player, "moves": moves or [], "players": players or []},
+            dice_for(m),
+        )
         if out.get("ok"):
             save_match(m)
         return json.dumps(out)

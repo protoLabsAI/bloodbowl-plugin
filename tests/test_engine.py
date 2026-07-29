@@ -4589,3 +4589,210 @@ def test_a_roll_with_nothing_to_pass_is_not_reported_as_a_failure():
     # A real test still reads as one.
     dodge = Roll(kind="Dodge", dice=[4], total=3, target=3, modifier=-1, passed=True)
     assert "needed 3+" in dodge.describe() and "passed" in dodge.describe()
+
+
+def test_the_ball_stays_in_the_air_until_the_kickoff_question_is_answered():
+    """ "At this point the ball is still HIGH UP IN THE AIR and cannot be caught
+    UNTIL AFTER THE KICK-OFF EVENT HAS BEEN RESOLVED."
+
+    An event that stopped to ask the Coach something is not resolved. Landing the
+    ball anyway made High Kick meaningless — a player placed "in the square the
+    ball is going to land in" would arrive under a ball that had already come down
+    and bounced somewhere else."""
+    from bloodbowl.engine import game
+    from bloodbowl.engine.kickoff import kick
+
+    m = _match(("home", 7, 11), ("home", 3, 11), ("away", 7, 20))
+    dice = _dice([2, 1, 1, 3, 2, 4, 4, 4, 4, 4, 4])  # deviate (D6,D8), then a 2D6 of 1+3 = 4: Solid Defence
+
+    kick(m, dice, receiving="home")
+    assert m.pending.get("choice") == "solid_defence", m.pending
+    assert m.pending.get("land") == "home", "whoever answers has to know how to bring it down"
+    assert not m.ball.carrier, "nobody can catch a ball that is still in the air"
+    after = m.events[next(i for i, e in enumerate(m.events) if e.kind == "choice_pending") :]
+    assert not [e for e in after if e.kind in ("ball_moved", "ball_picked_up", "touchback")], (
+        f"the ball came down while the question was open: {[e.kind for e in after]}"
+    )
+
+    game.resolve_choice(m, {"decline": True}, dice)
+    assert not m.pending
+    resumed = m.events[next(i for i, e in enumerate(m.events) if e.kind == "choice_made") :]
+    assert [e for e in resumed if e.kind in ("ball_moved", "ball_picked_up", "touchback")], (
+        "answering the question must bring the ball down"
+    )
+
+
+def test_the_turn_does_not_start_over_an_undecided_kickoff():
+    """The Drive sequence is set-up, kick-off, KICK-OFF EVENT, ball lands, then
+    play. A question the Coach has not answered sits in the middle of that, so the
+    first turn cannot be under way while it is open — the receiving team would be
+    "to act" on a board whose ball is still in the air."""
+    from bloodbowl.engine import game
+
+    m = _match(("home", 7, 11), ("home", 3, 11), ("away", 7, 20))
+    dice = _dice([2, 1, 1, 3, 2] + [4] * 12)  # 2D6 of 1+3 = 4: Solid Defence, then its D3
+    game.start_drive(m, receiving="home", dice=dice)
+
+    assert m.pending, "the seed was chosen to roll a choice"
+    assert not [e for e in m.events if e.kind == "turn_started"], "the turn started over an open question"
+
+    game.resolve_choice(m, {"decline": True}, dice)
+    started = [e for e in m.events if e.kind == "turn_started"]
+    assert started, "answering must open the turn"
+    # The ball comes down as a bounce, a catch or a Touchback — whichever, it must
+    # be in the log BEFORE the turn opens.
+    landed = [i for i, e in enumerate(m.events) if e.kind in ("ball_moved", "ball_picked_up", "touchback")]
+    assert landed and max(landed) < m.events.index(started[0]), "the ball has to come down before anyone acts"
+
+
+# --- Charge!, the Kick-off Event that is a free turn --------------------------
+
+
+def _charging(*players, side="away", limit=4, land="home"):
+    """A match mid-Charge: the kicking team has been selected and may act."""
+    from bloodbowl.engine import charge
+
+    m = _match(*players, active=land)
+    picked = [p.id for p in m.players if p.side == side]
+    charge.start(m, side, picked[:limit], land=land)
+    return m
+
+
+def test_a_charge_moves_the_clock_to_the_kicking_team_and_gives_it_back():
+    """ "The selected players may then be activated one at a time, EXACTLY AS IF IT
+    WAS THEIR TEAM'S TURN." Every action in the engine asks whether a player is on
+    the active side, and during a Charge the honest answer for the kicking team is
+    yes — but the Drive still belongs to the receiving team afterwards."""
+    from bloodbowl.engine import game
+
+    m = _charging(("home", 7, 11), ("away", 7, 20))
+    assert m.clock.active == "away", "the charging team acts"
+    assert m.charge["was"] == "home"
+
+    game.end_charge(m, "test", _dice([4] * 12))
+    assert not m.charge
+    assert m.clock.active == "home", "the Drive goes back to the receiving team"
+
+
+def test_only_the_selected_players_may_be_activated_in_a_charge():
+    from bloodbowl.engine import game
+
+    m = _charging(("home", 7, 11), ("away", 7, 20), ("away", 2, 20), limit=1)
+    picked = m.charge["players"][0]
+    other = next(p.id for p in m.players if p.side == "away" and p.id != picked)
+    out = game.act(m, "move", {"player": other, "x": 3, "y": 20})
+    assert out["ok"] is False and "selected" in out["error"], out
+    assert game.act(m, "move", {"player": picked, "x": 7, "y": 19})["ok"]
+
+
+def test_a_charge_offers_one_blitz_for_the_whole_charge_not_one_each():
+    """ "ONE of the selected players may instead perform a free Blitz Action, ONE
+    may perform a free Throw Team-mate Action, and ONE may perform a free Kick
+    Team-mate Action." One, across the Charge — not one apiece."""
+    from bloodbowl.engine import game
+
+    m = _charging(("home", 7, 11), ("away", 7, 13), ("away", 8, 13), limit=2)
+    a, b = m.charge["players"]
+    assert game.act(m, "blitz", {"player": a, "target": "h00"})["ok"], "the first Blitz is free"
+    second = game.act(m, "blitz", {"player": b, "target": "h00"})
+    assert second["ok"] is False and "already been used" in second["error"], second
+
+
+def test_a_charge_will_not_let_a_player_foul_or_pass():
+    """The rule lists exactly four Actions. A Foul during a free turn nobody paid
+    for is not one of them."""
+    from bloodbowl.engine import game
+
+    m = _charging(("home", 7, 13), ("away", 7, 14))
+    m.by_id("h00").down = "prone"
+    out = game.act(m, "foul", {"player": m.charge["players"][0], "target": "h00"})
+    assert out["ok"] is False and "Charge!" in out["error"], out
+
+
+def test_a_selected_player_hitting_the_floor_ends_the_charge_and_is_not_a_turnover():
+    """ "If a selected player Falls Over or is Knocked Down during their
+    activation, no further selected players can be activated and the Charge ends."
+
+    Ends — not a Turnover. A Turnover would advance the Turn Marker and hand over
+    a ball that has not even landed."""
+    from bloodbowl.engine import game
+
+    # A Dodge away from a Tackle Zone, failed: the charger goes down.
+    m = _charging(("home", 7, 13), ("away", 7, 14), ("away", 2, 20), limit=2)
+    turn_before = m.clock.turn
+    out = game.act(m, "move", {"player": "a01", "x": 8, "y": 15}, _dice([1, 1, 1, 1, 1, 1, 1, 1]))
+    assert m.by_id("a01").down != "standing", "the scripted 1 should have put them down"
+    assert not m.charge, "the Charge ends when a selected player goes down"
+    assert out.get("turnover") is not True, "a Charge ending is not a Turnover"
+    assert m.clock.turn == turn_before, "the Turn Marker must not move"
+
+
+def test_a_charge_ends_by_itself_once_everyone_selected_has_acted():
+    from bloodbowl.engine import game
+
+    m = _charging(("home", 7, 11), ("away", 7, 20), limit=1)
+    only = m.charge["players"][0]
+    game.act(m, "move", {"player": only, "x": 7, "y": 19})
+    assert m.charge, "one step is not the end of an activation"
+    game.act(m, "forego", {"player": only})
+    assert not m.charge, "with nobody left to activate the Charge is over"
+
+
+def test_the_coach_can_end_a_charge_early():
+    """ "MAY then be activated" — a Coach who has seen enough is not obliged to
+    send the rest in."""
+    from bloodbowl.engine import game
+
+    m = _charging(("home", 7, 11), ("away", 7, 20), ("away", 2, 20), limit=2)
+    out = game.resolve_choice(m, {"decline": True}, _dice([4] * 12))
+    assert out["ok"] and not m.charge, out
+
+
+def test_the_charge_selection_refuses_a_marked_player_and_an_over_long_list():
+    from bloodbowl.engine import game
+
+    # _match numbers ids across the COMBINED list, so these are h00, a01, a02:
+    # a01 is Marked by h00 and a02 is alone in the far corner.
+    m = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20), active="home")
+    _pending(m, "charge", "away", limit=1, eligible=["a02"], land="home")
+    marked = game.resolve_choice(m, {"players": ["a01"]}, _dice([]))
+    assert marked["ok"] is False and "Open" in marked["error"], marked
+    toomany = game.resolve_choice(m, {"players": ["a02", "a01"]}, _dice([]))
+    assert toomany["ok"] is False and "up to 1" in toomany["error"], toomany
+    assert m.pending, "a refused answer leaves the question standing"
+    assert game.resolve_choice(m, {"players": ["a02"]}, _dice([]))["ok"]
+    assert m.charge["players"] == ["a02"] and not m.pending
+
+
+def test_the_ball_lands_and_the_turn_opens_when_the_charge_ends():
+    """A Charge happens INSIDE the Kick-off Event, so throughout it the ball is
+    still in the air and the receiving team's turn has not begun. Both resume when
+    it is over — the same resumption the other three choices get."""
+    from bloodbowl.engine import game
+
+    m = _charging(("home", 7, 11), ("away", 7, 20), limit=1, land="home")
+    assert not [e for e in m.events if e.kind == "turn_started"]
+    game.end_charge(m, "test", _dice([3, 4, 3, 4, 3, 4, 3, 4]))
+    assert [e for e in m.events if e.kind == "turn_started"], "the Drive has to resume"
+    assert m.clock.active == "home"
+
+
+def test_a_ball_still_in_the_air_is_not_reported_as_landed():
+    """`in_play` has always meant "the ball is on the board somewhere", which was
+    indistinguishable from "it has landed" only because the kick used to land it
+    in the same call. Now that a Kick-off Event can hold it up there for several
+    calls, the board would draw it sitting on the square it is heading for."""
+    from bloodbowl.engine.kickoff import kick
+
+    m = _match(("home", 7, 11), ("home", 3, 11), ("away", 7, 20))
+    dice = _dice([2, 1, 1, 3, 2] + [4] * 12)  # 2D6 of 1+3 = 4: Solid Defence, which asks
+
+    kick(m, dice, receiving="home")
+    assert m.pending, "the scripted roll was chosen to ask a question"
+    assert m.ball.in_air, "the ball is still up there until the event is resolved"
+    assert m.to_dict()["ball"]["in_air"] is True, "and the board has to be told"
+
+    from bloodbowl.engine import game
+
+    game.resolve_choice(m, {"decline": True}, dice)
+    assert not m.ball.in_air, "answering brings it down"

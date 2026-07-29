@@ -162,6 +162,13 @@ button.primary { background: var(--pl-color-accent); color: var(--pl-color-fg-on
   background: var(--pl-color-status-warning);
   border: 1px solid var(--pl-color-bg);
 }
+/* Still in the air: heading for that square, not on it. Hollow and dashed, since
+   the difference has to survive a glance at a 27px cell. */
+.ball.air {
+  background: transparent;
+  border: 2px dashed var(--pl-color-status-warning);
+  inset: 22%;
+}
 
 .overlay { position: absolute; inset: 0; pointer-events: none; }
 .ezlab {

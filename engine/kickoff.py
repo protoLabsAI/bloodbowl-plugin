@@ -93,7 +93,7 @@ KICKOFF_EVENTS: dict[int, tuple[str, str, bool]] = {
         "Action, one may perform a free Throw Team-mate Action, and one may perform a free Kick "
         "Team-mate Action. If a selected player Falls Over or is Knocked Down during their "
         "activation, no further selected players can be activated and the Charge ends.",
-        False,  # A whole free turn, driven by choices — its own piece of work.
+        True,  # A free turn, driven by the coach; see engine/charge.py.
     ),
     11: (
         "Dodgy Snack",
@@ -149,7 +149,7 @@ def kick(match, dice, receiving: str, aim: tuple[int, int] | None = None) -> lis
     events.append(
         Event(
             kind="ball_moved",
-            detail={"x": target[0], "y": target[1], "carrier": ""},
+            detail={"x": target[0], "y": target[1], "carrier": "", "air": True},
             text=f"The ball is kicked towards ({target[0]},{target[1]}) in {receiving}'s half.",
         )
     )
@@ -159,7 +159,7 @@ def kick(match, dice, receiving: str, aim: tuple[int, int] | None = None) -> lis
     events.append(
         Event(
             kind="ball_moved",
-            detail={"x": nx, "y": ny, "carrier": ""},
+            detail={"x": nx, "y": ny, "carrier": "", "air": True},
             rolls=rolls,
             text=f"The kick deviates {rolls[0].dice[0]} squares to ({nx},{ny}).",
         )
@@ -167,6 +167,15 @@ def kick(match, dice, receiving: str, aim: tuple[int, int] | None = None) -> lis
     match.apply(events[-1])
 
     events.extend(kickoff_event(match, dice, receiving))
+
+    # "At this point the ball is still HIGH UP IN THE AIR and cannot be caught
+    # UNTIL AFTER THE KICK-OFF EVENT HAS BEEN RESOLVED." An event that stops to
+    # ask the Coach something is not resolved yet, so the ball stays up: it lands
+    # when the question is answered (see game.resolve_choice). Landing it here
+    # made High Kick meaningless — the player would be placed under a ball that
+    # had already come down and bounced away.
+    if match.pending:
+        return events
 
     # "Once the Kick-off Event has been fully resolved, the ball will land."
     events.extend(land(match, dice, receiving))
@@ -179,7 +188,7 @@ def _open_ids(match, side: str) -> list[str]:
     return sorted(p.id for p in match.on_pitch(side) if is_open(match, p))
 
 
-def _ask(match, kind: str, side: str, text: str, detail: dict, rolls=()) -> list[Event]:
+def _ask(match, kind: str, side: str, text: str, detail: dict, land: str, rolls=()) -> list[Event]:
     """Stop and record what the engine is waiting for.
 
     The alternative is choosing on the coach's behalf, which for these events
@@ -192,7 +201,10 @@ def _ask(match, kind: str, side: str, text: str, detail: dict, rolls=()) -> list
     # waiting for will eventually say the wrong thing.
     ev = Event(
         kind="choice_pending",
-        detail={"choice": kind, "side": side, "text": text, **detail},
+        # `land` says what to do once this is answered. The ball is still in the
+        # air while a Kick-off Event is unresolved, and whoever answers has to be
+        # able to bring it down without knowing that is why they were asked.
+        detail={"choice": kind, "side": side, "text": text, "land": land, **detail},
         rolls=list(rolls),
         text=text + " Answer with bb_game_choose, or decline.",
     )
@@ -286,15 +298,17 @@ def kickoff_event(match, dice, receiving: str) -> list[Event]:
                 match,
                 kind="high_kick",
                 side=receiving,
+                land=receiving,
                 text=f"High Kick: one Open {receiving} player may be placed where the ball will land.",
                 detail={"square": [match.ball.x, match.ball.y], "eligible": _open_ids(match, receiving)},
             )
         )
 
-    elif name in ("Quick Snap!", "Solid Defence"):
-        # Both open the same way — "selects UP TO D3+3 Open players on their team"
-        # — so the number is rolled now and the choice asked after. (Charge! opens
-        # identically; what follows it is a free turn, which is why it is not here.)
+    elif name in ("Quick Snap!", "Solid Defence", "Charge!"):
+        # All three open the same way — "selects UP TO D3+3 Open players on their
+        # team" — so the number is rolled now and the choice asked after. What
+        # follows differs: two are resolved by the answer, and Charge! is a free
+        # turn that the answer only STARTS.
         quick = name.startswith("Quick")
         side = receiving if quick else match.opponent(receiving)
         n = dice.dn(3) + 3
@@ -303,14 +317,17 @@ def kickoff_event(match, dice, receiving: str) -> list[Event]:
         events.extend(
             _ask(
                 match,
-                kind="quick_snap" if quick else "solid_defence",
+                kind={"Quick Snap!": "quick_snap", "Solid Defence": "solid_defence", "Charge!": "charge"}[name],
                 side=side,
+                land=receiving,
                 rolls=[roll],
-                text=(
-                    f"Quick Snap: up to {n} Open {side} players may each move one square, in any direction."
-                    if quick
-                    else f"Solid Defence: up to {n} Open {side} players may be set up again."
-                ),
+                text={
+                    "Quick Snap!": f"Quick Snap: up to {n} Open {side} players may each move one square, "
+                    "in any direction.",
+                    "Solid Defence": f"Solid Defence: up to {n} Open {side} players may be set up again.",
+                    "Charge!": f"Charge!: {side} may send in up to {n} Open players, one at a time, "
+                    "for a free Move — one of them may Blitz, one may Throw Team-mate, one may Kick Team-mate.",
+                }[name],
                 detail={"limit": n, "eligible": _open_ids(match, side)},
             )
         )

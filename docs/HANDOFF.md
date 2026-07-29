@@ -491,6 +491,20 @@ attached, and `bb_game_choose` answers it. Three things worth knowing:
   separate call, by which time the Match has been rebuilt from disk.
 - **An illegal answer is not an answer.** The question stands and nobody moves —
   half a formation committed is a formation nobody chose.
+- **The Drive stops with it.** "At this point the ball is still high up in the air
+  and cannot be caught until after the Kick-off Event has been resolved" — so the
+  kick does NOT land the ball and the first turn does NOT start while a question
+  is open. `game._finish_kickoff` runs that tail when the answer arrives. The ball
+  carries `in_air` for exactly this reason: `in_play` has always meant "on the
+  board somewhere", which read as "landed" only because it used to land in the
+  same call.
+- **CHARGE! is the odd one out**: its answer only STARTS something. The selected
+  players then take their free Actions through the ordinary `act` path — "exactly
+  as if it was their team's Turn" — with `engine/charge.py` as the fence around
+  it: who may act, which of the three one-off Actions are left, and the stop
+  condition. A selected player hitting the floor ends the Charge and is NOT a
+  Turnover; a Turnover would advance the Turn Marker and hand over a ball that has
+  not even landed.
 
 Whether to ASK or to state a policy is now a live judgement call, not a missing
 capability. Sidestep and Stand Firm still take a policy on purpose (`partial=`
@@ -511,13 +525,7 @@ says so); Argue the Call does too. Ask when the choice can change the outcome.
      Block Action" makes the engine take an action nobody asked for, and nothing
      in here does that yet.
    - The rest are ordinary hook registrations against machinery that exists.
-2. **Charge! (Kick-off Event 10)** — the last unapplied event that is not a
-   League feature. "Up to D3+3 Open players … activated one at a time, exactly as
-   if it was their team's Turn … If a selected player Falls Over or is Knocked
-   Down … the Charge ends." The SELECTION is already the shape `_ask` handles; what
-   is missing is a free-turn MODE, because those activations must not advance the
-   Turn Marker and a fall must end the Charge rather than cause a Turnover.
-3. **A match started from a preset has statless players.** A shipped preset is a
+2. **A match started from a preset has statless players.** A shipped preset is a
    SHAPE — labelled tokens with no position, no MA, no AG, no AV — which is right
    for the practice board and wrong the moment `bb_game_new` builds a Match from
    it: `PlayerState.movement()` reads `int("" or 0)` and every one of them is a
@@ -526,10 +534,10 @@ says so); Argue the Call does too. Ask when the choice can change the outcome.
 
 ### Known simplifications, all deliberate and all stated in the code
 
-- Two of the eleven Kick-off Events are reported rather than applied: **Charge!**
-  needs a free-turn mode (above) and **Get the Ref** needs Inducements, which are
-  a League feature. The other nine are applied, three of them by ASKING — see
-  `Match.pending` and `bb_game_choose`.
+- One of the eleven Kick-off Events is reported rather than applied: **Get the
+  Ref**, which needs Inducements — a League feature. The other ten are applied,
+  four of them by ASKING (`Match.pending` + `bb_game_choose`), one of which —
+  **Charge!** — is a free turn rather than a question (`engine/charge.py`).
 - A Blitz may be re-pointed at a different target until the player moves or
   blocks — declaring rolls nothing, so a mis-named target costs a coach nothing to
   correct, and the team's one Blitz is spent by the same player either way. The

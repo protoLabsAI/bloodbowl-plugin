@@ -103,7 +103,11 @@ export function render() {
   if (loose) loose.remove();
   if (m.ball && m.ball.in_play && !m.ball.carrier) {
     const b = document.createElement("div");
-    b.className = "ball";
+    // A ball still in the air is on its way to that square, not on it — during a
+    // Kick-off Event that stopped to ask the Coach something it can sit there for
+    // several calls, and drawn solid it reads as landed.
+    b.className = m.ball.in_air ? "ball air" : "ball";
+    b.title = m.ball.in_air ? "still in the air — the Kick-off Event is not resolved yet" : "";
     at(m.ball.x, m.ball.y).appendChild(b);
   }
 
