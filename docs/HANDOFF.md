@@ -228,6 +228,40 @@ test decomments the assets and fails on a bare `26` or `15` anywhere in `web/js`
 
 ---
 
+### Head-to-head: two coaches, one board
+
+**Ownership is STATE, not convention** — `match.controllers` maps a side to
+"human" or "agent", set at `bb_game_new(you=…)` / `POST /game/new {"you": …}` and
+folded from `match_started` like everything else. Empty means unclaimed, which is
+the practice board and stays permissive: one person moving both teams on purpose.
+
+**Both surfaces reach the same engine**, so each declares WHO IT IS — the routers
+pass `by="human"`, the tools pass `by="agent"` — and `game.refuse_if_not_yours`
+decides. Neither surface polices itself, because neither can: an agent that
+respected a rule only in its own tool code would stop respecting it the moment
+somebody called the route.
+
+**The nudge.** `engine/handover.py` works out who the match is waiting on and
+whether that CHANGED; `__init__.announce` publishes `bloodbowl.turn_ready`; and
+`register()` wires `sdk.react_on` to run an agent turn from it. Three notes:
+
+* `handover.changed` is what stops it firing on every action of the agent's own
+  turn. The moment the ball passes over is the news; the state of it having passed
+  is not.
+* An unanswered Kick-off question OUTRANKS whose turn it is — it blocks the game
+  including the ball landing, and nothing about the clock looks wrong while it does.
+* The whole thing is guarded: no host SDK, no nudge, and every test and the browser
+  harness run with no host at all.
+
+**The agent is PACED and this is deliberate** — `engine/pace.py`, config
+`bloodbowl.agent_pace_s`, default 2s. It is a real wall-clock wait on the agent's
+tool path only. It is not a rate limit (it waits, it never refuses — a refusal
+would just teach the agent to retry), it is not in the engine (the rules know
+nothing about it), and it is off in tests. **The conftest zeroes it in TWO places**:
+the autouse fixture and `_Registry.config`, because `register()` re-reads it and
+would otherwise turn it back on for any test that registers the plugin. Ten
+seconds appeared in the suite the first time; that is what it looks like.
+
 ## 4. Working on it
 
 ```bash

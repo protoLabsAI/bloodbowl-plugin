@@ -117,6 +117,20 @@ export function render() {
   const active = $("#activeSide");
   active.textContent = `${c.active} to act`;
   active.classList.toggle("home", c.active === "home");
+
+  // Whose game it is. In a head-to-head the board may only move ONE side, so it
+  // has to say which — a board that silently refuses half your clicks reads as
+  // broken, and that is the whole failure this chip exists to prevent.
+  const who = m.controllers || {};
+  const mine = Object.keys(who).find((s) => who[s] === "human");
+  const chip = $("#whose");
+  chip.hidden = !mine;
+  if (mine) {
+    const yours = c.active === mine;
+    chip.textContent = yours ? `your move — you are ${mine}` : `the agent is playing ${c.active}…`;
+    chip.classList.toggle("waiting", !yours);
+  }
+  document.body.classList.toggle("not-my-turn", !!mine && c.active !== mine);
   $("#counts").textContent = m.over ? "match over" : "";
 
   // After the marks, not before: paint() adds its own, and clearMarks elsewhere
@@ -516,7 +530,10 @@ export function wire(onChanged) {
   $("#newMatch").addEventListener("click", async () => {
     try {
       const seed = Math.floor(Math.random() * 100000);
-      const r = await api("/game/new", json({ seed }));
+      // `you` claims a side and gives the agent the other one. Left out, nobody
+      // owns anything and the board stays permissive — the practice match.
+      const versus = $("#versus").checked ? { you: $("#mySide").value } : {};
+      const r = await api("/game/new", json({ seed, ...versus }));
       state.match = r.match;
       ok();
     } catch (e) {

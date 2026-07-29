@@ -34,14 +34,27 @@ if PKG not in sys.modules:
 @pytest.fixture(autouse=True)
 def fresh_state(tmp_path, monkeypatch):
     """Every test gets its own board — the store is a real file, so without this
-    they would leak placements into one another."""
+    they would leak placements into one another.
+
+    The agent's PACE is turned off here too. It is a real wall-clock wait by
+    design — see engine/pace.py — and a suite that sleeps two seconds per action
+    is a suite nobody runs twice. One test turns it back on to prove it works.
+    """
+    from bloodbowl.engine import pace
+
     monkeypatch.setenv("BLOODBOWL_DIR", str(tmp_path))
+    pace.configure(0)
+    pace.reset()
     yield
+    pace.configure(0)
 
 
 class _Registry:
     def __init__(self, config: dict | None = None):
-        self.config = config or {}
+        # `register()` re-reads the pace from config, so a zero here is what keeps
+        # it off for tests that register the plugin — the autouse fixture alone is
+        # not enough, because registering overwrites it.
+        self.config = {"agent_pace_s": 0, **(config or {})}
         self.tools: list = []
         self.routers: list[tuple[object, str]] = []
         self.surfaces: list = []

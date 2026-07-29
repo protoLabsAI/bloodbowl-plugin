@@ -18,16 +18,45 @@ from langchain_core.tools import tool
 
 log = logging.getLogger("protoagent.plugins.bloodbowl")
 
+# How the plugin publishes on the bus. Captured at registration because the routers
+# and tools are built once and the registry is not reachable from them — and left
+# as a no-op so every host-free test and the harness behave exactly as before.
+_emit = None
+
+
+def announce(before: dict, after: dict) -> dict:
+    """Publish `bloodbowl.turn_ready` when the match starts waiting on somebody NEW.
+
+    This is the seam that makes a head-to-head playable: the human can see the board
+    and knows it is their move, but an agent only acts when something asks it to.
+    `sdk.react_on` turns this event into an agent turn — see `register`.
+    """
+    from .engine import handover
+
+    fresh = handover.changed(before, after)
+    if fresh and _emit is not None:
+        try:
+            _emit("turn_ready", dict(fresh))
+        except Exception:  # noqa: BLE001 — a bus failure must never break a move
+            log.exception("[bloodbowl] publishing turn_ready failed")
+    return fresh
+
 
 def register(registry) -> None:
+    global _emit
     cfg = registry.config or {}
+    _emit = getattr(registry, "emit", None)
 
     try:
         # The Range Ruler is the one measured (not quoted) thing in the engine, so
         # it is configurable — see engine/ruler.py.
+        from .engine.pace import configure as _configure_pace
         from .engine.ruler import configure as _configure_ruler
 
         _configure_ruler(cfg)
+        # How fast the agent may play. See engine/pace.py — a turn taken at model
+        # speed arrives as a diff rather than as something you can watch.
+        _configure_pace(cfg)
     except Exception:  # noqa: BLE001
         log.exception("[bloodbowl] range-ruler config failed")
 
@@ -41,7 +70,7 @@ def register(registry) -> None:
         # route — the whole match API 404'd on a real host while the board's routes
         # worked, because the data router happened to be registered first.
         data = build_data_router(cfg)
-        data.include_router(build_game_router(cfg))
+        data.include_router(build_game_router(cfg, announce=announce))
         registry.register_router(data, prefix="/api/plugins/bloodbowl")
     except Exception:  # noqa: BLE001 — a router failure must not sink the tools
         log.exception("[bloodbowl] mounting routers failed")
@@ -51,6 +80,44 @@ def register(registry) -> None:
             registry.register_tool(t)
     except Exception:  # noqa: BLE001
         log.exception("[bloodbowl] registering tools failed")
+
+    # THE NUDGE. When the match starts waiting on the side the AGENT plays, run a
+    # turn in the Activity thread telling it to play. Without this a head-to-head
+    # stalls the moment the human ends their turn: the board is correct, it is the
+    # agent's move, and nothing has told the agent that.
+    #
+    # Guarded because the SDK is a host module — every test and the browser harness
+    # import this plugin with no host at all, and must keep working.
+    try:
+        from graph import sdk  # type: ignore[import-not-found]
+
+        def _prompt(ev: dict) -> str | None:
+            d = ev.get("data") or {}
+            if d.get("controller") != "agent":
+                return None
+            if d.get("why") == "answer":
+                return (
+                    f"It is your move in the Blood Bowl match — but first the engine is waiting on "
+                    f"an answer from {d.get('side')}, which is your side: {d.get('question')}\n\n"
+                    "Answer it with bb_game_choose, then carry on."
+                )
+            return (
+                f"Your turn in the Blood Bowl match: you play {d.get('side')}, and it is "
+                f"half {d.get('half')}, turn {d.get('turn')}.\n\n"
+                "Read the board with bb_game_state, then PLAY THE WHOLE TURN — activate the players "
+                "you want, and finish with bb_game_end_turn so it comes back to your opponent. "
+                "bb_game_legal and bb_game_odds are free, so check before you commit. Then tell them "
+                "in a sentence or two what you did and what it means for the position — you are "
+                "playing against a person, not narrating to yourself."
+            )
+
+        registry.on_unsubscribe = sdk.react_on(
+            "bloodbowl.turn_ready",
+            prompt=_prompt,
+            job_id="bloodbowl-turn",
+        )
+    except Exception:  # noqa: BLE001 — no host, no nudge; the plugin still works
+        log.debug("[bloodbowl] turn nudge unavailable (no host SDK)", exc_info=True)
 
     log.info("[bloodbowl] registered")
 
@@ -221,6 +288,7 @@ def _tools(cfg: dict):
         dedicated_fans: int = 1,
         weather: str = "",
         apothecary: bool = False,
+        you: str = "",
     ) -> str:
         """Start a match from the current practice board.
 
@@ -241,6 +309,11 @@ def _tools(cfg: dict):
         the Kick-off Event Table asks for both: Brilliant Coaching adds Assistant
         Coaches to a D6 for a free Team Re-roll, Cheering Fans adds Cheerleaders
         for a free Offensive Assist. Both sides get whatever you pass.
+
+        ``you`` starts a HEAD-TO-HEAD: name the side the person is playing and you
+        take the other one. The board refuses to move your players and your tools
+        refuse to move theirs, and when the turn comes to you the engine says so.
+        Leave it out for a practice match where one coach moves both teams.
 
         ``dedicated_fans`` feeds the Pre-game Sequence's first step: Fan Factor is
         ROLLED as "a D3 [for Fair-weather Fans] plus your Dedicated Fans
@@ -274,6 +347,12 @@ def _tools(cfg: dict):
             },
             weather=weather or None,
             apothecary=bool(apothecary),
+            # HEAD-TO-HEAD: `you` is the side the PERSON plays; the agent takes the
+            # other. Left out, nobody owns a side and either may move anyone, which
+            # is the practice board and is still the default.
+            controllers=(
+                {you: "human", ("away" if you == "home" else "home"): "agent"} if you in ("home", "away") else {}
+            ),
         )
         save_match(m)
         out = {"ok": True, "match": m.to_dict(include_log=False), "message": m.events[0].text}
@@ -427,6 +506,7 @@ def _tools(cfg: dict):
         than performed. The reply carries every roll that was made — quote those
         rather than describing what probably happened.
         """
+        from .engine import handover, pace
         from .engine.game import act
         from .store import load_match, save_match
 
@@ -457,9 +537,20 @@ def _tools(cfg: dict):
                     cmd[field] = value
         elif action in ("handoff", "blitz", "foul", "throwteam"):
             cmd["target"] = target
+        # The agent plays at a human pace. This is a real wait, and it is the whole
+        # point: the board polls every couple of seconds, and a turn played faster
+        # than that is not something a person can watch happen.
+        waited = pace.wait()
         before = len(m.events)
-        report = act(m, action, cmd)
+        was = handover.owed(m)
+        report = act(m, action, cmd, by="agent")
         save_match(m)
+        # The agent's own move can hand the game back — a Turnover does exactly
+        # that — so this side announces too. `changed` is what stops it firing on
+        # every action of its own turn.
+        announce(was, handover.owed(m))
+        if waited:
+            report["paced_s"] = round(waited, 2)
         report["rolls"] = [r.describe() for e in m.events[before:] for r in e.rolls]
         report["log"] = [e.text for e in m.events[before:] if e.text]
         return json.dumps(report)
@@ -486,15 +577,23 @@ def _tools(cfg: dict):
 
     @tool
     def bb_game_end_turn() -> str:
-        """End the active team's turn and hand over."""
+        """End the active team's turn and hand over.
+
+        In a head-to-head this is how you give the board back — end your turn when
+        you are done, and it becomes your opponent's move.
+        """
+        from .engine import handover
         from .engine.game import end_turn
         from .store import load_match, save_match
 
         m = load_match()
         if m is None:
             return json.dumps({"ok": False, "error": "no match in progress"})
-        out = end_turn(m)
-        save_match(m)
+        was = handover.owed(m)
+        out = end_turn(m, by="agent")
+        if out.get("ok"):
+            save_match(m)
+        announce(was, handover.owed(m))
         return json.dumps(out)
 
     @tool
@@ -542,12 +641,14 @@ def _tools(cfg: dict):
         plus at most one Blitz, one Throw Team-mate and one Kick Team-mate for the
         whole Charge). Call this again with ``decline=True`` to end it early.
         """
+        from .engine import handover
         from .engine.game import dice_for, resolve_choice
         from .store import load_match, save_match
 
         m = load_match()
         if m is None:
             return json.dumps({"ok": False, "error": "no match in progress"})
+        was = handover.owed(m)
         out = resolve_choice(
             m,
             {
@@ -558,9 +659,11 @@ def _tools(cfg: dict):
                 "result": int(result or 0),
             },
             dice_for(m),
+            by="agent",
         )
         if out.get("ok"):
             save_match(m)
+        announce(was, handover.owed(m))
         return json.dumps(out)
 
     @tool

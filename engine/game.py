@@ -44,6 +44,7 @@ def new_match(
     staff: dict | None = None,
     weather: str | None = None,
     apothecary: bool = False,
+    controllers: dict | None = None,
 ) -> Match:
     """Start a match from a set-up board.
 
@@ -101,6 +102,9 @@ def new_match(
                 "pregame": pregame_steps(league=False),
                 "weather": condition,
                 "apothecary": {"home": bool(apothecary), "away": bool(apothecary)},
+                # Who plays which side. Empty leaves the board permissive, which is
+                # the practice-board default and what every existing caller gets.
+                "controllers": dict(controllers or {}),
             },
             text=f"Match begins. {m.home_team or 'Home'} vs {m.away_team or 'Away'}. "
             f"{n} Team Re-roll(s) each. Weather: {weather_name(condition)}. "
@@ -213,7 +217,7 @@ def _deal_with_secret_weapons(match: Match, dice) -> None:
         _argue_the_call(match, p, dice, sink)
 
 
-def resolve_choice(match: Match, answer: dict, dice) -> dict:
+def resolve_choice(match: Match, answer: dict, dice, by: str = "") -> dict:
     """Answer whatever the engine stopped to ask.
 
     ``answer`` is ``{"decline": True}`` or the choice itself. Declining is always
@@ -223,6 +227,16 @@ def resolve_choice(match: Match, answer: dict, dice) -> dict:
     from ..pitch import in_bounds
     from .rules import is_open
     from .setup import violations
+
+    # A Kick-off Event's question belongs to ONE coach — `pending["side"]` says
+    # which — so the other one may not answer it. Same rule as acting, different
+    # question: this is not about whose turn it is.
+    if by and match.controllers:
+        asked = str(match.pending.get("side") or match.charge.get("side") or "")
+        owner = str(match.controllers.get(asked) or "")
+        if asked and owner and owner != by:
+            why = f"the engine asked {asked}, who is played by the {owner} — not you"
+            return {"ok": False, "error": why, "text": why, "controllers": dict(match.controllers)}
 
     if charge.active(match):
         # The Charge's own answer: stop early. "MAY then be activated" — a Coach
@@ -493,9 +507,42 @@ def dice_for(match: Match):
     return d
 
 
-def act(match: Match, action: str, cmd: dict, dice=None) -> dict:
-    """Resolve one action and fold its facts in. Returns a report for the caller."""
+def whose_turn(match: Match) -> str:
+    """Who controls the side that is currently to act — "" when nobody has claimed it."""
+    return str(match.controllers.get(match.clock.active) or "")
+
+
+def refuse_if_not_yours(match: Match, by: str) -> dict | None:
+    """Stop ``by`` acting on somebody else's team. None when they may.
+
+    A head-to-head only means anything if the sides are enforced, and both entry
+    points reach the same engine: the board posts to `/game/act` and the agent calls
+    `bb_game_act`. Neither can be trusted to police itself, so each declares WHO IT
+    IS and this decides. An unclaimed side is nobody's and stays open — that is the
+    practice board, where one person moves both teams on purpose.
+    """
+    if not by or not match.controllers:
+        return None
+    mine = whose_turn(match)
+    if not mine or mine == by:
+        return None
+    theirs = match.clock.active
+    why = (
+        f"{theirs} is played by the {mine}, and you are the {by} — "
+        f"it is {theirs}'s turn, so this is not your move to make"
+    )
+    return {"ok": False, "error": why, "text": why, "controllers": dict(match.controllers)}
+
+
+def act(match: Match, action: str, cmd: dict, dice=None, by: str = "") -> dict:
+    """Resolve one action and fold its facts in. Returns a report for the caller.
+
+    ``by`` is "human" or "agent" — who is asking. See `refuse_if_not_yours`.
+    """
     actions.load_all()
+    not_yours = refuse_if_not_yours(match, by)
+    if not_yours is not None:
+        return not_yours
     entry = actions.get(action)
     if entry is None:
         return {"ok": False, "error": f"unknown action {action!r}", "actions": actions.names()}
@@ -1049,12 +1096,20 @@ def _unresolved_touchdown(match: Match):
     return None
 
 
-def end_turn(match: Match, forced: bool = False, start_next: bool = True, dice=None) -> dict:
+def end_turn(match: Match, forced: bool = False, start_next: bool = True, dice=None, by: str = "") -> dict:
     """End the active team's turn.
 
     Stunned players recover to Prone at the end of a turn — modelled here rather
     than in the clock so the recovery is a recorded fact like everything else.
+
+    ``by`` is checked the same way `act` checks it, and for the same reason: ending
+    your opponent's turn for them is as much a move as any other. `forced` skips the
+    check, because a Turnover is the engine ending a turn rather than a coach.
     """
+    if not forced:
+        not_yours = refuse_if_not_yours(match, by)
+        if not_yours is not None:
+            return not_yours
     for p in match.players:
         if p.down == "stunned" and p.side == match.clock.active:
             match.apply(

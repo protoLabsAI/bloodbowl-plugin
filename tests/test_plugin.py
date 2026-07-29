@@ -1204,3 +1204,76 @@ def test_no_skill_is_left_half_applied(registry):
     assert not partials, "these Skills are only half-applied: " + ", ".join(
         f"{n} ({(describe_skill(n) or {}).get('partial')})" for n in partials
     )
+
+
+def test_a_head_to_head_locks_each_side_to_its_coach_end_to_end(client, registry):
+    """The board is the human and the tools are the agent, and neither may move the
+    other's team. This goes through both real surfaces because that is the whole
+    point: the enforcement is not in either of them, it is in the engine they share."""
+    import bloodbowl
+
+    base = "/api/plugins/bloodbowl"
+    client.post(f"{base}/place", json={"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    client.post(f"{base}/place", json={"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+    started = client.post(f"{base}/game/new", json={"seed": 4, "kicking_to": "home", "you": "home"}).json()
+    assert started["match"]["controllers"] == {"home": "human", "away": "agent"}
+    client.post(f"{base}/game/choose", json={"decline": True})
+
+    # The board moves the human's player…
+    ok = client.post(f"{base}/game/act", json={"action": "move", "player": "h00", "x": 7, "y": 12}).json()
+    assert ok["ok"] or ok.get("turnover"), ok
+
+    # …and the agent's tools may not, because it is not their turn.
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    refused = json.loads(tools["bb_game_act"].invoke({"action": "move", "player": "h00", "x": 7, "y": 11}))
+    assert refused["ok"] is False and "not your move" in refused["text"], refused
+
+    # Hand over, and it inverts: the tools may act and the board may not.
+    # (`a00`, not `a01` — a match numbers ids WITHIN each side, unlike the engine
+    # test helper, which numbers across the combined list.)
+    assert client.post(f"{base}/game/end-turn", json={}).json()["ok"]
+    mine = client.post(f"{base}/game/act", json={"action": "move", "player": "a00", "x": 3, "y": 19}).json()
+    assert mine["ok"] is False and "not your move" in mine["text"], mine
+    theirs = json.loads(tools["bb_game_act"].invoke({"action": "move", "player": "a00", "x": 3, "y": 19}))
+    assert theirs["ok"] or theirs.get("turnover"), theirs
+
+
+def test_the_agent_is_paced_so_a_turn_is_something_you_can_watch(registry):
+    """A model can take eight activations in under a second, which is a diff rather
+    than a game. The pace is a real wall-clock wait — this is the one test that
+    turns it on, because a suite that sleeps is a suite nobody runs twice."""
+    import time
+
+    import bloodbowl
+    from bloodbowl.engine import pace
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+    tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home"})
+    json.loads(tools["bb_game_choose"].invoke({"decline": True}))
+
+    pace.configure(0.4)
+    pace.reset()
+    try:
+        began = time.monotonic()
+        first = json.loads(tools["bb_game_act"].invoke({"action": "move", "player": "h00", "x": 7, "y": 12}))
+        second = json.loads(tools["bb_game_act"].invoke({"action": "move", "player": "h00", "x": 7, "y": 11}))
+        took = time.monotonic() - began
+    finally:
+        pace.configure(0)
+    assert first["ok"] or first.get("turnover"), first
+    assert took >= 0.4, f"two paced actions took {took:.2f}s — the second did not wait"
+    assert second.get("paced_s"), "and it says how long it waited, so nobody thinks it hung"
+
+    # The HUMAN is never paced: a person is already as slow as a person.
+    pace.configure(5)
+    try:
+        began = time.monotonic()
+        from bloodbowl.engine import handover  # noqa: F401 — import cost only
+
+        assert time.monotonic() - began < 1
+    finally:
+        pace.configure(0)

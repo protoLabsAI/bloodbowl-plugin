@@ -96,6 +96,22 @@ Ten of the eleven kick-off events say plainly that they were rolled but not appl
 **Presets** — `bb_presets` · `bb_preset_load` · `bb_preset_save` ·
 `bb_preset_delete`
 
+## Playing the agent
+
+Tick **vs. agent** on the board (or `bb_game_new(you="home")`) and the sides are
+claimed: you play one, the agent plays the other, and **neither can move the
+other's team**. The board refuses with a reason, and so do the tools — the check is
+in the engine they share, because neither surface can be trusted to police itself.
+
+When the turn comes round, the plugin publishes `bloodbowl.turn_ready` and the host
+turns that into an agent turn. You end your turn on the board; its coach starts
+playing without you having to ask.
+
+**The agent is paced** (`bloodbowl.agent_pace_s`, default 2s between its actions).
+A model can take eight activations in under a second, which is a diff rather than a
+game — the pace is what makes a turn something you can watch happen. Your own
+clicks are never paced.
+
 **Playing** — `bb_game_new` · `bb_game_state` · `bb_game_legal` · `bb_game_odds` ·
 `bb_game_act` (`drop_ball=True` for a Fumblerooski) · `bb_game_end_turn` · `bb_game_kickoff` · `bb_game_log` ·
 `bb_game_abandon` · `bb_pass_ranges`

@@ -39,6 +39,7 @@
     <span id="clock" class="chip mono"></span>
     <span id="score" class="chip mono"></span>
     <span id="activeSide" class="chip"></span>
+    <span id="whose" class="chip" hidden></span>
   </span>
 
   <span id="coord" class="mono muted"></span>
@@ -54,6 +55,10 @@
   <span class="mode-play" hidden>
     <button id="endTurn">End turn</button>
     <button id="kickoff">Kick off</button>
+    <label class="chip" title="Play the agent: you take this side, it takes the other. Off = one coach moves both teams.">
+      <input type="checkbox" id="versus"> vs. agent
+      <select id="mySide"><option value="home">as home</option><option value="away">as away</option></select>
+    </label>
     <button id="newMatch">New match</button>
     <button id="abandon">Abandon</button>
   </span>

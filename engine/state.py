@@ -265,6 +265,12 @@ class Match:
     # to keep track of every time a player does something that generates SPP
     # DURING A GAME" — and spent after one, which needs a league.
     spp: dict = field(default_factory=dict)
+    # WHO CONTROLS EACH SIDE — "human" or "agent". A head-to-head needs this to be
+    # state rather than convention: without it both the board and the tools can act
+    # for either team, and a game where your opponent can move your players is not
+    # a game. Empty means nobody has claimed a side, which is the practice-board
+    # default and stays permissive.
+    controllers: dict = field(default_factory=dict)
     # Set-ups declared for the NEXT Drive, per side. "The kicking team must set up
     # first followed by the receiving team", so the order is recorded too.
     setups: dict = field(default_factory=dict)
@@ -332,6 +338,7 @@ class Match:
             self.weather = str(d.get("weather") or "perfect")
             apo = d.get("apothecary") or {}
             self.apothecary = {"home": bool(apo.get("home")), "away": bool(apo.get("away"))}
+            self.controllers = {k: str(v) for k, v in (d.get("controllers") or {}).items()}
 
         elif kind == "turn_started":
             self.clock.active = str(d.get("side") or self.clock.active)
@@ -760,6 +767,7 @@ class Match:
             "leader_used": dict(self.leader_used),
             "bribes": dict(self.bribes),
             "spp": dict(self.spp),
+            "controllers": dict(self.controllers),
             "setups": {k: [dict(r) for r in v] for k, v in self.setups.items()},
             "pending": dict(self.pending),
             "charge": dict(self.charge),
