@@ -43,7 +43,7 @@ from ..rules import (
     jump_over,
     markers_of_square,
 )
-from ..skills import SkillContext, apply_value_hook, hooks_for, roll_modifier, unmodelled_skills
+from ..skills import SkillContext, apply_value_hook, can_use, hooks_for, roll_modifier, unmodelled_skills
 from ..state import Match
 from . import Legality, Outcome, Recorder, register
 
@@ -110,12 +110,16 @@ def validate(match: Match, cmd: dict) -> Legality:
     budget = p.movement()
     used = p.ma_used + stand_cost
     rushes_needed = max(0, (used + step_cost) - budget)
-    if rushes_needed > MAX_RUSHES:
+    # SPRINT: "they may attempt to Rush ONE ADDITIONAL TIME than they would
+    # normally be allowed to." A third attempt, not a free square — it is still a
+    # 2+ each time, so it is a third chance to trip as much as a third square.
+    allowed = apply_value_hook("extra_rush", SkillContext(match=match, player=p, value=MAX_RUSHES), p)
+    if rushes_needed > allowed:
         return Legality(
             False,
             f"out of movement: {p.name()} has MA {budget}, has used {p.ma_used}"
             + (f" and needs {stand_cost} to stand up" if stand_cost else "")
-            + f", and may Rush at most {MAX_RUSHES} times",
+            + f", and may Rush at most {allowed} times",
         )
 
     detail = {
@@ -216,7 +220,24 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     if needs_rush:
         rush = roll_modifier(match, p, "rush")
         r = roll_target(dice, "Rush", 2, rush.value, note=" ".join(rush.notes))
-        if not r.passed and want_reroll and team_rerolls.spend(match, p, "Rush", dice, rec):
+        # A Skill re-roll is FREE, so it goes first and a Team Re-roll only steps
+        # in when there was none — and never on a die that is already a re-roll.
+        feet = SkillContext(match=match, player=p, flags={"rush_reroll_used": p.rush_reroll_used})
+        if not r.passed:
+            for skill, fn in hooks_for("rush_reroll"):
+                if can_use(p, skill):
+                    fn(feet)
+        if not r.passed and feet.flags.get("may_reroll"):
+            rec.emit(
+                Event(
+                    kind="skill_spent",
+                    actor=p.id,
+                    detail={"flag": "rush_reroll_used", "skill": "Sure Feet"},
+                    text=f"{p.name()} uses Sure Feet's re-roll — once per Turn.",
+                )
+            )
+            r = roll_target(dice, "Rush (Sure Feet)", 2, rush.value)
+        elif not r.passed and want_reroll and team_rerolls.spend(match, p, "Rush", dice, rec):
             r = roll_target(dice, "Rush (Team Re-roll)", 2, rush.value)
         if not r.passed:
             rec.emit(
@@ -245,8 +266,17 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     # each Rush attempt BEFORE rolling to Jump".
     if over:
         jumped = match.by_id(over)
-        mod = legal.detail["jump_modifier"]
-        jr = roll_target(dice, "Jump", agility_target(p), mod, note=f"over {jumped.name()}")
+        # Through the hook rather than the bare number: a Jump is an Agility Test
+        # like any other, and Very Long Legs has a +1 for it.
+        jctx = roll_modifier(match, p, "jump", base=legal.detail["jump_modifier"])
+        mod = jctx.value
+        jr = roll_target(
+            dice,
+            "Jump",
+            agility_target(p),
+            mod,
+            note=f"over {jumped.name()}" + "".join(f" · {n}" for n in jctx.notes),
+        )
         if not jr.passed and want_reroll and team_rerolls.spend(match, p, "Jump", dice, rec):
             jr = roll_target(dice, "Jump (Team Re-roll)", agility_target(p), mod)
         if not jr.passed:

@@ -4875,3 +4875,171 @@ def test_a_pending_apothecary_choice_survives_a_reload():
     assert back.pending.get("choice") == "apothecary"
     assert [r["result"] for r in back.pending["results"]] == ["Dead", "Badly Hurt"]
     assert back.apothecary["home"] is False
+
+
+# --- Modifier Skills that belong to somebody other than the roller ------------
+
+
+def test_two_heads_adds_one_to_a_dodge():
+    """S3: "This player may apply a +1 modifier to the Agility Test whenever they
+    attempt to Dodge." """
+    from bloodbowl.engine.skills import roll_modifier
+
+    m = _match(("home", 7, 13, 6, "3+", ["Two Heads"]), ("away", 7, 14))
+    assert roll_modifier(m, m.by_id("h00"), "dodge", base=-1).value == 0
+
+
+def test_cannoneer_is_accurate_at_the_other_end_of_the_ruler():
+    """ "When this player performs a Pass Action which is a LONG PASS or a LONG
+    BOMB…" — and NOT on the short ones, which is Accurate's half."""
+    from bloodbowl.engine.skills import roll_modifier
+
+    m = _match(("home", 7, 13, 6, "3+", ["Cannoneer"]))
+    p = m.by_id("h00")
+    assert roll_modifier(m, p, "pass", range="Long Bomb").value == 1
+    assert roll_modifier(m, p, "pass", range="Long Pass").value == 1
+    assert roll_modifier(m, p, "pass", range="Quick Pass").value == 0, "Cannoneer is not Accurate"
+
+
+def test_strong_arm_helps_a_throw_team_mate_and_not_a_pass():
+    """ "When this player performs a THROW TEAM-MATE Action…" — a different test
+    from a Pass Action, with its own distance bands."""
+    from bloodbowl.engine.skills import roll_modifier
+
+    m = _match(("home", 7, 13, 6, "3+", ["Strong Arm", "Throw Team-mate"]))
+    p = m.by_id("h00")
+    assert roll_modifier(m, p, "throwteam", range="Short Throw").value == 1
+    assert roll_modifier(m, p, "pass", range="Short Pass").value == 0
+
+
+def test_very_long_legs_is_worth_twice_as_much_on_an_intercept():
+    """ "+1 … whenever they attempt to Leap or Jump, and … +2 … whenever they
+    attempt to INTERCEPT the ball." Two different numbers, and the bigger one is
+    on the roll that almost never lands."""
+    from bloodbowl.engine.skills import roll_modifier
+
+    m = _match(("home", 7, 13, 6, "3+", ["Very Long Legs"]))
+    p = m.by_id("h00")
+    assert roll_modifier(m, p, "jump", base=-1).value == 0
+    assert roll_modifier(m, p, "intercept", base=-2).value == 0
+    assert roll_modifier(m, p, "dodge").value == 0, "it is not a general Agility bonus"
+
+
+def test_disturbing_presence_stacks_and_reaches_three_squares():
+    """ "…applies a -1 modifier to their Passing Ability Test or Agility Test FOR
+    EACH PLAYER ON YOUR TEAM WITH THIS SKILL WITHIN 3 SQUARES of them."
+
+    Each — they stack — and three squares is a long way. It belongs to the
+    opposition, not to the player rolling, which is why it cannot be a hook on
+    their own Skills."""
+    from bloodbowl.engine.skills import roll_modifier
+
+    dp = ["Disturbing Presence"]
+    m = _match(
+        ("home", 7, 13),  # the thrower
+        ("away", 8, 15, 6, "3+", dp),  # 2 away
+        ("away", 4, 13, 6, "3+", dp),  # 3 away
+        ("away", 3, 13, 6, "3+", dp),  # 4 away — out of reach
+        ("away", 7, 16),  # near, but without the Skill
+    )
+    p = m.by_id("h00")
+    assert roll_modifier(m, p, "pass").value == -2, "two in range, one out, one without it"
+    assert roll_modifier(m, p, "catch").value == -2
+    assert roll_modifier(m, p, "intercept").value == -2
+    assert roll_modifier(m, p, "throwteam").value == -2
+    assert roll_modifier(m, p, "throw_bomb").value == -2
+    # The rule lists the tests it touches, and a Dodge is not one of them.
+    assert roll_modifier(m, p, "dodge").value == 0
+    # And it is the OPPOSITION's — a team-mate standing there does nothing.
+    friendly = _match(("home", 7, 13), ("home", 8, 14, 6, "3+", dp))
+    assert roll_modifier(friendly, friendly.by_id("h00"), "pass").value == 0
+
+
+def test_iron_hard_skin_strips_the_modifiers_off_an_armour_roll():
+    """ "OPPOSITION PLAYERS CANNOT APPLY ANY MODIFIERS when making an Armour Roll
+    against this player. Additionally, THE CLAWS SKILL CANNOT BE USED against this
+    player."
+
+    A Foul with three assists and a Mighty Blow is the case it exists for."""
+    from bloodbowl.engine.injury import risk_injury
+
+    hard = _match(("home", 7, 13, 6, "3+", ["Iron Hard Skin"]), ("away", 7, 14, 6, "3+", ["Mighty Blow", "Claws"]))
+    hard.by_id("h00").player.AV = "10+"
+    out = risk_injury(hard, hard.by_id("h00"), _dice([4, 4, 4, 4, 4, 4]), by=hard.by_id("a01"), armour_modifier=3)
+    armour = next(r for e in out for r in e.rolls if r.kind == "Armour")
+    assert armour.modifier == 0, f"the +3 should have been stripped: {armour.describe()}"
+    assert armour.passed is False, "8 is under AV 10+, and neither Claws nor Mighty Blow may help"
+
+    # The same roll against an ordinary player breaks the armour — which is what
+    # makes the check above about the Skill rather than about the dice.
+    soft = _match(("home", 7, 13), ("away", 7, 14, 6, "3+", ["Mighty Blow", "Claws"]))
+    soft.by_id("h00").player.AV = "10+"
+    out2 = risk_injury(soft, soft.by_id("h00"), _dice([4, 4, 4, 4, 4, 4]), by=soft.by_id("a01"), armour_modifier=3)
+    assert next(r for e in out2 for r in e.rolls if r.kind == "Armour").passed is True
+
+
+def test_iron_hard_skin_does_not_help_with_a_chainsaw_of_their_own():
+    """ "THIS +3 MODIFIER MUST ALWAYS BE APPLIED" — and it is the carrier's own
+    liability rather than something an opposition player applies, so Iron Hard
+    Skin has nothing to say about it."""
+    from bloodbowl.engine.injury import risk_injury
+
+    m = _match(("home", 7, 13, 6, "3+", ["Iron Hard Skin", "Chainsaw"]), ("away", 7, 14))
+    out = risk_injury(m, m.by_id("h00"), _dice([3, 3, 4, 4, 4, 4]), by=m.by_id("a01"))
+    assert next(r for e in out for r in e.rolls if r.kind == "Armour").modifier == 3
+
+
+def test_sprint_buys_a_third_rush_attempt_and_not_a_free_square():
+    """S3: "When this player performs a Move Action they may attempt to Rush ONE
+    ADDITIONAL TIME than they would normally be allowed to." Attempt — so it is a
+    third chance to trip as much as a third square."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    plain = _match(("home", 7, 13, 4))
+    plain.by_id("h00").ma_used = 4
+    # Two Rushes gets them to 6; a third is refused without Sprint.
+    plain.by_id("h00").ma_used = 6
+    assert not actions.get("move")["validate"](plain, {"player": "h00", "x": 7, "y": 14}).ok
+
+    quick = _match(("home", 7, 13, 4, "3+", ["Sprint"]))
+    quick.by_id("h00").ma_used = 6
+    legal = actions.get("move")["validate"](quick, {"player": "h00", "x": 7, "y": 14})
+    assert legal.ok, legal.reason
+    assert legal.detail["rushes"] == 3, legal.detail
+
+
+def test_sure_feet_rerolls_a_failed_rush_once_per_turn():
+    """ "Once per Turn, this player may re-roll a single D6 when attempting to
+    Rush." The Dodge Skill's twin, on the other roll a Move Action can fail — and
+    a free Skill re-roll must be tried BEFORE a Team Re-roll is spent."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 1, "3+", ["Sure Feet"]))
+    m.by_id("h00").ma_used = 1
+    out = _move(m, "h00", 7, 14, _dice([1, 5, 4, 4, 4, 4]))  # trips, then makes it
+    kinds = [r.kind for e in out.events for r in e.rolls]
+    assert "Rush (Sure Feet)" in kinds, kinds
+    assert out.ok, out.text
+    assert m.by_id("h00").rush_reroll_used, "and it is spent"
+
+    # Once per TURN: a second failed Rush in the same turn gets no second chance.
+    again = _move(m, "h00", 7, 15, _dice([1, 1, 4, 4, 4, 4, 4, 4]))
+    assert "Rush (Sure Feet)" not in [r.kind for e in again.events for r in e.rolls]
+
+
+def test_a_new_turn_clears_every_once_per_turn_flag_not_just_the_ones_it_remembers():
+    """Three separate places reset these by hand, and a flag a reset site forgot
+    would make a Once-per-Turn Skill work once per MATCH — silently. They go
+    through ONCE_PER_TURN_FLAGS now, and this is what says so."""
+    from bloodbowl.engine.events import Event
+    from bloodbowl.engine.state import ONCE_PER_TURN_FLAGS
+
+    m = _match(("home", 7, 13), ("away", 2, 20))
+    p = m.by_id("h00")
+    for flag in ONCE_PER_TURN_FLAGS:
+        setattr(p, flag, True)
+    m.apply(Event(kind="turn_started", detail={"side": "home", "half": 1, "turn": 2}))
+    left = [f for f in ONCE_PER_TURN_FLAGS if getattr(p, f)]
+    assert not left, f"a new turn left these spent: {left}"

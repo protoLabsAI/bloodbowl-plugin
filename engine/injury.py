@@ -23,7 +23,7 @@ from __future__ import annotations
 from .dice import Roll, roll_2d6
 from .events import Event
 from .rules import armour_target
-from .skills import SkillContext, hooks_for
+from .skills import SkillContext, from_skills, hooks_for
 
 STUNNED_MAX = 7
 KO_MAX = 9
@@ -119,6 +119,30 @@ def risk_injury(match, player, dice, by=None, armour_modifier: int = 0) -> list[
     # cannot manufacture one.
     av = armour_target(player)
     clawed = by is not None and by.has_skill("Claws") and av > CLAWS_BREAKS_FROM
+
+    # IRON HARD SKIN: "Opposition players CANNOT APPLY ANY MODIFIERS when making an
+    # Armour Roll against this player. Additionally, THE CLAWS SKILL CANNOT BE USED
+    # against this player." It belongs to the player being rolled against, which is
+    # why it is not a `roll_modifier` hook — that walks the ROLLER's Skills.
+    #
+    # "Any modifiers" is read as any modifier an OPPOSITION player applies: Foul
+    # assists, Mighty Blow and Claws all come from them. Chainsaw's +3 does not —
+    # it is the carrier's own liability, "regardless of how it occurred", applied
+    # even when nobody is responsible at all.
+    iron = from_skills(player, "armour")
+    if iron:
+        if armour_modifier:
+            events.append(
+                Event(
+                    kind="note",
+                    actor=player.id,
+                    text=f"Iron Hard Skin: the {armour_modifier:+d} to the Armour Roll does not apply.",
+                )
+            )
+            match.apply(events[-1])
+        armour_modifier = 0
+        mighty = 0
+        clawed = False
     # CHAINSAW: "If this player is Knocked Down or Falls Over for any reason,
     # regardless of how it occurred, then a +3 modifier is applied when the
     # opposition Coach makes an Armour Roll for this player. THIS +3 MODIFIER MUST
