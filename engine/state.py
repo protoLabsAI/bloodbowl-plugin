@@ -67,6 +67,12 @@ class PlayerState:
     # a Block Action, cannot be Pushed Back, and may not leave their current square
     # for any reason". Cleared at the end of a Drive or by hitting the ground.
     rooted: bool = False
+    # Monstrous Mouth: "Whilst Chomped, the opposition player cannot leave the
+    # square they are in whilst this player remains Marking them." Holds the
+    # CHOMPER's id, because the condition "ends immediately if this player is no
+    # longer Marking the opposition player for any reason" — so it has to be
+    # re-checked against a live board rather than remembered as a bare flag.
+    chomped_by: str = ""
     # Skills that are "Once per Turn" rather than once per activation — the Dodge
     # Skill's re-roll and Break Tackle's modifier. Set through a recorded event
     # (see `skill_spent`), never assigned: they are state, and state that only the
@@ -124,6 +130,7 @@ class PlayerState:
             "break_tackle_used": self.break_tackle_used,
             "distracted": self.distracted,
             "rooted": self.rooted,
+            "chomped_by": self.chomped_by,
             "movement": self.movement(),
         }
         d.update(
@@ -297,6 +304,8 @@ class Match:
                     p.distracted = bool(d["distracted"])
                 if "rooted" in d:
                     p.rooted = bool(d["rooted"])
+                if "chomped" in d:
+                    p.chomped_by = str(d["chomped"] or "")
 
         elif kind == "player_left_pitch":
             # Pushed into the Crowd. They land in the Reserves Box unless the
@@ -613,6 +622,7 @@ class Match:
                     break_tackle_used=bool(raw.get("break_tackle_used")),
                     distracted=bool(raw.get("distracted")),
                     rooted=bool(raw.get("rooted")),
+                    chomped_by=str(raw.get("chomped_by") or ""),
                 )
             )
 

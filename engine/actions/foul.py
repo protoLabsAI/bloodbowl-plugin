@@ -92,6 +92,10 @@ def validate(match: Match, cmd: dict) -> Legality:
         return Legality(False, "a Foul is put in from an adjacent square")
 
     off, dfn = _assists(match, p, t)
+    # CHAINSAW: "this player may also use their chainsaw when performing a Foul
+    # Action, in which case they may apply a +3 modifier when making the Armour
+    # Roll for the opposition player."
+    saw = 3 if p.has_skill("Chainsaw") else 0
     return Legality(
         True,
         "",
@@ -100,7 +104,8 @@ def validate(match: Match, cmd: dict) -> Legality:
             "armour_target": t.player.AV,
             "offensive_assists": off,
             "defensive_assists": dfn,
-            "armour_modifier": off - dfn,
+            "chainsaw": saw,
+            "armour_modifier": off - dfn + saw,
             # Every Foul risks it, which is the whole tension of the Action.
             "sending_off_on": "a natural double on either the Armour or Injury Roll",
             "may_argue": p.side not in match.argue_banned,

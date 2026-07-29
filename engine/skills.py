@@ -722,6 +722,63 @@ def _animal_savagery(ctx: SkillContext) -> None:
     ctx.flags.update(target=4, modifier=2 if _blitzy(ctx) else 0, on_fail="lash_out")
 
 
+@skill_hook("Stab", "special_action")
+def _stab(ctx: SkillContext) -> None:
+    """S3: "select a Standing opposition player adjacent to this player and make an
+    Armour Roll for the selected player. THIS ARMOUR ROLL CANNOT BE MODIFIED IN
+    ANY WAY. If the player's Armour is broken, make an Injury Roll for them."
+
+    Unmodifiable is why it passes no responsible player — Mighty Blow and Claws
+    both hang off one, and letting either through would modify the unmodifiable.
+    """
+
+
+@skill_hook("Projectile Vomit", "special_action")
+def _projectile_vomit(ctx: SkillContext) -> None:
+    """S3: "roll a D6. On a 2+ … Make an Armour Roll for the targeted player … On a
+    1, this player covers THEMSELVES in acidic bile; make an Armour Roll for THIS
+    player." The roll is made for whoever it landed on, which can be the thrower."""
+
+
+@skill_hook("Breathe Fire", "special_action")
+def _breathe_fire(ctx: SkillContext) -> None:
+    """S3: "roll a D6, applying a -1 modifier if the target has an ST of 5 or
+    higher. On a 1, this player is immediately Knocked Down. On a 2-3, nothing
+    happens. On a 4+, the opposition player is immediately Placed Prone. If the
+    roll is a NATURAL 6, the opposition player is Knocked Down instead."
+
+    Natural, so the -1 for a large target cannot take the knock-down away — and
+    Placed Prone risks no harm while Knocked Down does, so the two outcomes on 4+
+    and a natural 6 are genuinely different."""
+
+
+@skill_hook("Chainsaw", "special_action")
+def _chainsaw(ctx: SkillContext) -> None:
+    """S3: "roll a D6. On a 2+, this player immediately makes an Armour Roll
+    against one opposition player they are Marking, applying a +3 modifier … On a
+    1, the Chainsaw will Kick-back and this player is Knocked Down instead. If
+    this player is Knocked Down or Falls Over FOR ANY REASON … a +3 modifier is
+    applied when the opposition Coach makes an Armour Roll for this player. THIS
+    +3 MODIFIER MUST ALWAYS BE APPLIED. … this player may also use their chainsaw
+    when performing a Foul Action, in which case they may apply a +3 modifier."
+
+    Three clauses, and two of them are passive — carrying a chainsaw is dangerous
+    to its owner, which is the trade the Trait exists to make."""
+
+
+@skill_hook("Monstrous Mouth", "special_action")
+def _monstrous_mouth(ctx: SkillContext) -> None:
+    """S3: "roll a D6. On a 1-2 nothing happens. On a 3+, the opposition player is
+    considered to be Chomped. Whilst Chomped, the opposition player cannot leave
+    the square they are in whilst this player remains Marking them. THIS CONDITION
+    ENDS IMMEDIATELY if this player is no longer Marking the opposition player for
+    any reason."
+
+    "For any reason" is why it is asked of the live board rather than remembered
+    as a flag — being knocked down, pushed away or sent off would none of them
+    think to clear one."""
+
+
 @skill_hook("Throw Team-mate", "action")
 def _throw_team_mate(ctx: SkillContext) -> None:
     """S3: "This player may declare the Throw Team-mate Action." The permission

@@ -119,6 +119,12 @@ def risk_injury(match, player, dice, by=None, armour_modifier: int = 0) -> list[
     # cannot manufacture one.
     av = armour_target(player)
     clawed = by is not None and by.has_skill("Claws") and av > CLAWS_BREAKS_FROM
+    # CHAINSAW: "If this player is Knocked Down or Falls Over for any reason,
+    # regardless of how it occurred, then a +3 modifier is applied when the
+    # opposition Coach makes an Armour Roll for this player. THIS +3 MODIFIER MUST
+    # ALWAYS BE APPLIED." Always, and against them — carrying one is dangerous.
+    if player.has_skill("Chainsaw"):
+        armour_modifier += 3
     armour = roll_2d6(
         dice,
         "Armour",
