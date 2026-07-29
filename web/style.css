@@ -295,3 +295,10 @@ button.mini { padding: 0 6px; font-size: 10px; margin-left: 6px; }
    because between the two clicks the coach has to be able to see which of their
    players the next square will apply to. */
 .cell.picking { box-shadow: inset 0 0 0 3px var(--pl-color-status-warning); }
+
+/* Head-to-head. The board can only move one side, so it says which — and dims
+   while the opponent is thinking, because a board that refuses clicks without
+   explaining itself reads as broken. */
+.chip.waiting { border-color: var(--pl-color-status-warning); color: var(--pl-color-status-warning); }
+body.not-my-turn .board { opacity: .82; }
+body.not-my-turn .cell { cursor: default; }

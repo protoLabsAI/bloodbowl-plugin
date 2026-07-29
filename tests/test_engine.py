@@ -6520,3 +6520,109 @@ def test_the_post_game_sequence_runs_the_two_steps_that_are_about_the_match():
     ran = [s["step"] for s in steps(league=False) if s["applies"]]
     assert ran == ["Record Outcome and Collect Winnings", "Update Dedicated Fans"]
     assert all(s["applies"] for s in steps(league=True))
+
+
+# --- Head-to-head: two coaches, one board ------------------------------------
+
+
+def _versus(*players, you="home", active="home"):
+    """A match with the sides claimed: `you` is the human, the other is the agent."""
+    from bloodbowl.engine.events import Event
+
+    m = _match(*players, active=active)
+    other = "away" if you == "home" else "home"
+    m.apply(
+        Event(
+            kind="match_started",
+            detail={"kicking_to": active, "controllers": {you: "human", other: "agent"}},
+        )
+    )
+    m.clock.active = active
+    return m
+
+
+def test_neither_coach_may_move_the_others_team():
+    """A game where your opponent can move your players is not a game. Both entry
+    points reach the same engine, so each declares WHO IT IS and the engine
+    decides — neither surface is trusted to police itself."""
+    from bloodbowl.engine.game import act
+
+    m = _versus(("home", 7, 13), ("away", 7, 20), you="home", active="home")
+    assert act(m, "move", {"player": "h00", "x": 7, "y": 12}, by="human")["ok"], "your own turn is fine"
+
+    theirs = act(m, "move", {"player": "h00", "x": 7, "y": 11}, by="agent")
+    assert theirs["ok"] is False and "not your move" in theirs["text"], theirs
+    assert theirs["controllers"] == {"home": "human", "away": "agent"}
+
+
+def test_an_unclaimed_board_stays_permissive():
+    """The practice board is one person moving both teams on purpose, and that has
+    to keep working — which is why an unclaimed side is nobody's."""
+    from bloodbowl.engine.game import act
+
+    m = _match(("home", 7, 13), ("away", 7, 20), active="home")
+    assert act(m, "move", {"player": "h00", "x": 7, "y": 12}, by="agent")["ok"]
+    assert act(m, "move", {"player": "h00", "x": 7, "y": 11}, by="human")["ok"]
+
+
+def test_you_cannot_end_your_opponents_turn_for_them():
+    """Ending a turn is as much a move as any other. A TURNOVER is not — that is
+    the engine ending a turn rather than a coach, which is why `forced` skips the
+    check."""
+    from bloodbowl.engine.game import end_turn
+
+    m = _versus(("home", 7, 13), ("away", 7, 20), you="home", active="home")
+    theirs = end_turn(m, by="agent")
+    assert theirs["ok"] is False and "not your move" in theirs["text"]
+    assert end_turn(m, by="human")["ok"]
+
+
+def test_a_kickoff_question_may_only_be_answered_by_the_coach_it_was_asked_of():
+    """Different question from whose turn it is: `pending["side"]` names one coach,
+    and the other may not answer for them."""
+    from bloodbowl.engine.game import resolve_choice
+
+    m = _versus(("home", 7, 13), ("away", 7, 20), you="home", active="home")
+    _pending(m, "high_kick", "away", square=[7, 10], eligible=[], land="away")
+    mine = resolve_choice(m, {"decline": True}, _dice([]), by="human")
+    assert mine["ok"] is False and "not you" in mine["text"], mine
+    assert resolve_choice(m, {"decline": True}, _dice([]), by="agent")["ok"]
+
+
+def test_the_handover_says_who_is_waited_on_and_only_when_it_changes():
+    """The moment the ball passes over is the thing worth publishing — not the
+    state of it having passed. Otherwise the agent is nudged once per action of
+    its own turn, which is both useless and expensive."""
+    from bloodbowl.engine import handover
+
+    m = _versus(("home", 7, 13), ("away", 7, 20), you="home", active="home")
+    mine = handover.owed(m)
+    assert mine == {"side": "home", "controller": "human", "why": "turn", "half": 1, "turn": 1}
+    assert handover.changed(mine, mine) == {}, "the same side twice is not news"
+
+    from bloodbowl.engine.game import end_turn
+
+    end_turn(m, by="human")
+    theirs = handover.owed(m)
+    assert theirs["side"] == "away" and theirs["controller"] == "agent"
+    assert handover.changed(mine, theirs) == theirs, "the handover IS news"
+
+
+def test_an_unanswered_question_outranks_whose_turn_it_is():
+    """It blocks everything, including the ball landing — and nothing about the
+    clock looks wrong while it does, which is why it is the easier one to miss."""
+    from bloodbowl.engine import handover
+
+    m = _versus(("home", 7, 13), ("away", 7, 20), you="home", active="home")
+    _pending(m, "solid_defence", "away", limit=4, eligible=[], land="home")
+    owed = handover.owed(m)
+    assert owed["why"] == "answer" and owed["controller"] == "agent"
+    assert "Solid Defence" in owed["question"] or owed["question"], owed
+
+
+def test_a_finished_match_is_waiting_for_nobody():
+    from bloodbowl.engine import handover
+
+    m = _versus(("home", 7, 13), ("away", 7, 20))
+    m.over = True
+    assert handover.owed(m) == {}

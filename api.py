@@ -236,7 +236,7 @@ def build_data_router(cfg: dict | None = None):
     return r
 
 
-def build_game_router(cfg: dict | None = None):
+def build_game_router(cfg: dict | None = None, announce=None):
     """The match, over HTTP.
 
     Every route here goes through ``engine.game``, which is the same code the
@@ -260,6 +260,24 @@ def build_game_router(cfg: dict | None = None):
         from .engine import game
 
         return game
+
+    def _owed():
+        from .engine import handover
+
+        m = _store().load_match()
+        return handover.owed(m) if m is not None else {}
+
+    def _handover(before: dict):
+        """Publish who the match is now waiting on. Called after every route that
+        can change whose move it is — which is the human's three.
+
+        `announce` is passed IN rather than imported: a router that reached back
+        into its own package to find the bus would be a circular import in daylight,
+        and one that looked itself up in `sys.modules` would work until somebody
+        loaded the plugin under a different name (which `harness.py` does).
+        """
+        if announce is not None:
+            announce(before, _owed())
 
     def _store():
         from . import store
@@ -285,12 +303,28 @@ def build_game_router(cfg: dict | None = None):
         sc = _store().load()
         if not sc.players:
             raise HTTPException(status_code=400, detail="the board is empty — set a scenario up first")
+        # HEAD-TO-HEAD: `you` names the side the person at the board plays, and the
+        # agent takes the other. Left out, nobody owns anything and the board stays
+        # permissive — one person moving both teams, which is the practice board and
+        # is still the default.
+        yours = body.get("you")
+        controllers = {}
+        if yours in ("home", "away"):
+            controllers = {yours: "human", ("away" if yours == "home" else "home"): "agent"}
         m = engine().new_match(
             sc,
             seed=int(body.get("seed") or 0),
             kicking_to=("away" if body.get("kicking_to") == "away" else "home"),
+            controllers=controllers,
         )
         _store().save_match(m)
+        # The kick-off may already be waiting on the agent — for a question, or
+        # because they received. Tell them before anybody has to wonder why nothing
+        # is happening.
+        from .engine import pace
+
+        pace.reset()
+        _handover({})
         return {"ok": True, "match": m.to_dict(include_log=False)}
 
     @r.get("/game/legal")
@@ -308,8 +342,10 @@ def build_game_router(cfg: dict | None = None):
         cmd = {k: v for k, v in body.items() if k != "action"}
         cmd["player"] = str(cmd.get("player") or "")
         before = len(m.events)
-        report = engine().act(m, str(body.get("action") or "move"), cmd)
+        was = _owed()
+        report = engine().act(m, str(body.get("action") or "move"), cmd, by="human")
         _store().save_match(m)
+        _handover(was)
         report["match"] = m.to_dict(include_log=False)
         report["log"] = [e.text for e in m.events[before:] if e.text]
         return report
@@ -321,9 +357,11 @@ def build_game_router(cfg: dict | None = None):
         answer — the pitch view refuses every other click until they do."""
         m = _need_match()
         before = len(m.events)
-        out = engine().resolve_choice(m, dict(body or {}), engine().dice_for(m))
+        was = _owed()
+        out = engine().resolve_choice(m, dict(body or {}), engine().dice_for(m), by="human")
         if out.get("ok"):
             _store().save_match(m)
+        _handover(was)
         out["log"] = [e.text for e in m.events[before:] if e.text]
         out["match"] = m.to_dict(include_log=False)
         return out
@@ -331,8 +369,10 @@ def build_game_router(cfg: dict | None = None):
     @r.post("/game/end-turn")
     async def _end_turn() -> dict:
         m = _need_match()
-        out = engine().end_turn(m)
+        was = _owed()
+        out = engine().end_turn(m, by="human")
         _store().save_match(m)
+        _handover(was)
         out["match"] = m.to_dict(include_log=False)
         return out
 

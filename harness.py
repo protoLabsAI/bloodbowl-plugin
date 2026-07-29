@@ -299,6 +299,7 @@ def drive(base: str, *, do_checks: bool, live: bool) -> int:
             _play(browser, url, w=1400, h=950)
             if not live:
                 _choices(browser, url, w=1400, h=950)
+                _versus(browser, url, w=1400, h=950)
         browser.close()
 
     failed = [c for c in CHECKS if c[1] == "FAIL"]
@@ -851,6 +852,77 @@ def _one_choice(page, kind: str, found: dict, problems: list) -> None:
 
     check(f"{kind}: the bar goes away once it is answered", not page.locator("#choice").is_visible())
     check(f"{kind}: no page errors while answering", not problems, "; ".join(problems[:2]))
+
+
+def _versus(browser, url: str, w: int, h: int) -> None:
+    """A head-to-head, from the board's side.
+
+    The failure this guards is specific and quiet: in a head-to-head the board may
+    only move ONE team, and a board that silently refuses half your clicks reads as
+    broken rather than as a rule. So the check is not "does the engine refuse" — the
+    suite covers that — it is "does the page SAY SO".
+    """
+    page = browser.new_page(viewport={"width": w, "height": h})
+    problems: list[str] = []
+    page.on("pageerror", lambda e: problems.append(str(e)))
+    page.goto(url, wait_until="networkidle")
+    page.wait_for_selector(".cell", timeout=10000)
+    theme = ROOT / "harness_theme.css"
+    if theme.exists():
+        page.add_style_tag(content=theme.read_text())
+    page.locator("#modePlay").click()
+    page.wait_for_timeout(300)
+    print("  -- head to head --")
+
+    check("the board offers a game against the agent", page.locator("#versus").is_visible())
+    page.locator("#versus").check()
+    page.select_option("#mySide", "home")
+    page.locator("#newMatch").click()
+    page.wait_for_timeout(900)
+    _get_past_any_question(page)
+
+    state = page.evaluate("""async () => (await (await fetch("/api/plugins/bloodbowl/game")).json()).match""")
+    check(
+        "starting one claims both sides",
+        (state.get("controllers") or {}) == {"home": "human", "away": "agent"},
+        str(state.get("controllers")),
+    )
+    check("the board says whose move it is", page.locator("#whose").is_visible(), page.locator("#whose").inner_text())
+    check(
+        "and says it is YOURS while it is",
+        "your move" in page.locator("#whose").inner_text(),
+        page.locator("#whose").inner_text(),
+    )
+    page.screenshot(path=str(SHOTS / "versus.png"), full_page=True)
+
+    # Hand over, and the board has to say it is waiting rather than just going quiet.
+    page.locator("#endTurn").click()
+    page.wait_for_timeout(900)
+    said = page.locator("#whose").inner_text()
+    check("handing over says the agent is playing", "agent" in said, said)
+    check(
+        "and the board dims so a refused click is not a surprise",
+        page.evaluate("() => document.body.classList.contains('not-my-turn')"),
+    )
+
+    refused = page.evaluate("""async () => {
+      const m = (await (await fetch("/api/plugins/bloodbowl/game")).json()).match;
+      const theirs = m.players.find(p => p.side === "away" && p.place === "pitch");
+      if (!theirs) return null;
+      const r = await fetch("/api/plugins/bloodbowl/game/act", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "move", player: theirs.id, x: theirs.x, y: theirs.y + 1}),
+      });
+      return r.json();
+    }""")
+    check(
+        "the board cannot move the agent's players, and says why",
+        refused is not None and refused.get("ok") is False and "not your move" in (refused.get("text") or ""),
+        str((refused or {}).get("text"))[:80],
+    )
+    check("no page errors", not problems, "; ".join(problems[:2]))
+    print(f"  shot: {(SHOTS / 'versus.png').relative_to(ROOT)}")
+    page.close()
 
 
 def main() -> int:
