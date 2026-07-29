@@ -174,6 +174,18 @@ button.primary { background: var(--pl-color-accent); color: var(--pl-color-fg-on
   box-shadow: 0 6px 16px rgba(0, 0, 0, .55);
 }
 
+/* THE TRAIL a dragged player would walk. Deliberately quieter than a legal
+   square: the squares beside the player carry REAL odds from the engine, and the
+   trail beyond them is a projection that claims nothing. Drawing it as loudly as
+   a costed square would be asserting something the engine has not said. */
+.cell.path { background: color-mix(in oklab, var(--pl-color-fg) 22%, transparent); }
+.cell .step {
+  position: absolute; left: 1px; top: 0; z-index: 3; pointer-events: none;
+  font-size: max(6px, calc(var(--cell, 26px) * .30)); line-height: 1.2;
+  font-family: var(--pl-font-mono, ui-monospace, monospace);
+  color: var(--pl-color-fg-muted, var(--pl-color-fg));
+}
+
 /* The square the pointer is over. An OUTLINE rather than a fill, so it reads on
    top of a legal square's green and bare turf alike — a fill would either hide
    the legality or be hidden by it.

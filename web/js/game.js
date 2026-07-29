@@ -118,11 +118,22 @@ export function render() {
       canDrag: () => canActivate(p),
       onStart: () => {
         hideCard();
+        clearPath();
         if (state.selected !== p.id) select(p);
       },
-      onEnter: (sq) => markDropTarget(sq),
+      onEnter: (sq) => {
+        markDropTarget(sq);
+        // The budget is what the engine says is left, plus the two Rushes anyone
+        // may attempt. Beyond that the trail would be drawing squares the player
+        // cannot reach however the dice fall.
+        const left = (state.legal && state.legal.ok && state.legal.movement_left) || 0;
+        extendPath(sq, { x: p.x, y: p.y }, left + 2);
+      },
       onDrop: (sq) => dropOn(p, sq),
-      onEnd: () => markDropTarget(null),
+      onEnd: () => {
+        markDropTarget(null);
+        clearPath();
+      },
     });
     at(p.x, p.y).appendChild(node);
     state.nodes.set(k, node);
@@ -188,7 +199,125 @@ function canActivate(p) {
   return !p.acted;
 }
 
+/* THE DRAGGED PATH.
+ *
+ * A Blood Bowl move is not a move, it is a SEQUENCE OF SINGLE SQUARES, each of
+ * which can demand a Dodge or a Rush and any of which can end the activation on
+ * the spot. So a drag from here to there cannot be one call, and — this is the
+ * part that shapes the whole design — it cannot be fully previewed either:
+ * `/game/legal` costs the squares around where the player IS, and step two's
+ * legality depends on step one's dice having already been rolled.
+ *
+ * What is honest, then: the squares adjacent to the player keep the real odds
+ * `paintLegal` gave them, and the rest of the trail is drawn as a trail and
+ * claims nothing. The engine adjudicates each step as it is taken, and the walk
+ * stops the moment one of them does not go to plan.
+ */
+let path = [];
+let pathCells = [];
 let lastDropTarget = null;
+
+const adjacent = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) === 1;
+const same = (a, b) => a && b && a.x === b.x && a.y === b.y;
+
+function clearPath() {
+  for (const c of pathCells) {
+    c.classList.remove("path");
+    const s = c.querySelector(".step");
+    if (s) s.remove();
+  }
+  pathCells = [];
+  path = [];
+}
+
+function paintPath() {
+  for (const c of pathCells) {
+    c.classList.remove("path");
+    const s = c.querySelector(".step");
+    if (s) s.remove();
+  }
+  pathCells = [];
+  path.forEach((sq, i) => {
+    const cell = at(sq.x, sq.y);
+    if (!cell) return;
+    cell.classList.add("path");
+    const n = document.createElement("span");
+    n.className = "step";
+    n.textContent = String(i + 1);
+    cell.appendChild(n);
+    pathCells.push(cell);
+  });
+}
+
+/**
+ * Grow the trail towards `sq`.
+ *
+ * FILLS IN THE SQUARES BETWEEN, because a pointer does not visit every cell it
+ * crosses — move quickly and the events arrive several squares apart, which
+ * would otherwise produce a "path" of disconnected hops that the engine refuses
+ * one at a time. King moves, so the fill is just a walk towards the target.
+ *
+ * Dragging back over the previous square pops it, which is how anybody expects
+ * to undo a step mid-gesture.
+ */
+function extendPath(sq, origin, budget) {
+  if (!sq) return;
+  let head = path.length ? path[path.length - 1] : origin;
+  if (same(sq, head)) return;
+  // Backtracking: the pointer has returned to where it came from.
+  if (path.length && same(sq, path.length > 1 ? path[path.length - 2] : origin)) {
+    path.pop();
+    paintPath();
+    return;
+  }
+  let guard = 0;
+  while (!same(head, sq) && path.length < budget && guard++ < 40) {
+    const next = {
+      x: head.x + Math.sign(sq.x - head.x),
+      y: head.y + Math.sign(sq.y - head.y),
+    };
+    // Never let the trail cross itself into a loop; a coach who drags in a circle
+    // means the last square they touched, not the whole circle.
+    if (path.some((q) => same(q, next)) || same(next, origin)) break;
+    path.push(next);
+    head = next;
+  }
+  paintPath();
+}
+
+/**
+ * Walk the trail, one real move per square, and stop the moment it goes wrong.
+ *
+ * Each step is adjudicated by the engine — a failed Dodge, a Rush that fails, a
+ * Turnover, or simply a refusal — and any of those ends the run where it
+ * happened rather than pressing on with the rest of a plan that no longer
+ * applies. A refusal answers 200 with `ok:false`, so the status code is not
+ * enough to tell a played move from a rejected one.
+ */
+async function walkPath(p, squares) {
+  for (const sq of squares) {
+    let report;
+    try {
+      report = await api("/game/act", json({ action: "move", player: p.id, x: sq.x, y: sq.y }));
+    } catch (e) {
+      fail(e);
+      break;
+    }
+    if (!report || report.ok === false || !report.match) break;
+    state.match = report.match;
+    ok();
+    render();
+    const still = (state.match.players || []).find((q) => q.id === p.id);
+    if (report.turnover || !still || still.down !== "standing") break;
+    // Pushed, or stopped short: the plan is stale either way.
+    if (still.x !== sq.x || still.y !== sq.y) break;
+    // Slow enough to watch. A run of six squares resolved instantly is a jump
+    // cut — you cannot see which step cost a Dodge, which is the one thing worth
+    // watching a move for.
+    if (squares.length > 1) await new Promise((r) => setTimeout(r, 130));
+  }
+  await renderLog();
+}
 
 /**
  * Light the square under the pointer.
@@ -220,8 +349,30 @@ function markDropTarget(sq) {
  * before the move list does.
  */
 async function dropOn(p, sq) {
+  const route = path.slice();
   if (state.selected !== p.id || !state.legal) await select(p);
   if (!state.legal || !state.legal.ok) return;
+
+  // A drag of more than one square is a RUN, walked a step at a time. One square
+  // goes through `onCellClick` instead, so a short drag and a click stay exactly
+  // the same thing — including Secure the Ball and a thrown pass, which are
+  // squares that mean something other than "walk here".
+  if (route.length > 1 && same(route[route.length - 1], sq)) {
+    await walkPath(p, route);
+    const still = (state.match.players || []).find((q) => q.id === p.id);
+    if (still && still.down === "standing" && state.selected === p.id) {
+      state.legal = await apiOrNull(`/game/legal?player=${encodeURIComponent(p.id)}`);
+      paintLegal();
+      describeSelection(still, state.legal);
+    } else {
+      state.selected = null;
+      state.legal = null;
+      clearMarks(...MARKS);
+      describeSelection(null, null);
+    }
+    render();
+    return;
+  }
   await onCellClick(sq.x, sq.y);
 }
 

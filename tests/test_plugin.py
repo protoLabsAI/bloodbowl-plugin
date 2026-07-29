@@ -350,6 +350,34 @@ def test_a_drop_and_a_click_cannot_disagree_about_what_a_square_means():
     assert "await onCellClick(sq.x, sq.y)" in page
 
 
+def test_a_dragged_run_stops_the_moment_a_step_does_not_land():
+    """A move is a sequence of single squares and any of them can end the
+    activation. Walking the rest of a plan that no longer applies is the one thing
+    a multi-square drag must never do — and a REFUSAL answers 200 with ok:false,
+    so the status code cannot tell a played move from a rejected one."""
+    walk = _web("js/game.js").split("async function walkPath")[1].split("\nasync function")[0]
+    assert "report.ok === false" in walk, "a refusal is a 200; the body is the only signal"
+    assert "report.turnover" in walk and 'down !== "standing"' in walk
+    assert "still.x !== sq.x || still.y !== sq.y" in walk, "being pushed off the plan must stop it too"
+    assert "break" in walk
+
+
+def test_a_fast_drag_still_produces_a_contiguous_path():
+    """A pointer does not visit every cell it crosses. Without filling the gaps a
+    quick drag makes a path of disconnected hops, and the engine refuses each one
+    — which looks like the drag not working rather than the path being wrong."""
+    page = _web("js/game.js")
+    assert "function extendPath" in page
+    body = page.split("function extendPath")[1].split("\nasync function")[0]
+    assert "Math.sign" in body, "the fill walks one king move at a time towards the target"
+
+
+def test_the_trail_is_numbered_because_order_is_the_whole_information():
+    css = _web("style.css")
+    assert ".cell .step" in css and ".cell.path" in css
+    assert '"step"' in _web("js/game.js")
+
+
 def test_every_mark_the_board_paints_is_also_cleared():
     """`passable` was in the paint list and in NONE of the seven clear lists, so
     arming a pass and cancelling it left the throw targets lit across the pitch.
