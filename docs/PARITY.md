@@ -91,7 +91,7 @@ Three verdicts, and the middle one is the important one:
 
 ## Skills and Traits
 
-**81 of 108 modelled**, and all 108 quotable through `bb_get_skill` — see §2 for
+**89 of 108 modelled**, and all 108 quotable through `bb_get_skill` — see §2 for
 why those are two different jobs. `bb_list_skills(only_unmodelled=True)` is the
 live version of this count; the number above is only ever a snapshot.
 

@@ -123,12 +123,37 @@ def jump_over(match: Match, player: PlayerState, x: int, y: int) -> PlayerState 
         return None
     if adjacent(player.x, player.y, x, y) or (player.x, player.y) == (x, y):
         return None
+    # LEAP and POGO: "can attempt to Leap over A SINGLE ADJACENT SQUARE REGARDLESS
+    # OF WHAT IS IN THE SQUARE" — so a standing player, or an empty square, both of
+    # which an ordinary Jump refuses. The geometry is otherwise identical, which is
+    # why it is the same function rather than a second one that would drift.
+    springy = any(player.has_skill(n) for n in ("Leap", "Pogo"))
     for v in match.on_pitch():
-        if v.id == player.id or v.down == "standing":
+        if v.id == player.id or (v.down == "standing" and not springy):
             continue
         if adjacent(v.x, v.y, player.x, player.y) and adjacent(v.x, v.y, x, y):
             return v
+    if springy:
+        # …and over an EMPTY square, which no ordinary Jump can do. `_over_nobody`
+        # stands in so the caller has something to name in the log.
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                mx, my = player.x + dx, player.y + dy
+                if (dx or dy) and adjacent(mx, my, x, y) and in_bounds_xy(mx, my) and match.at(mx, my) is None:
+                    return _EMPTY_SQUARE
     return None
+
+
+class _EMPTY_SQUARE:  # noqa: N801 — a sentinel, not a class anybody instantiates
+    """What a Leap or Pogo goes over when the square is empty. Only `name()` and
+    `id` are ever read, and both exist to keep the log readable."""
+
+    id = ""
+    down = "standing"
+
+    @staticmethod
+    def name() -> str:
+        return "an empty square"
 
 
 def in_bounds_xy(x: int, y: int) -> bool:
@@ -310,12 +335,22 @@ def assist_count(
             # Guard ignores being Marked. Asked as a hook so a Skill that changes
             # who may assist is a registration, not a branch in here.
             free = any(p.has_skill(skill) for skill, _fn in hooks_for("may_assist_while_marked"))
+            # DEFENSIVE, the counter, and it reads backwards from everything else:
+            # a Skill on the MARKER that switches off a Skill on the player being
+            # asked about. "During YOUR OPPONENT'S TURNS" — so only when the
+            # assisting side is the one not holding the turn.
             # PUT THE BOOT IN does the same thing, but ONLY for a Foul: "can
             # provide Offensive Assists when a TEAM-MATE PERFORMS A FOUL ACTION
             # regardless of how many opposition players are Marking this player."
             # Offensive only, so it does nothing for the side being fouled.
             if fouling and assisting_side != around.side:
                 free = free or any(p.has_skill(skill) for skill, _fn in hooks_for("may_assist_a_foul"))
+            # DEFENSIVE comes LAST because it cancels BOTH of the above — "cannot
+            # use the Guard OR PUT THE BOOT IN Skills" — so checking it before the
+            # Foul branch would let Put the Boot In override its own counter.
+            defended = assisting_side != match.clock.active and any(q.has_skill("Defensive") for q in others)
+            if defended:
+                free = False
             if not free:
                 continue
         total += 1

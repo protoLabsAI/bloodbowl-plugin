@@ -122,12 +122,23 @@ def in_own_half(side: str, y: int) -> bool:
     return lo <= y <= hi
 
 
-def deviate(match, dice, x: int, y: int) -> tuple[tuple[int, int], list[Roll]]:
-    """D6 squares in a D8 direction, as the kick does."""
-    dist = dice.d6()
+def deviate(match, dice, x: int, y: int, kicker=None) -> tuple[tuple[int, int], list[Roll]]:
+    """D6 squares in a D8 direction, as the kick does.
+
+    KICK: "If this player is nominated as the kicking player, then when kicking
+    Deviates this player's Coach may choose for it to only Deviate D3 SQUARES
+    rather than the usual D6." Halving the scatter is the whole Skill — a kick that
+    lands where you meant it to is worth more than any modifier on the ball. Always
+    taken: a shorter deviation is never worse for the kicking team, because the
+    aim point is already the square they chose.
+    """
+    from .skills import can_use
+
+    booted = kicker is not None and can_use(kicker, "Kick")
+    dist = dice.dn(3) if booted else dice.d6()
     direction = dice.d8()
     rolls = [
-        Roll(kind="Deviate distance", dice=[dist], note="D6"),
+        Roll(kind="Deviate distance", dice=[dist], note="D3 (Kick)" if booted else "D6"),
         Roll(kind="Deviate direction", dice=[direction], note="D8"),
     ]
     dice.rolls.extend(rolls)
@@ -155,7 +166,15 @@ def kick(match, dice, receiving: str, aim: tuple[int, int] | None = None) -> lis
     )
     match.apply(events[-1])
 
-    (nx, ny), rolls = deviate(match, dice, *target)
+    # "If this player is NOMINATED as the kicking player" — the engine has no
+    # nomination step, so it takes the kicking team's best available: any player
+    # with Kick on the pitch. Naming somebody without the Skill would change
+    # nothing, which is what makes the simplification safe.
+    kicker = next(
+        (q for q in match.on_pitch(match.opponent(receiving)) if q.has_skill("Kick")),
+        None,
+    )
+    (nx, ny), rolls = deviate(match, dice, *target, kicker=kicker)
     events.append(
         Event(
             kind="ball_moved",

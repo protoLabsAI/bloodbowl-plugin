@@ -5617,3 +5617,135 @@ def test_hypnotic_gaze_distracts_on_a_three_and_ends_the_activation_either_way()
     actions.get("gaze")["resolve"](missed, {"player": "h00", "target": "a01"}, _dice([2]))
     assert missed.by_id("a01").distracted is False, "a 2 does nothing"
     assert missed.by_id("h00").done, "…and still costs the activation"
+
+
+# --- Jumping, kicking, and the long ball -------------------------------------
+
+
+def test_leap_and_pogo_go_over_anything_and_differ_only_in_the_floor():
+    """S3, Leap: "…over a single adjacent square REGARDLESS OF WHAT IS IN THE
+    SQUARE … may REDUCE the negative modifiers … BY 1, TO A MINIMUM OF -1."
+    Pogo: "…may IGNORE ALL negative modifiers."
+
+    A minimum of -1 rather than 0 is the whole difference, and it means a Leap is
+    never free however open the pitch."""
+    from bloodbowl.engine.rules import jump_over
+    from bloodbowl.engine.skills import roll_modifier
+
+    # An ordinary Jump refuses a STANDING body; both of these go over it.
+    plain = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
+    assert jump_over(plain, plain.by_id("h00"), 7, 15) is None
+
+    for skill in ("Leap", "Pogo"):
+        m = _match(("home", 7, 13, 6, "3+", [skill]), ("away", 7, 14), ("away", 2, 20))
+        assert jump_over(m, m.by_id("h00"), 7, 15) is not None, f"{skill} should clear a standing player"
+        # …and over an empty square, which no ordinary Jump can do.
+        empty = _match(("home", 7, 13, 6, "3+", [skill]), ("away", 2, 20))
+        assert jump_over(empty, empty.by_id("h00"), 7, 15) is not None, f"{skill} should clear an empty square"
+
+    leaper = _match(("home", 7, 13, 6, "3+", ["Leap"]))
+    assert roll_modifier(leaper, leaper.by_id("h00"), "jump", base=-3).value == -2
+    assert roll_modifier(leaper, leaper.by_id("h00"), "jump", base=-1).value == -1, "a minimum of -1, not 0"
+
+    pogoer = _match(("home", 7, 13, 6, "3+", ["Pogo"]))
+    assert roll_modifier(pogoer, pogoer.by_id("h00"), "jump", base=-3).value == 0
+
+
+def test_diving_catch_helps_only_in_the_declared_target_square():
+    """ "…+1 modifier … when attempting to Catch the ball as part of a Pass Action
+    IF THEY ARE IN THE TARGET SQUARE." Not wherever a scatter left it."""
+    from bloodbowl.engine.skills import roll_modifier
+
+    m = _match(("home", 7, 13, 6, "3+", ["Diving Catch"]))
+    p = m.by_id("h00")
+    assert roll_modifier(m, p, "catch", target_square=True).value == 1
+    assert roll_modifier(m, p, "catch", target_square=False).value == 0
+
+
+def test_defensive_switches_off_guard_during_the_opponents_turn():
+    """ "DURING YOUR OPPONENT'S TURNS, opposition players Marked by this player
+    cannot use the Guard or Put the Boot In Skills." It reads backwards from every
+    other Skill: it is on the MARKER, cancelling a Skill on somebody else."""
+    from bloodbowl.engine.rules import assist_count
+
+    # h01 has Guard and is Marked by a03, who is Defensive. Away hold the turn.
+    m = _match(
+        ("home", 7, 13),
+        ("home", 8, 14, 6, "3+", ["Guard"]),
+        ("away", 7, 14),
+        ("away", 9, 14, 6, "3+", ["Defensive"]),
+        active="away",
+    )
+    victim = m.by_id("a02")
+    assert assist_count(m, "home", victim, exclude={"h00"}) == 0, "Defensive should cancel the Guard"
+
+    # Same board, but it is home's turn — Defensive says "during your OPPONENT'S
+    # Turns", so Guard works again.
+    ours = _match(
+        ("home", 7, 13),
+        ("home", 8, 14, 6, "3+", ["Guard"]),
+        ("away", 7, 14),
+        ("away", 9, 14, 6, "3+", ["Defensive"]),
+        active="home",
+    )
+    assert assist_count(ours, "home", ours.by_id("a02"), exclude={"h00"}) == 1
+
+
+def test_the_kick_skill_halves_the_deviation():
+    """ "…when kicking Deviates this player's Coach may choose for it to only
+    Deviate D3 SQUARES rather than the usual D6." """
+    from bloodbowl.engine.kickoff import deviate
+
+    m = _match(("home", 7, 13, 6, "3+", ["Kick"]), ("away", 7, 20))
+    (_x, _y), rolls = deviate(m, _dice([3, 1]), 8, 7, kicker=m.by_id("h00"))
+    assert "D3" in (rolls[0].note or ""), rolls[0].describe()
+
+    plain = _match(("home", 7, 13), ("away", 7, 20))
+    (_a, _b), rolls2 = deviate(plain, _dice([6, 1]), 8, 7, kicker=plain.by_id("h00"))
+    assert rolls2[0].note == "D6" and rolls2[0].dice[0] == 6, "…and without it a 6 is still possible"
+
+
+def test_hail_mary_pass_reaches_anywhere_never_lands_accurately_and_cannot_be_intercepted():
+    """Three separate clauses, and the engine has to honour all three: "ANY SQUARE
+    ON THE PITCH … treating the throw as A LONG BOMB … treating ANY RESULT OF AN
+    ACCURATE PASS AS AN INACCURATE PASS … CANNOT BE INTERCEPTED." """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 2, 6, "3+", ["Hail Mary Pass"]), ("away", 7, 12))
+    m.by_id("h00").player.PA = "2+"
+    m.ball.carrier, m.ball.in_play = "h00", True
+    legal = actions.get("pass")["validate"](m, {"player": "h00", "x": 7, "y": 25})
+    assert legal.ok, legal.reason
+    assert legal.detail["range"] == "Long Bomb" and legal.detail["hail_mary"] is True
+
+    out = actions.get("pass")["resolve"](m, {"player": "h00", "x": 7, "y": 25}, _dice([6, 4, 4, 4, 4, 4, 4, 4]))
+    thrown = next(e for e in out.events if e.kind == "pass_thrown")
+    assert thrown.detail["outcome"] == "inaccurate", "even a 6 scatters"
+    assert not [r for e in out.events for r in e.rolls if r.kind == "Intercept"], "nobody may try"
+
+    # Without the Skill the same square is simply out of range.
+    plain = _match(("home", 7, 2), ("away", 7, 12))
+    plain.by_id("h00").player.PA = "2+"
+    plain.ball.carrier, plain.ball.in_play = "h00", True
+    assert actions.get("pass")["validate"](plain, {"player": "h00", "x": 7, "y": 25}).ok is False
+
+
+def test_a_leader_lends_the_team_one_extra_re_roll_while_they_are_on_the_pitch():
+    """ "A team that has one or more players with this Skill ON THE PITCH … may
+    gain A SINGLE EXTRA Team Re-roll … if ALL players with this Skill are removed
+    from play … THEN IT IS LOST." """
+    from bloodbowl.engine.rerolls import available
+
+    m = _match(("home", 7, 13, 6, "3+", ["Leader"]), ("home", 8, 13), active="home")
+    m.rerolls = {"home": 0, "away": 0}
+    assert available(m, m.by_id("h01")) == 1, "the Leader's extra one is there for the whole team"
+
+    # A single extra, however many Leaders.
+    two = _match(("home", 7, 13, 6, "3+", ["Leader"]), ("home", 8, 13, 6, "3+", ["Leader"]), active="home")
+    two.rerolls = {"home": 0, "away": 0}
+    assert available(two, two.by_id("h00")) == 1
+
+    # Lost the moment the last Leader leaves the pitch.
+    m.by_id("h00").place = "casualty"
+    assert available(m, m.by_id("h01")) == 0

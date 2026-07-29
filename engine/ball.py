@@ -119,7 +119,15 @@ def bounce(match, dice, depth: int = 0) -> list[Event]:
     return events
 
 
-def catch(match, player, dice, depth: int = 0, modifier: int = 0, team_reroll: bool = False) -> list[Event]:
+def catch(
+    match,
+    player,
+    dice,
+    depth: int = 0,
+    modifier: int = 0,
+    team_reroll: bool = False,
+    target_square: bool = False,
+) -> list[Event]:
     """A player tries to catch the ball in their square.
 
     ``team_reroll`` is threaded from the ACTION that caused this rather than read
@@ -157,7 +165,7 @@ def catch(match, player, dice, depth: int = 0, modifier: int = 0, team_reroll: b
         return events
 
     marking = -len(markers_of_square(match, player.side, player.x, player.y))
-    ctx = roll_modifier(match, player, "catch", base=modifier + marking, marking=marking)
+    ctx = roll_modifier(match, player, "catch", base=modifier + marking, marking=marking, target_square=target_square)
     mod = ctx.value
     r = roll_target(dice, "Catch", agility_target(player), mod, note=" ".join(ctx.notes))
     rolls = [r]

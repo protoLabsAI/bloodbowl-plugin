@@ -246,6 +246,10 @@ class Match:
     # "they can use them ONCE PER GAME" — so this is a boolean per side, spent
     # rather than counted, and never replenished at half-time.
     apothecary: dict = field(default_factory=dict)
+    # LEADER's single extra Team Re-roll, per side, per half. A flag rather than a
+    # count because there is only ever one: "a team … MAY GAIN A SINGLE EXTRA Team
+    # Re-roll", however many Leaders are on the pitch.
+    leader_used: dict = field(default_factory=dict)
     # Set-ups declared for the NEXT Drive, per side. "The kicking team must set up
     # first followed by the receiving team", so the order is recorded too.
     setups: dict = field(default_factory=dict)
@@ -389,7 +393,12 @@ class Match:
             # it "just as if it had been used". The Drive-scoped one goes FIRST,
             # because it is the one that expires.
             side = str(d.get("side") or "")
-            if self.drive_rerolls.get(side):
+            if d.get("leader"):
+                # The Leader Re-roll is its own pot: not replenished by the rule
+                # that refills the bought ones, and lost outright if the last
+                # Leader leaves the pitch before it is used.
+                self.leader_used[side] = True
+            elif self.drive_rerolls.get(side):
                 self.drive_rerolls[side] -= 1
             elif side in self.rerolls:
                 self.rerolls[side] = max(0, self.rerolls[side] - 1)
@@ -624,6 +633,8 @@ class Match:
             self.clock.half = int(d.get("half") or self.clock.half)
             self.clock.turn = 1
             self.rerolls = dict(self.rerolls_max)
+            # "at the start of a half" — so the Leader Re-roll comes back too.
+            self.leader_used = {}
 
         elif kind == "match_over":
             self.over = True
@@ -699,6 +710,7 @@ class Match:
             "staff": {k: dict(v) for k, v in self.staff.items()},
             "weather": self.weather,
             "apothecary": dict(self.apothecary),
+            "leader_used": dict(self.leader_used),
             "setups": {k: [dict(r) for r in v] for k, v in self.setups.items()},
             "pending": dict(self.pending),
             "charge": dict(self.charge),
