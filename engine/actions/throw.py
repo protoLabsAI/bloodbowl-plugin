@@ -45,6 +45,10 @@ from ..weather import bands_allowed
 from ..weather import name_of as weather_name
 from . import Legality, Outcome, Recorder, ended, refuse_if_spent, register
 
+# The Long Bomb's own modifier, which a Hail Mary Pass always throws at whatever
+# the ruler would have said.
+_LONG_BOMB_MODIFIER = -3
+
 
 def _passing_target(p) -> int:
     """PA as a number. A player with no PA cannot pass at all — a Troll's profile
@@ -85,10 +89,24 @@ def validate(match: Match, cmd: dict) -> Legality:
     if (x, y) == (p.x, p.y):
         return Legality(False, "you cannot pass to your own square")
 
+    # HAIL MARY PASS: "they may declare ANY SQUARE ON THE PITCH as the target
+    # square RATHER THAN USING THE RANGE RULER. Make a Passing Ability Test as
+    # normal TREATING THE THROW AS A LONG BOMB, and treating ANY RESULT OF AN
+    # ACCURATE PASS AS AN INACCURATE PASS. A Hail Mary Pass CANNOT BE INTERCEPTED."
+    #
+    # Three separate things, and the third is what makes it worth the -3: nobody
+    # gets to try to take it out of the air.
+    hail = p.has_skill("Hail Mary Pass")
     reach = band(p.x, p.y, x, y)
+    if reach is None and hail:
+        reach = ("Long Bomb", _LONG_BOMB_MODIFIER)
     if reach is None:
         return Legality(False, f"({x},{y}) is beyond a Long Bomb — out of range")
     name, modifier = reach
+    if hail:
+        # Even a square the ruler CAN reach is thrown as a Long Bomb: "treating
+        # the throw as a Long Bomb", with no exception for a short one.
+        name, modifier = "Long Bomb", _LONG_BOMB_MODIFIER
     # Blizzard: "when a player makes a Pass Action, they may only attempt to make
     # a Quick Pass or a Short Pass." A legality rather than a penalty, so it is
     # refused with a reason instead of thrown at long odds.
@@ -106,6 +124,7 @@ def validate(match: Match, cmd: dict) -> Legality:
             "target": _passing_target(p),
             "modifier": modifier - marking,
             "measured_ruler": True,
+            "hail_mary": hail,
         },
     )
 
@@ -155,7 +174,10 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     # "If the Passing Ability Test is a 1 after modifiers, or the roll is a natural
     # 1" — so a heavily modified pass can fumble on a die that was not a 1.
     fumbled = r.dice[0] == 1 or (r.total is not None and r.total <= 1)
-    accurate = r.passed and not fumbled
+    # "…treating ANY RESULT OF AN ACCURATE PASS AS AN INACCURATE PASS", so a Hail
+    # Mary always scatters. It is a way of moving the ball a long way, not of
+    # putting it in somebody's hands.
+    accurate = r.passed and not fumbled and not d.get("hail_mary")
 
     # SAFE PASS: "If this player rolls A NATURAL 1 when making a Passing Ability
     # Test, then it will not result in a Fumbled Pass. Instead, the player RETAINS
@@ -230,7 +252,7 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     # CLOUD BURSTER: "When this player performs a Pass Action, opposition players
     # MAY NOT ATTEMPT TO INTERCEPT the ball." The thrower's Skill switching off the
     # defender's roll — and Very Long Legs is the written counter to it.
-    burst = can_use(p, "Cloud Burster")
+    burst = can_use(p, "Cloud Burster") or d.get("hail_mary")
     if burst:
         rec.emit(
             Event(
@@ -274,7 +296,17 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
         if landed is None:
             rec.absorb(bounce(match, dice))
         else:
-            rec.absorb(catch(match, landed, dice, team_reroll=bool(cmd.get("team_reroll"))))
+            # Diving Catch's +1 applies only "if they are IN THE TARGET SQUARE" —
+            # the square that was DECLARED, not wherever a scatter left the ball.
+            rec.absorb(
+                catch(
+                    match,
+                    landed,
+                    dice,
+                    team_reroll=bool(cmd.get("team_reroll")),
+                    target_square=(lx, ly) == (x, y),
+                )
+            )
 
     holder = match.by_id(match.ball.carrier) if match.ball.carrier else None
     ours = holder is not None and holder.side == p.side

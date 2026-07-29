@@ -682,6 +682,34 @@ def disturbing_presence(match, player, test: str) -> int:
     return -n
 
 
+@skill_hook("Leap", "roll_modifier")
+def _leap(ctx: SkillContext) -> None:
+    """S3: "can attempt to Leap over a single adjacent square REGARDLESS OF WHAT IS
+    IN THE SQUARE. Leaping works the same way as Jumping … with the exception that
+    the Leaping player may REDUCE THE NEGATIVE MODIFIERS they would receive by
+    Leaping BY 1, TO A MINIMUM OF -1."
+
+    A minimum of -1, not of 0 — a Leap is never free, however open the pitch. That
+    floor is the difference between Leap and Pogo, which ignores them entirely.
+    """
+    if ctx.flags.get("test") == "jump" and ctx.value < 0:
+        was = ctx.value
+        ctx.value = min(-1, ctx.value + 1)
+        if ctx.value != was:
+            ctx.notes.append(f"Leap: {was} becomes {ctx.value}")
+
+
+@skill_hook("Pogo", "roll_modifier")
+def _pogo(ctx: SkillContext) -> None:
+    """S3: "Pogoing works the same way as Jumping … with the exception that the
+    Pogoing player may IGNORE ALL NEGATIVE MODIFIERS they would receive by
+    Jumping." All of them, with no floor — which is what makes it a Trait and Leap
+    a Skill."""
+    if ctx.flags.get("test") == "jump" and ctx.value < 0:
+        ctx.notes.append(f"Pogo: ignores {ctx.value}")
+        ctx.value = 0
+
+
 @skill_hook("Extra Arms", "roll_modifier")
 def _extra_arms(ctx: SkillContext) -> None:
     """S3: "This player applies a +1 modifier to the Agility Test whenever they
@@ -690,6 +718,38 @@ def _extra_arms(ctx: SkillContext) -> None:
     if ctx.flags.get("test") in ("catch", "pick_up", "intercept"):
         ctx.value += 1
         ctx.notes.append(f"Extra Arms: +1 to the {str(ctx.flags.get('test')).replace('_', ' ')}")
+
+
+@skill_hook(
+    "Diving Catch",
+    "roll_modifier",
+    partial="the half that lets them Catch a ball landing in their Tackle Zone rather than "
+    "their own square — the engine only offers the +1 in the target square",
+)
+def _diving_catch(ctx: SkillContext) -> None:
+    """S3: "…this player may apply a +1 modifier to their Agility Test when
+    attempting to Catch the ball AS PART OF A PASS ACTION IF THEY ARE IN THE TARGET
+    SQUARE."
+
+    The other half — catching a ball that lands in their Tackle Zone rather than
+    their square, but NOT one that got there by Bouncing — moves the ball to a
+    player rather than modifying a roll, and is stated as unmodelled rather than
+    quietly folded in.
+    """
+    if ctx.flags.get("test") == "catch" and ctx.flags.get("target_square"):
+        ctx.value += 1
+        ctx.notes.append("Diving Catch: +1 in the target square")
+
+
+@skill_hook("Defensive", "may_assist_while_marked")
+def _defensive(ctx: SkillContext) -> None:
+    """S3: "DURING YOUR OPPONENT'S TURNS, opposition players Marked by this player
+    CANNOT USE THE GUARD OR PUT THE BOOT IN SKILLS."
+
+    The counter to Guard, and it reads backwards from every other Skill: it is a
+    Skill on the MARKER that switches off a Skill on the player being asked about.
+    Applied in rules.assist_count beside the two it cancels.
+    """
 
 
 @skill_hook("Timmm-ber!", "roll_modifier")
@@ -732,6 +792,23 @@ def _regeneration(ctx: SkillContext) -> None:
     ROLL for them, roll a D6. On a 1-3, this player suffers the Casualty … On a
     4+, this player REGENERATES and ignores the Casualty … and is instead placed
     in their team's RESERVES BOX." """
+
+
+@skill_hook("Hail Mary Pass", "pass")
+def _hail_mary(ctx: SkillContext) -> None:
+    """S3: "they may declare ANY SQUARE ON THE PITCH as the target square RATHER
+    THAN USING THE RANGE RULER. Make a Passing Ability Test as normal TREATING THE
+    THROW AS A LONG BOMB, and treating ANY RESULT OF AN ACCURATE PASS AS AN
+    INACCURATE PASS. A Hail Mary Pass CANNOT BE INTERCEPTED."
+
+    Three separate things, and the third is what makes it worth the -3: nobody
+    gets to try to take it out of the air. The second is what stops it being a
+    better Long Bomb — it ALWAYS scatters, so it is a way of moving the ball a
+    long way rather than of putting it in somebody's hands.
+
+    Note the first applies even to a square the ruler could reach: "treating the
+    throw as a Long Bomb", with no exception for a short one.
+    """
 
 
 @skill_hook("Cloud Burster", "pass")
@@ -1058,6 +1135,45 @@ def _bombardier(ctx: SkillContext) -> None:
     coach at the other end, which is the one thing this engine cannot supply."""
 
 
+@skill_hook("Kick", "kick")
+def _kick(ctx: SkillContext) -> None:
+    """S3: "If this player is nominated as the kicking player, then when kicking
+    Deviates this player's Coach may choose for it to ONLY DEVIATE D3 SQUARES
+    rather than the usual D6."
+
+    Halving the scatter is the whole Skill — a kick that lands where you meant it
+    to is worth more than any modifier on the ball.
+    """
+
+
+@skill_hook("Secret Weapon", "drive_end")
+def _secret_weapon(ctx: SkillContext) -> None:
+    """S3: "At the end of a Drive in which this player took part, EVEN IF THEY ARE
+    NOT ON THE PITCH at the end of the Drive, they are Sent-off FOR COMMITTING A
+    FOUL."
+
+    "As if they had committed a Foul" is doing real work: it means they may still
+    Argue the Call, and it goes through the Foul's own sending-off rather than a
+    second implementation. See game._deal_with_secret_weapons.
+    """
+
+
+@skill_hook(
+    "Insignificant",
+    "draft",
+    partial="the whole Skill — it constrains a TEAM DRAFT LIST, and this engine starts "
+    "matches from a practice board rather than drafting a team",
+)
+def _insignificant(ctx: SkillContext) -> None:
+    """S3: "When creating a Team Draft List, you may not include more players with
+    this Trait than players without this Trait."
+
+    Nothing in a match turns on it. Registered as a stated partial rather than left
+    unmodelled, because "not modelled" would suggest the engine is missing
+    something it could do — it is missing a drafting phase it does not have.
+    """
+
+
 @skill_hook("Kick Team-mate", "action")
 def _kick_team_mate(ctx: SkillContext) -> None:
     """S3: "works exactly the same as a Throw Team-mate Action, with the following
@@ -1098,6 +1214,19 @@ def _always_hungry(ctx: SkillContext) -> None:
 def _bullseye(ctx: SkillContext) -> None:
     """S3: "if the result of the throw is a Superb Throw then the thrown player
     will not Scatter before landing and will instead land in the target square." """
+
+
+@skill_hook("Leader", "team_reroll")
+def _leader(ctx: SkillContext) -> None:
+    """S3: "A team that has one or more players with this Skill ON THE PITCH at the
+    start of a half may gain A SINGLE EXTRA Team Re-roll … A team can only use a
+    Leader Re-roll IF THEY HAVE A PLAYER WITH THE LEADER SKILL ON THE PITCH, and
+    if ALL players with this Skill are removed from play … THEN IT IS LOST."
+
+    A single extra, however many Leaders, and it evaporates the moment the last one
+    leaves — so it is computed from the board rather than banked as a number, and
+    the bought Re-rolls are spent first because those are the ones that survive.
+    """
 
 
 @skill_hook("Loner", "team_reroll")

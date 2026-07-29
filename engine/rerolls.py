@@ -78,7 +78,29 @@ def available(match, player) -> int:
     """
     if player is None or player.side != match.clock.active:
         return 0
-    return int(match.rerolls.get(player.side, 0)) + int(match.drive_rerolls.get(player.side, 0))
+    return (
+        int(match.rerolls.get(player.side, 0))
+        + int(match.drive_rerolls.get(player.side, 0))
+        + leader_rerolls(match, player.side)
+    )
+
+
+def leader_rerolls(match, side: str) -> int:
+    """LEADER: "A team that has one or more players with this Skill ON THE PITCH at
+    the start of a half may gain A SINGLE EXTRA Team Re-roll … A team can only use
+    a Leader Re-roll IF THEY HAVE A PLAYER WITH THE LEADER SKILL ON THE PITCH, and
+    if ALL players with this Skill are removed from play … before the Leader
+    Re-roll is used THEN IT IS LOST."
+
+    A single extra, however many Leaders — and it evaporates the moment the last
+    one leaves the pitch, which is why it is computed from the board rather than
+    banked as a number. `leader_used` records that it has been spent for the half.
+    """
+    if match.leader_used.get(side):
+        return 0
+    if any(p.has_skill("Leader") for p in match.on_pitch(side)):
+        return 1
+    return 0
 
 
 def _loner_target(player) -> int | None:
@@ -100,6 +122,14 @@ def spend(match, player, kind: str, dice, rec) -> bool:
     """
     if excluded(kind) or not available(match, player):
         return False
+    # Which pot it comes out of matters: the Leader Re-roll is not replenished at
+    # half-time by the same rule the bought ones are, and it is lost outright if
+    # the last Leader leaves. Spend the bought ones first.
+    from_leader = (
+        int(match.rerolls.get(player.side, 0)) == 0
+        and int(match.drive_rerolls.get(player.side, 0)) == 0
+        and leader_rerolls(match, player.side) > 0
+    )
 
     loner = _loner_target(player)
     if loner is not None:
@@ -113,19 +143,19 @@ def spend(match, player, kind: str, dice, rec) -> bool:
             )
         )
         if not r.passed:
-            rec.emit(_spent(match, player, kind, wasted=True))
+            rec.emit(_spent(match, player, kind, wasted=True, leader=from_leader))
             return False
 
-    rec.emit(_spent(match, player, kind, wasted=False))
+    rec.emit(_spent(match, player, kind, wasted=False, leader=from_leader))
     return True
 
 
-def _spent(match, player, kind: str, wasted: bool) -> Event:
+def _spent(match, player, kind: str, wasted: bool, leader: bool = False) -> Event:
     left = max(0, available(match, player) - 1)
     return Event(
         kind="team_reroll_used",
         actor=player.id,
-        detail={"side": player.side, "on": kind, "wasted": wasted, "left": left},
+        detail={"side": player.side, "on": kind, "wasted": wasted, "left": left, "leader": leader},
         text=(
             f"The Team Re-roll is lost to {player.name()}'s Loner roll — {left} left."
             if wasted
