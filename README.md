@@ -49,7 +49,8 @@ Start a match from the board and play it. The engine owns the rules:
   interceptions, bounces, catches, touchdowns
 - **Team Re-rolls** — as many per turn as you have left, replenished at half-time,
   with Loner's roll and its cost when it fails
-- **The game** — kick-off with the full event table, drives, half-time, full time
+- **The game** — kick-off with the full event table (three of the eleven results
+  applied, the rest reported), drives, half-time, full time
 
 Every roll lands in an event log with its arithmetic shown, and that log is what
 the agent narrates from.

@@ -412,6 +412,24 @@ always tried first; the team's only steps in when there was none.
 Team Re-rolls do not carry over" are one assignment, up for the team that spent
 them and down for the team that hoarded.
 
+**THREE OF THE ELEVEN KICK-OFF EVENTS ARE APPLIED** — Time-out!, Brilliant
+Coaching and Cheering Fans. The other eight still report "rolled, but NOT applied
+by this engine", which is the point: a coach told BLITZ! who watches nothing move
+would reasonably conclude the engine is broken.
+
+The two new ones were unblocked by Team Re-rolls, and both are the same shape:
+"Both Coaches roll a D6 and add [a roster number]". **A TIE gives nobody
+anything** — the rule says "the Coach with the highest total", and on a tie there
+is not one. The roster numbers (Assistant Coaches, Cheerleaders, Fan Factor) are
+inputs defaulting to zero, like the Team Re-roll count, and each roll says what it
+added.
+
+Brilliant Coaching's re-roll is "FOR THE DRIVE AHEAD", so it is counted in
+`drive_rerolls` rather than added to `rerolls`: it expires at the next kick-off,
+and it is spent FIRST, which is the only reading that does not quietly throw it
+away. Folding it into the bought ones makes "was the bonus or a bought one spent?"
+unanswerable, which is why they are two numbers.
+
 **FIVE TRAITS ARE ONE MECHANISM.** Bone Head, Really Stupid, Take Root, Animal
 Savagery and Unchannelled Fury all say "Whenever this player is activated, after
 declaring their Action they must roll a D6", and differ only in the target, the
@@ -479,6 +497,9 @@ fails if they are ever swapped.
 
 ### Known simplifications, all deliberate and all stated in the code
 
+- Eight of the eleven Kick-off Events are reported rather than applied. Five need
+  a coach's choice mid-resolution (see below); the others need Inducements,
+  Weather, or a random player pick the dice protocol cannot yet make.
 - The drive setup is captured once, at the first kick-off, and reused.
 - A Blitz may be re-pointed at a different target until the player moves or
   blocks — declaring rolls nothing, so a mis-named target costs a coach nothing to

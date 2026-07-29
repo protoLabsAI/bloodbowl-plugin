@@ -20,7 +20,13 @@ TURNOVER_TEXT = {
 }
 
 
-def new_match(scenario, seed: int = 0, kicking_to: str = "home", rerolls: int | None = None) -> Match:
+def new_match(
+    scenario,
+    seed: int = 0,
+    kicking_to: str = "home",
+    rerolls: int | None = None,
+    staff: dict | None = None,
+) -> Match:
     """Start a match from a set-up board.
 
     The seed is stored so the match can be regenerated; the log is what lets it be
@@ -37,7 +43,15 @@ def new_match(scenario, seed: int = 0, kicking_to: str = "home", rerolls: int | 
     m.apply(
         Event(
             kind="match_started",
-            detail={"kicking_to": kicking_to, "seed": seed, "rerolls": {"home": n, "away": n}},
+            detail={
+                "kicking_to": kicking_to,
+                "seed": seed,
+                "rerolls": {"home": n, "away": n},
+                # Assistant Coaches, Cheerleaders, Fan Factor — the Kick-off Event
+                # Table asks for all three, and a practice board hired none of
+                # them. Zero unless told otherwise, and reported either way.
+                "staff": {side: dict((staff or {}).get(side) or {}) for side in ("home", "away")},
+            },
             text=f"Match begins. {m.home_team or 'Home'} vs {m.away_team or 'Away'}. {n} Team Re-roll(s) each.",
         )
     )

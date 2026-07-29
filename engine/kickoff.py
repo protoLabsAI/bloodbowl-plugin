@@ -62,13 +62,13 @@ KICKOFF_EVENTS: dict[int, tuple[str, str, bool]] = {
         "Both Coaches roll a D6 and add the number of Cheerleaders on their Team Roster. The first "
         "Block Action performed during the Coach with the highest roll's next Turn receives an "
         "additional Offensive Assist.",
-        False,  # Cheerleaders are a roster fact this engine does not carry.
+        True,  # Cheerleaders are an input, like the Team Re-roll count.
     ),
     7: (
         "Brilliant Coaching",
         "Both Coaches roll a D6 and add the number of Assistant Coaches on their Team Roster. The "
         "Coach with the highest total gains a free Team Re-roll for the Drive ahead.",
-        False,  # Team Re-rolls are not modelled.
+        True,  # Team Re-rolls are modelled now; Assistant Coaches are an input.
     ),
     8: (
         "Changing Weather",
@@ -165,6 +165,39 @@ def kick(match, dice, receiving: str, aim: tuple[int, int] | None = None) -> lis
     return events
 
 
+def _contested(match, dice, staff_key: str, label: str):
+    """ "Both Coaches roll a D6 and add [some number on their Team Roster]."
+
+    Returns (winning side or "", the events). A TIE gives nobody anything: the
+    rule says "the Coach with the highest total", and on a tie there is not one.
+
+    The staff number is an INPUT — a practice board never hired anybody — so it
+    defaults to zero and the roll says what it added, rather than the engine
+    quietly assuming a roster it cannot see.
+    """
+    out = []
+    totals = {}
+    for side in ("home", "away"):
+        bonus = int((match.staff.get(side) or {}).get(staff_key, 0))
+        d = dice.d6()
+        roll = Roll(kind=label, dice=[d], total=d + bonus, modifier=bonus, note=f"{side} +{bonus} {staff_key}")
+        dice.rolls.append(roll)
+        totals[side] = d + bonus
+        out.append(
+            Event(
+                kind="note",
+                rolls=[roll],
+                text=f"{label}: {side} roll {d}" + (f" +{bonus} = {d + bonus}." if bonus else "."),
+            )
+        )
+        match.apply(out[-1])
+    if totals["home"] == totals["away"]:
+        out.append(Event(kind="note", text=f"{label}: a tie, so neither Coach gains anything."))
+        match.apply(out[-1])
+        return "", out
+    return ("home" if totals["home"] > totals["away"] else "away"), out
+
+
 def kickoff_event(match, dice, receiving: str) -> list[Event]:
     r = roll_2d6(dice, "Kick-off Event", 0)
     r.passed = None
@@ -182,7 +215,40 @@ def kickoff_event(match, dice, receiving: str) -> list[Event]:
     ]
     match.apply(events[0])
 
-    if name == "Time-out!":
+    if name == "Brilliant Coaching":
+        # "Both Coaches roll a D6 and add the number of Assistant Coaches on their
+        # Team Roster. The Coach with the highest total gains a free Team Re-roll
+        # FOR THE DRIVE AHEAD." A tie gives nobody anything — "the Coach with the
+        # highest total" and on a tie there is not one.
+        winner, detail = _contested(match, dice, "assistant_coaches", "Brilliant Coaching")
+        events.extend(detail)
+        if winner:
+            events.append(
+                Event(
+                    kind="kickoff_bonus",
+                    detail={"side": winner, "reroll": True, "event": name},
+                    text=f"{winner} gain a free Team Re-roll for this Drive.",
+                )
+            )
+            match.apply(events[-1])
+
+    elif name == "Cheering Fans":
+        # "Both Coaches roll a D6 and add the number of Cheerleaders on their Team
+        # Roster. The first Block Action performed during the Coach with the
+        # highest roll's NEXT TURN receives an additional Offensive Assist."
+        winner, detail = _contested(match, dice, "cheerleaders", "Cheering Fans")
+        events.extend(detail)
+        if winner:
+            events.append(
+                Event(
+                    kind="kickoff_bonus",
+                    detail={"side": winner, "cheer": True, "event": name},
+                    text=f"The crowd is behind {winner} — their first Block next Turn gets an extra Offensive Assist.",
+                )
+            )
+            match.apply(events[-1])
+
+    elif name == "Time-out!":
         kicking = match.opponent(receiving)
         # The rule reads off the KICKING team's turn marker.
         back = match.clock.turn >= 6

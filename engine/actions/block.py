@@ -92,6 +92,11 @@ def validate(match: Match, cmd: dict) -> Legality:
     # target cannot help themselves resist it.
     off = assist_count(match, p.side, t, exclude={p.id})
     dfn = assist_count(match, t.side, p, exclude={t.id})
+    # Cheering Fans: "the FIRST Block Action performed during the Coach with the
+    # highest roll's next Turn receives an additional Offensive Assist." First,
+    # so it is gone once anyone has blocked this turn.
+    cheered = bool(match.cheer.get("ready")) and match.cheer.get("side") == p.side
+    off += 1 if cheered else 0
     horns = 1 if (p.has_skill("Horns") and blitzing) else 0
     a_st, d_st = strength_of(match, p) + off + horns, strength_of(match, t) + dfn
     n, chooser = block_dice(a_st, d_st)
@@ -112,6 +117,7 @@ def validate(match: Match, cmd: dict) -> Legality:
             "defender_strength": d_st,
             "offensive_assists": off,
             "defensive_assists": dfn,
+            "cheered": cheered,
             "blitz": blitzing,
             "costs_move_allowance": 1 if blitzing else 0,
             "rush_for_block": bool(rush_for_block),
@@ -404,6 +410,15 @@ def resolve(match: Match, cmd: dict, dice) -> Outcome:
     unmodelled = sorted(set(unmodelled_skills(p)) | set(unmodelled_skills(t)))
     n, chooser = legal.detail["dice"], legal.detail["chooser"]
     blitzing = legal.detail["blitz"]
+    if legal.detail.get("cheered"):
+        rec.emit(
+            Event(
+                kind="kickoff_bonus",
+                actor=p.id,
+                detail={"side": p.side, "cheer_used": True},
+                text=f"The crowd lends {p.name()} an extra Offensive Assist.",
+            )
+        )
 
     # DAUNTLESS: "this player may roll a D6 and add their own Strength
     # Characteristic. If the result is HIGHER than the opposition player's
