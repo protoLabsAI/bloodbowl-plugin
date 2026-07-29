@@ -1464,6 +1464,68 @@ def _put_the_boot_in(ctx: SkillContext) -> None:
 # the engine applies.
 
 
+# --- The Skills that make a Block into more than one thing ----------------
+
+
+@skill_hook("Frenzy", "second_action")
+def _frenzy(ctx: SkillContext) -> None:
+    """S3: "Every time this player performs a Block Action, if the target is Pushed
+    Back, then this player MUST FOLLOW-UP IF ABLE. Additionally, if after the
+    target is Pushed Back they are STILL STANDING, then this player MUST PERFORM A
+    SECOND BLOCK ACTION targeting THE SAME opposition player."
+
+    MUST, twice. This is the one Skill that makes the engine take an Action nobody
+    asked for, and the reason it is a liability as often as an advantage — a
+    Frenzied player can be walked into the crowd by a defender who plans for it.
+
+    Exactly ONE extra: "a second Block Action", so the recursion is one deep.
+    """
+
+
+@skill_hook(
+    "Multiple Block",
+    "second_action",
+    partial="the two Blocks are resolved one after another rather than truly simultaneously — "
+    "the rules allow exactly that ('you may wish to roll them separately for clarity')",
+)
+def _multiple_block(ctx: SkillContext) -> None:
+    """S3: "they may perform TWO Block Actions each targeting A DIFFERENT
+    opposition player THEY ARE MARKING. If they do, then this player will REDUCE
+    THEIR STRENGTH CHARACTERISTIC BY 2 for the duration … BOTH Block Actions are
+    resolved in full, EVEN IF ONE OF THEM RESULTS IN A TURNOVER. This player CANNOT
+    FOLLOW-UP during either."
+
+    The turnover clause is what shapes the implementation: the second Block runs
+    whatever the first did, so the turnover is collected at the end rather than
+    returned from the middle.
+    """
+
+
+@skill_hook("Pile Driver", "second_action")
+def _pile_driver(ctx: SkillContext) -> None:
+    """S3: "When an opposition player is KNOCKED DOWN by this player during a Block
+    Action, this player MAY perform a FREE FOUL ACTION against the opposition
+    player so long as they are STILL STANDING and are STILL MARKING them. This
+    player is then PLACED PRONE and their activation immediately ends."
+
+    Placed Prone rather than Knocked Down, so it costs them their feet but not an
+    Armour Roll — and the activation ends whatever the Foul achieved, which is the
+    price of it.
+    """
+
+
+@skill_hook("Hit and Run", "second_action")
+def _hit_and_run(ctx: SkillContext) -> None:
+    """S3: "…after FULLY RESOLVING the Action, they may immediately move ONE FREE
+    SQUARE IGNORING TACKLE ZONES, so long as they are STILL STANDING. The player
+    must ensure that AFTER THIS FREE MOVE THEY ARE NOT MARKED BY OR MARKING ANY
+    OPPOSITION PLAYERS."
+
+    That last sentence makes it a retreat rather than a reposition: there has to BE
+    a square with nobody adjacent, or the Skill cannot be used at all.
+    """
+
+
 @skill_hook("Foul Appearance", "block_reaction")
 def _foul_appearance(ctx: SkillContext) -> None:
     """S3: "Whenever an opposition player attempts to perform a Block Action against

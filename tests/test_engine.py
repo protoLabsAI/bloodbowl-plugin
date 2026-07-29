@@ -5749,3 +5749,103 @@ def test_a_leader_lends_the_team_one_extra_re_roll_while_they_are_on_the_pitch()
     # Lost the moment the last Leader leaves the pitch.
     m.by_id("h00").place = "casualty"
     assert available(m, m.by_id("h01")) == 0
+
+
+# --- The Skills that make a Block into more than one thing -------------------
+
+
+def test_frenzy_forces_a_second_block_the_coach_never_asked_for():
+    """S3: "if after the target is Pushed Back they are STILL STANDING, then this
+    player MUST PERFORM A SECOND BLOCK ACTION targeting the same opposition
+    player." MUST — the one Skill that makes the engine act unbidden."""
+    m = _match(("home", 7, 13, 6, "3+", ["Frenzy"]), ("away", 7, 14), ("away", 2, 20))
+    out = _block(m, "h00", "a01", _dice([4] * 8, block=[["push_back"], ["push_back"]]))
+    blocks = [r for e in out.events for r in e.rolls if r.kind == "Block"]
+    assert len(blocks) == 2, f"a second Block is compulsory: {[r.describe() for r in blocks]}"
+    assert any("Frenzy" in (e.text or "") for e in out.events)
+    assert (m.by_id("a01").x, m.by_id("a01").y) == (7, 16), "pushed twice"
+
+    plain = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
+    out2 = _block(plain, "h00", "a01", _dice([4] * 8, block=[["push_back"], ["push_back"]]))
+    assert len([r for e in out2.events for r in e.rolls if r.kind == "Block"]) == 1
+
+
+def test_frenzy_stops_at_one_extra_block_however_many_pushes():
+    """ "A SECOND Block Action" — one extra, not a chain that runs until something
+    falls over. Three push-backs in a row must still be two Blocks."""
+    m = _match(("home", 7, 13, 6, "3+", ["Frenzy"]), ("away", 7, 14), ("away", 2, 20))
+    out = _block(m, "h00", "a01", _dice([4] * 12, block=[["push_back"]] * 4))
+    assert len([r for e in out.events for r in e.rolls if r.kind == "Block"]) == 2
+
+
+def test_a_multiple_block_hits_two_players_at_st_minus_two_and_resolves_both():
+    """ "…TWO Block Actions each targeting A DIFFERENT opposition player they are
+    Marking … REDUCE THEIR STRENGTH CHARACTERISTIC BY 2 for the duration … BOTH
+    Block Actions are resolved IN FULL, EVEN IF ONE OF THEM RESULTS IN A TURNOVER.
+    This player CANNOT FOLLOW-UP during either." """
+    m = _match(("home", 7, 13, 6, "3+", ["Multiple Block"]), ("away", 7, 14), ("away", 8, 14))
+    m.by_id("h00").player.ST = "5"
+    for who in ("a01", "a02"):
+        m.by_id(who).player.ST = "3"
+    out = _block(m, "h00", "a01", _dice([4] * 12, block=[["push_back"], ["push_back"]]), second_target="a02")
+    assert out.ok, out.text
+    blocks = [r for e in out.events for r in e.rolls if r.kind == "Block"]
+    assert len(blocks) == 2, "both are resolved"
+    # ST 5 - 2 = 3 against ST 3 is one die; without the reduction it would be two.
+    assert all(len(r.dice) == 1 for r in blocks), [r.describe() for r in blocks]
+    assert m.by_id("h00").player.ST == "5", "the reduction lasts only for the duration"
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 13), "and there is no Follow-up"
+
+
+def test_a_multiple_block_finishes_the_second_block_even_after_a_turnover():
+    """ "…even if one of them results in a Turnover" is the clause that shapes the
+    implementation: the second Block runs whatever the first did."""
+    m = _match(("home", 7, 13, 6, "3+", ["Multiple Block"]), ("away", 7, 14), ("away", 8, 14))
+    out = _block(m, "h00", "a01", _dice([4] * 14, block=[["player_down"], ["push_back"]]), second_target="a02")
+    assert out.turnover is True, "the first Block put them on the floor"
+    assert len([r for e in out.events for r in e.rolls if r.kind == "Block"]) == 2, "the second still happened"
+
+
+def test_pile_driver_buys_a_free_foul_and_costs_the_activation():
+    """ "…this player MAY perform a FREE FOUL ACTION … This player is then PLACED
+    PRONE and their activation immediately ends." Placed Prone, so it costs their
+    feet but not an Armour Roll."""
+    # They must FOLLOW UP to still be Marking the player they floored — a POW
+    # pushes the target a square away, and a blocker who stays put cannot reach
+    # them. That is the rule's own condition, not a quirk of the test.
+    m = _match(("home", 7, 13, 6, "3+", ["Pile Driver"]), ("away", 7, 14), ("away", 2, 20))
+    m.by_id("a01").player.AV = "11+"
+    # 3+5 for the FOUL's Armour Roll, not 4+4: a natural double would send the
+    # fouler off, which is a different rule and would hide this one.
+    out = _block(m, "h00", "a01", _dice([4, 4, 3, 5] + [4] * 10, block=[["pow"]]), follow_up=True)
+    assert any("Pile Driver" in (e.text or "") for e in out.events), [e.text for e in out.events]
+    assert any(e.kind == "foul_committed" for e in out.events), "a free Foul"
+    assert m.by_id("h00").down == "prone" and m.by_id("h00").done
+
+    # …and standing still leaves them out of reach: "so long as they are STILL
+    # MARKING the opposition player".
+    apart = _match(("home", 7, 13, 6, "3+", ["Pile Driver"]), ("away", 7, 14), ("away", 2, 20))
+    apart.by_id("a01").player.AV = "11+"
+    out_apart = _block(apart, "h00", "a01", _dice([4, 4, 3, 5] + [4] * 10, block=[["pow"]]), follow_up=False)
+    assert not [e for e in out_apart.events if e.kind == "foul_committed"]
+
+    plain = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
+    plain.by_id("a01").player.AV = "11+"
+    out2 = _block(plain, "h00", "a01", _dice([4, 4, 3, 5] + [4] * 10, block=[["pow"]]), follow_up=True)
+    assert not [e for e in out2.events if e.kind == "foul_committed"]
+    assert plain.by_id("h00").down == "standing"
+
+
+def test_hit_and_run_retreats_to_a_square_where_nobody_is_adjacent():
+    """ "…they may immediately move ONE FREE SQUARE ignoring Tackle Zones … The
+    player must ensure that AFTER THIS FREE MOVE THEY ARE NOT MARKED BY OR MARKING
+    ANY OPPOSITION PLAYERS." A retreat, not a reposition."""
+    m = _match(("home", 7, 13, 6, "3+", ["Hit and Run"]), ("away", 7, 14), ("away", 2, 20))
+    _block(m, "h00", "a01", _dice([4] * 8, block=[["push_back"]]), follow_up=False)
+    p, foe = m.by_id("h00"), m.by_id("a01")
+    assert (p.x, p.y) != (7, 13), "they should have stepped away"
+    assert max(abs(p.x - foe.x), abs(p.y - foe.y)) > 1, "and be clear of the player they hit"
+
+    plain = _match(("home", 7, 13), ("away", 7, 14), ("away", 2, 20))
+    _block(plain, "h00", "a01", _dice([4] * 8, block=[["push_back"]]), follow_up=False)
+    assert (plain.by_id("h00").x, plain.by_id("h00").y) == (7, 13), "…which is not what happens without it"

@@ -334,6 +334,7 @@ def _tools(cfg: dict):
         follow_up: bool = True,
         team_reroll: bool = False,
         drop_ball: bool = False,
+        second_target: str = "",
     ) -> str:
         """Take an action.
 
@@ -395,6 +396,10 @@ def _tools(cfg: dict):
         stronger. Ask bb_game_odds first: it tells you how many dice you get and
         who picks them. ``follow_up`` moves into the vacated square after a push.
 
+        ``second_target`` on a Block is a MULTIPLE BLOCK — "two Block Actions each
+        targeting a different opposition player they are Marking", at ST -2 and
+        with no Follow-up from either. It needs the Skill.
+
         ``drop_ball=True`` on a Move is a FUMBLEROOSKI — "they may choose to place
         the ball on the ground in any square they move out of … this will not cause
         a Turnover". It needs the Skill, and it is asked for rather than assumed:
@@ -419,6 +424,8 @@ def _tools(cfg: dict):
         }
         if action == "block":
             cmd.update({"target": target, "choice": int(choice), "follow_up": bool(follow_up)})
+            if second_target:
+                cmd["second_target"] = second_target
         elif action in ("handoff", "blitz", "foul", "throwteam"):
             cmd["target"] = target
         before = len(m.events)
