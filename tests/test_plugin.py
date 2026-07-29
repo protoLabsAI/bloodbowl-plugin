@@ -350,6 +350,18 @@ def test_a_drop_and_a_click_cannot_disagree_about_what_a_square_means():
     assert "await onCellClick(sq.x, sq.y)" in page
 
 
+def test_clearing_one_mark_does_not_strip_the_badges_of_the_others():
+    """`clearMarks` used to remove EVERY odds badge on the board whatever classes
+    it was handed. The badges belong to the marks, so clearing one mark silently
+    took the Dodge modifiers, dice counts and blitz distances belonging to all the
+    rest — and the board looked quiet rather than wrong. It cost an afternoon
+    during the drag work."""
+    body = _web("js/board.js").split("export function clearMarks")[1].split("\n}")[0]
+    assert "classList.contains" in body, "the badge removal must be scoped to the squares being cleared"
+    # The old shape was two unconditional passes over every cell.
+    assert body.count("for (const c of CELLS)") == 1, "a second unscoped pass is what did the damage"
+
+
 def test_the_board_never_pre_commits_to_a_block_die():
     """`choice` indexes the faces the roll SHOWS, and the roll has not happened at
     the moment of asking — so the only correct value is no value.
