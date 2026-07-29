@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 
-from .state import Match, PlayerState
+from .state import Match, PlayerState, touchdown_row
 
 STAND_UP_COST = 3  # squares of Move Allowance
 STAND_UP_ROLL = 4  # MA 2 or less must roll this instead
@@ -79,6 +79,81 @@ def armour_target(player: PlayerState) -> int:
 
 def occupied(match: Match, x: int, y: int) -> bool:
     return match.at(x, y) is not None
+
+
+def jump_over(match: Match, player: PlayerState, x: int, y: int) -> PlayerState | None:
+    """The Prone or Stunned player a Jump to (x, y) would go over, if any.
+
+    S3: "a player may attempt to Jump over players that are Prone or Stunned and
+    into an unoccupied square beyond. A player that attempts to Jump over another
+    player in this manner may attempt to Jump into an unoccupied square that is
+    adjacent to the Prone or Stunned player they are attempting to Jump over, but
+    IS NOT ALREADY ADJACENT TO THE JUMPING PLAYER."
+
+    That last clause is the whole shape of it — the eligible squares are the far
+    side of the body, not any square touching it — and it is what stops a Jump
+    being a free diagonal step.
+    """
+    if match.at(x, y) is not None or not in_bounds_xy(x, y):
+        return None
+    if adjacent(player.x, player.y, x, y) or (player.x, player.y) == (x, y):
+        return None
+    for v in match.on_pitch():
+        if v.id == player.id or v.down == "standing":
+            continue
+        if adjacent(v.x, v.y, player.x, player.y) and adjacent(v.x, v.y, x, y):
+            return v
+    return None
+
+
+def in_bounds_xy(x: int, y: int) -> bool:
+    from ..pitch import in_bounds
+
+    return in_bounds(x, y)
+
+
+def could_score_without_dice(match: Match, player: PlayerState) -> bool:
+    """Could this player walk the ball in, needing no roll of any kind?
+
+    S3 STALLING: "Should a player be in possession of the ball when they are
+    activated, can score a Touchdown WITHOUT HAVING TO ROLL ANY DICE, yet finishes
+    their activation without having scored … then they are said to be Stalling. If
+    a player needs to roll any dice in order to score, such as having to Dodge,
+    Rush, perform a Block Action, roll for a Trait … then they are NOT said to be
+    Stalling."
+
+    So the walk must be free at every step: never leaving a Marked square (that is
+    a Dodge), never exceeding the Move Allowance (that is a Rush), and through
+    empty squares. A breadth-first search with exactly those constraints answers
+    it, and answering it any more loosely would accuse a coach of Stalling when
+    they could not in fact have scored.
+    """
+    from ..pitch import in_bounds
+
+    if match.ball.carrier != player.id or player.place != "pitch" or player.down != "standing":
+        return False
+    if any(g.has_skill(t) for g in (player,) for t in ("Bone Head", "Really Stupid", "Take Root")):
+        return False  # they must roll on activation, so they are never Stalling
+    goal = touchdown_row(player.side)
+    budget = player.movement() - player.ma_used
+    seen = {(player.x, player.y)}
+    frontier = [(player.x, player.y)]
+    for _ in range(max(0, budget)):
+        nxt = []
+        for cx, cy in frontier:
+            if markers_of_square(match, player.side, cx, cy):
+                continue  # leaving here needs a Dodge, which is a die
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    sq = (cx + dx, cy + dy)
+                    if sq in seen or not in_bounds(*sq) or match.at(*sq) is not None:
+                        continue
+                    if sq[1] == goal:
+                        return True
+                    seen.add(sq)
+                    nxt.append(sq)
+        frontier = nxt
+    return False
 
 
 def steps_to_mark(match: Match, player: PlayerState, target: PlayerState) -> int | None:

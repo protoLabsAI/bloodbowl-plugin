@@ -359,6 +359,11 @@ being the struck errata — which is the worst possible input for this agent.
 
 ## 6. What's done, and what's next
 
+**`docs/PARITY.md` is the score.** Every section of the S3 core rules with a
+verdict of yes / partly / no, and a test that fails if the rulebook grows a
+section the table never mentions. Read it before planning anything: it says which
+of four things a missing rule is waiting on, and that is most of the work.
+
 **Playable now:** set up (by hand, by agent, or from a preset) → kick-off → move,
 block, blitz, foul, hand-off, Secure the Ball, pass → injuries → touchdowns →
 drives → half-time → full time.
@@ -507,7 +512,6 @@ fails if they are ever swapped.
   bound is what makes it safe: re-declaring after the Blitz's Block would reset
   `blocked` and buy a second one, and `acted` refuses it. Tested in both
   directions.
-- The Casualty Roll (D16 table) is not made; a Casualty just leaves the pitch.
 - Argue the Call is rolled for you rather than offered as a choice. The rules say
   a Coach "MAY attempt" it, but declining is never better: 2-5 changes nothing and
   only a 1 costs anything, and a 1 costs the same whether or not you argued this

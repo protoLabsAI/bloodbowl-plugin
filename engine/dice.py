@@ -118,6 +118,18 @@ class Dice(Protocol):
     def d8(self) -> int: ...
     def block(self, count: int) -> list[str]: ...
 
+    def dn(self, sides: int) -> int:
+        """Any other die the rules call for.
+
+        The table needs a D3 (Pitch Invasion) and a D16 (the Casualty Table), and
+        several rules say "randomly select one of their players", which is a die
+        with as many sides as they have players. Adding those one at a time would
+        have meant three near-identical methods across four implementations, so
+        there is one — and d6/d8 stay because they are what the rules say
+        everywhere else, and a log reading "d6: 4" is worth more than "dn(6): 4".
+        """
+        ...
+
 
 @dataclass
 class SeededDice:
@@ -135,6 +147,9 @@ class SeededDice:
 
     def d8(self) -> int:
         return self._rng.randint(1, 8)
+
+    def dn(self, sides: int) -> int:
+        return self._rng.randint(1, max(1, sides))
 
     def block(self, count: int) -> list[str]:
         return [BLOCK_FACES[self._rng.randint(0, 5)] for _ in range(max(1, count))]
@@ -171,6 +186,9 @@ class ScriptedDice:
 
     def d8(self) -> int:
         return self._next(8)
+
+    def dn(self, sides: int) -> int:
+        return self._next(max(1, sides))
 
     def block(self, count: int) -> list[str]:
         if self._b >= len(self.block_script):
@@ -226,6 +244,10 @@ class ReplayDice:
 
     def d8(self) -> int:
         r = self._next("d8")
+        return int(r.dice[0])
+
+    def dn(self, sides: int) -> int:
+        r = self._next(f"d{sides}")
         return int(r.dice[0])
 
     def block(self, count: int) -> list[str]:

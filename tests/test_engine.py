@@ -854,7 +854,7 @@ def test_a_broken_armour_rolls_for_injury_and_can_stun():
 
 def test_a_high_injury_roll_removes_the_player_from_the_pitch():
     m = _match_st(_st("home", 7, 13, 3), _st("away", 7, 14, 3, av="3+"))
-    _block(m, "h00", "a00", _bdice(["pow"], script=[3, 3, 6, 6]))  # injury 12 = Casualty
+    _block(m, "h00", "a00", _bdice(["pow"], script=[3, 3, 6, 6, 9]))  # injury 12 = Casualty, then its D16
     t = m.by_id("a00")
     assert t.place == "casualty"
     assert m.at(t.x, t.y) is None, "a player in the box must stop occupying their square"
@@ -2060,7 +2060,7 @@ def test_foul_assists_modify_the_armour_roll_not_strength():
 def test_the_armour_roll_actually_carries_the_assist_modifier():
     m = _match(("home", 7, 13, 6), ("away", 7, 14, 6), ("home", 8, 14, 6), ("home", 6, 14, 6))
     _floored(m, "a01")
-    out = _foul(m, "h00", "a01", _dice([3, 4, 6, 6, 4]))
+    out = _foul(m, "h00", "a01", _dice([3, 4, 6, 6, 9, 4]))  # …6+6 is a Casualty, then its D16
     armour = next(r for e in out.events for r in e.rolls if r.kind == "Armour")
     assert armour.modifier == 2, "two Offensive Assists, +1 each"
     assert armour.total == 3 + 4 + 2
@@ -2108,7 +2108,7 @@ def test_a_natural_double_is_natural_so_assists_cannot_create_or_hide_one():
     # 3 and 5 with +1 from the assist totals 9, which breaks AV 9+ — but 3 and 5
     # is not a double, and the Injury Roll behind it (6 and 5) is not one either,
     # so nobody is sent off however tempting that "9" looks.
-    out = _foul(m, "h00", "a01", _dice([3, 5, 6, 5]))
+    out = _foul(m, "h00", "a01", _dice([3, 5, 6, 5, 9]))  # 11 is a Casualty, then its D16
     armour = next(r for e in out.events for r in e.rolls if r.kind == "Armour")
     assert armour.modifier == 1 and armour.dice == [3, 5]
     assert _natural_double(out.events) is None
@@ -2459,7 +2459,7 @@ def test_stunty_uses_the_stunty_injury_table():
     for dice_pair, want in (((3, 4), "knocked_out"), ((3, 3), "stunned"), ((4, 5), "casualty")):
         m = _match(("home", 7, 13, 6, "3+", ["Stunty"]))
         m.by_id("h00").player.AV = "2+"  # armour always breaks, so the injury rolls
-        events = risk_injury(m, m.by_id("h00"), _dice([6, 6, *dice_pair]))
+        events = risk_injury(m, m.by_id("h00"), _dice([6, 6, *dice_pair, 9]))  # trailing D16, if it is a Casualty
         outcome = next(e.detail["outcome"] for e in events if e.kind == "injury_roll")
         assert outcome == want, f"total {sum(dice_pair)} should be {want}, got {outcome}"
 
@@ -2483,7 +2483,7 @@ def test_stunty_and_thick_skull_together():
     def hurt(skills, pair):
         m = _match(("home", 7, 13, 6, "3+", skills))
         m.by_id("h00").player.AV = "2+"
-        events = risk_injury(m, m.by_id("h00"), _dice([6, 6, *pair]))
+        events = risk_injury(m, m.by_id("h00"), _dice([6, 6, *pair, 9]))
         return next(e.detail["outcome"] for e in events if e.kind == "injury_roll")
 
     assert hurt(["Stunty", "Thick Skull"], (3, 4)) == "stunned", "a 7 must become Stunned"
@@ -3362,3 +3362,236 @@ def test_the_staff_numbers_are_inputs_and_default_to_none():
     assert m.drive_rerolls == {"home": 1}
     line = next(e.text for e in out if e.text and "home roll" in e.text)
     assert line.endswith("home roll 5."), line
+
+
+def test_the_casualty_roll_is_made_and_reported_even_though_it_changes_nothing_here():
+    """ "Whenever a player suffers a Casualty, the opposing Coach makes a Casualty
+    Roll against them by rolling a D16."
+
+    Everything on that table is a League consequence — "in all instances the
+    player will miss the rest of the current game" — so nothing about THIS match
+    changes. It is rolled anyway, because a coach asking what happened to their
+    Blitzer deserves the answer, and because an Apothecary keys off the result.
+    """
+    from bloodbowl.engine.injury import risk_injury
+
+    m = _match(("home", 7, 13, 6))
+    m.by_id("h00").player.AV = "2+"
+    events = risk_injury(m, m.by_id("h00"), _dice([6, 6, 6, 6, 15]))
+    cas = next(e for e in events if e.kind == "casualty_roll")
+    assert cas.detail["roll"] == 15 and cas.detail["result"] == "Dead"
+    assert cas.detail["league_only"] is True
+    assert m.by_id("h00").place == "casualty", "the match effect is the same whatever the D16 said"
+
+
+@pytest.mark.parametrize(
+    "roll,want",
+    [
+        (1, "Badly Hurt"),
+        (8, "Badly Hurt"),
+        (9, "Seriously Hurt"),
+        (12, "Serious Injury"),
+        (14, "Lasting Injury"),
+        (16, "Dead"),
+    ],
+)
+def test_the_casualty_table_boundaries(roll, want):
+    """1-8 / 9-10 / 11-12 / 13-14 / 15-16 — five bands, and every boundary is a
+    place an off-by-one hides."""
+    from bloodbowl.engine.injury import casualty_roll
+
+    m = _match(("home", 7, 13, 6))
+    ev = casualty_roll(m, m.by_id("h00"), _dice([roll]))[0]
+    assert ev.detail["result"] == want
+
+
+def test_every_dice_implementation_can_roll_an_arbitrary_die():
+    """The table wants a D3 and a D16, and several rules want "randomly select one
+    of their players" — a die with as many sides as they have. One method rather
+    than three, across all four implementations."""
+    from bloodbowl.engine.dice import ReplayDice, Roll, ScriptedDice, SeededDice
+
+    assert 1 <= SeededDice(seed=3).dn(16) <= 16
+    assert ScriptedDice(script=[11]).dn(16) == 11
+    assert ReplayDice(recorded=[Roll(kind="d16", dice=[11])]).dn(16) == 11
+    # …and a scripted value outside the die is an error, not a silent pass.
+    with pytest.raises(AssertionError):
+        ScriptedDice(script=[17]).dn(16)
+
+
+# --- Jumping over players, Forego Activation and Stalling ------------------
+
+
+def test_a_jump_goes_over_a_downed_player_to_the_far_side_only():
+    """ "a player may attempt to Jump into an unoccupied square that is adjacent to
+    the Prone or Stunned player they are attempting to Jump over, but IS NOT
+    ALREADY ADJACENT TO THE JUMPING PLAYER."
+
+    That last clause is the shape of the whole rule — the far side of the body,
+    not any square touching it — and without it a Jump is a free diagonal step.
+    """
+    from bloodbowl.engine import actions
+    from bloodbowl.engine.events import Event
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    m.apply(Event(kind="player_placed_prone", actor="a01", detail={"down": "prone"}))
+
+    far = actions.get("move")["validate"](m, {"player": "h00", "x": 7, "y": 15})
+    assert far.ok and far.detail["jump"] is True and far.detail["jump_over"] == "a01"
+
+    # (6,14) touches the body but is ALREADY adjacent to the jumper, so it is not
+    # a Jump — and it is not an adjacent step either, so it is simply refused.
+    near = actions.get("move")["validate"](m, {"player": "h00", "x": 6, "y": 14})
+    assert near.ok and not near.detail.get("jump"), "that is an ordinary step, not a Jump"
+
+    # …and there is nothing to jump over when the player is STANDING.
+    standing = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    assert not actions.get("move")["validate"](standing, {"player": "h00", "x": 7, "y": 15}).ok
+
+
+def test_a_jump_costs_two_squares_of_move_allowance():
+    """ "As the player is moving 2 squares when jumping, it will also cost 2 squares
+    of Move Allowance." """
+    from bloodbowl.engine.events import Event
+
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6))
+    m.apply(Event(kind="player_placed_prone", actor="a01", detail={"down": "prone"}))
+    out = _move(m, "h00", 7, 15, _dice([5]))
+    assert out.ok
+    assert m.by_id("h00").ma_used == 2, "a Jump that cost one square"
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 15)
+
+
+def test_a_jump_takes_the_worse_of_the_two_squares_not_the_destination():
+    """ "a negative modifier equal to the number of opposition players Marking the
+    square they are currently in, OR the number … Marking the square they are
+    jumping into, WHICHEVER IS HIGHER." A Dodge uses the destination alone; this
+    does not, and the two are easy to conflate."""
+    from bloodbowl.engine.events import Event
+
+    # Two Markers on the square being left, none on the landing square.
+    m = _match(("home", 7, 13, 6), ("away", 7, 14, 6), ("away", 6, 13, 6), ("away", 8, 13, 6))
+    m.apply(Event(kind="player_placed_prone", actor="a01", detail={"down": "prone"}))
+    out = _move(m, "h00", 7, 15, _dice([6]))
+    jump = next(r for e in out.events for r in e.rolls if r.kind == "Jump")
+    assert jump.modifier == -2, "the square being LEFT was the worse one"
+
+
+def test_a_failed_jump_lands_them_in_the_target_square_but_a_natural_one_does_not():
+    """ "If the test is failed, place the jumping player IN THE TARGET SQUARE where
+    they will Fall Over … If a NATURAL 1 is rolled … the player will instead Fall
+    Over IN THE SQUARE THEY ARE IN."
+
+    Two different squares, and the difference decides where a dropped ball lands.
+    """
+    from bloodbowl.engine.events import Event
+
+    def board():
+        m = _match(("home", 7, 13, 6), ("away", 7, 14, 6), ("away", 6, 13, 6))
+        m.apply(Event(kind="player_placed_prone", actor="a01", detail={"down": "prone"}))
+        return m
+
+    failed = board()  # AG 3+ with -1 → a 3 fails, and is not a natural 1
+    out = _move(failed, "h00", 7, 15, _dice([3, 2, 2]))
+    assert not out.ok
+    assert (failed.by_id("h00").x, failed.by_id("h00").y) == (7, 15), "a plain failure still moves them"
+
+    natural = board()
+    _move(natural, "h00", 7, 15, _dice([1, 2, 2]))
+    assert (natural.by_id("h00").x, natural.by_id("h00").y) == (7, 13), "a natural 1 falls where they stood"
+
+
+def test_foregoing_an_activation_stops_the_player_acting_again_this_turn():
+    """ "once a player has declared they will forego their activation, they cannot
+    later be activated in the same turn." """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(("home", 7, 13, 6), ("away", 2, 20, 6))
+    out = actions.get("forego")["resolve"](m, {"player": "h00"}, _dice([]))
+    assert out.ok and m.by_id("h00").done is True
+    later = actions.get("move")["validate"](m, {"player": "h00", "x": 7, "y": 14})
+    assert not later.ok and "activation is over" in later.reason
+
+
+def test_a_player_who_could_have_walked_it_in_is_stalling():
+    """ "Should a player be in possession of the ball when they are activated, can
+    score a Touchdown WITHOUT HAVING TO ROLL ANY DICE, yet finishes their
+    activation without having scored … then they are said to be Stalling."
+
+    And the comparison runs the way that makes stalling EARLY dangerous: "if the
+    score on the D6 is equal to or greater than the team's current Turn number".
+    Turn 2 is punished on a 2+; turn 8 cannot be punished at all, which is the
+    rule allowing a team to run the clock down at the end.
+    """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+
+    def board(turn):
+        m = _match(("home", 7, 24, 6), ("away", 2, 4, 6))
+        m.apply(_ball_at(7, 24, carrier="h00"))
+        m.clock.turn = turn
+        return m
+
+    caught = board(2)
+    # crowd 4, then the knock-down: the ball they were holding bounces (d8), then armour
+    out = actions.get("forego")["resolve"](caught, {"player": "h00"}, _dice([4, 3, 2, 2]))
+    assert out.turnover, "4 >= turn 2, so the crowd acts"
+    assert caught.by_id("h00").down != "standing"
+
+    late = board(8)
+    out2 = actions.get("forego")["resolve"](late, {"player": "h00"}, _dice([6]))
+    assert not out2.turnover, "on turn 8 a D6 can never reach the turn number"
+    assert any("could have scored" in (e.text or "") for e in out2.events)
+
+
+def test_a_player_who_needed_a_roll_to_score_is_not_stalling():
+    """ "If a player needs to roll any dice in order to score, such as having to
+    Dodge, Rush, perform a Block Action … then they are NOT said to be Stalling."
+    """
+    from bloodbowl.engine.rules import could_score_without_dice
+
+    # Marked, so leaving needs a Dodge.
+    marked = _match(("home", 7, 24, 6), ("away", 7, 25, 6))
+    marked.apply(_ball_at(7, 24, carrier="h00"))
+    assert not could_score_without_dice(marked, marked.by_id("h00"))
+
+    # Out of Move Allowance, so it needs a Rush.
+    far = _match(("home", 7, 14, 1), ("away", 2, 4, 6))
+    far.apply(_ball_at(7, 14, carrier="h00"))
+    assert not could_score_without_dice(far, far.by_id("h00"))
+
+    # A Trait they must roll for on activation.
+    thick = _match(("home", 7, 24, 6, "3+", ["Bone Head"]), ("away", 2, 4, 6))
+    thick.apply(_ball_at(7, 24, carrier="h00"))
+    assert not could_score_without_dice(thick, thick.by_id("h00"))
+
+    # …and the plain case, which must still be Stalling or the test proves nothing.
+    clear = _match(("home", 7, 24, 6), ("away", 2, 4, 6))
+    clear.apply(_ball_at(7, 24, carrier="h00"))
+    assert could_score_without_dice(clear, clear.by_id("h00"))
+
+
+def test_passing_the_ball_away_instead_of_scoring_is_not_stalling():
+    """The exception the rule states outright: "If a player who could score a
+    Touchdown without rolling any dice, and therefore would be deemed to be
+    Stalling, declares a Pass Action or a Hand-off Action AND FINISHES THEIR
+    ACTION NO LONGER IN POSSESSION OF THE BALL, then this is NOT deemed to be
+    Stalling."
+
+    Giving the ball to a team-mate is playing on, not running down the clock. The
+    engine gets this right because it asks who holds the ball when the activation
+    FINISHES rather than when it began — worth a test, because the other reading
+    is just as easy to write and is wrong.
+    """
+    from bloodbowl.engine.game import act
+
+    m = _match(("home", 7, 24, 6), ("home", 8, 24, 6), ("away", 2, 4, 6))
+    m.apply(_ball_at(7, 24, carrier="h00"))
+    m.clock.turn = 2
+    out = act(m, "handoff", {"player": "h00", "target": "h01"}, _dice([5]))
+    assert m.ball.carrier == "h01", "the hand-off should have connected"
+    assert not any("could have scored" in (e["text"] or "") for e in out["events"])
+    assert not out["turnover"]

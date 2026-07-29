@@ -151,6 +151,22 @@ def act(match: Match, action: str, cmd: dict, dice=None) -> dict:
     # rather than after the next kick-off.
     noted = _note_unmodelled(match, outcome.unmodelled)
 
+    # "…yet finishes their activation without having scored a Touchdown." Any
+    # action that ends the activation is such a finish, not just Forego — which
+    # already runs its own check before ending its own.
+    if action != "forego" and not outcome.turnover:
+        who = match.by_id(str(cmd.get("player") or ""))
+        if who is not None and who.done:
+            from .actions.forego import stalling_check
+
+            sink = _Sink(match)
+            if stalling_check(match, who, dice, sink):
+                outcome.events.extend(sink.events)
+                outcome.turnover = True
+                outcome.ok = False
+            else:
+                outcome.events.extend(sink.events)
+
     # A Touchdown ends the DRIVE, not just the turn: "As soon as a Touchdown is
     # scored, play stops as a Turnover occurs — however, this is very much a
     # Turnover you can be pleased by! Scoring a Touchdown also marks the end of a
@@ -284,6 +300,21 @@ def _gate_report(match: Match, p, events: list, turnover: bool, text: str) -> di
         "clock": match.clock.to_dict(),
         "over": match.over,
     }
+
+
+class _Sink:
+    """Recorder-shaped, for helpers called from here rather than from an action."""
+
+    def __init__(self, match):
+        self.match, self.events = match, []
+
+    def emit(self, event):
+        self.match.apply(event)
+        self.events.append(event)
+        return event
+
+    def absorb(self, events):
+        self.events.extend(events)
 
 
 def _report(match: Match, outcome, noted: list[str], touchdown: str | None = None) -> dict:
