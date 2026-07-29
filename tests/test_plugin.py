@@ -1348,3 +1348,47 @@ def test_the_turn_nudge_is_wired_from_the_startup_hook_not_from_register(registr
     # And it must not have subscribed during register — there was no bus to
     # subscribe to, so anything it did there went nowhere.
     assert not registry.subscriptions, f"subscribed too early: {registry.subscriptions}"
+
+
+def test_each_handover_gets_its_own_job_id(registry, monkeypatch):
+    """`run_in_session` is idempotent-REPLACE: a second call with the same id
+    CANCELS the pending one. That is right for a chatty rule that only needs its
+    latest firing, and WRONG for turns — every handover is a distinct turn that
+    must actually run.
+
+    With one shared id, a nudge for turn 3 silently cancelled turn 2 and the game
+    stopped dead with nobody to act. Observed live: five nudges, three turns."""
+    import bloodbowl
+
+    sent: list[tuple[str, str]] = []
+
+    class _SDK:
+        @staticmethod
+        def run_in_session(session, prompt, job_id=""):
+            sent.append((session, job_id))
+            return {"ok": True, "message": "queued"}
+
+    import sys
+    import types
+
+    fake = types.ModuleType("graph")
+    fake.sdk = _SDK  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "graph", fake)
+    monkeypatch.setitem(sys.modules, "graph.sdk", _SDK)  # type: ignore[arg-type]
+
+    bloodbowl.register(registry)
+    start = next(s for s in registry.surfaces if s == "bloodbowl-turns")
+    assert start  # the surface is registered; run its start to subscribe
+    # `_Registry.register_surface` keeps only the name, so re-register to capture
+    # the callable — the plugin hands the same one either way.
+    captured: list = []
+    registry.register_surface = lambda fn, stop=None, name=None, reload=None: captured.append(fn)
+    bloodbowl.register(registry)
+    captured[0]()
+    handler = registry.subscriptions[-1][1]
+
+    for half, turn in ((1, 2), (1, 3)):
+        handler({"data": {"controller": "agent", "side": "away", "why": "turn", "half": half, "turn": turn}})
+    jobs = [j for _s, j in sent]
+    assert len(set(jobs)) == 2, f"two turns must not share a job id: {jobs}"
+    assert all("h1t" in j and "away" in j for j in jobs), jobs

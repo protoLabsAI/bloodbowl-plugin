@@ -155,8 +155,16 @@ def register(registry) -> None:
             # the durable Activity thread rather than dropping the turn on the
             # floor. `bb_game_here` is how a person moves it into their own chat.
             session = str(d.get("session_id") or "") or "system:activity"
-            out = sdk.run_in_session(session, prompt, job_id="bloodbowl-turn")
-            log.info("[bloodbowl] nudged %s for %s's turn: %s", session, d.get("side"), out.get("message"))
+            # A job id PER HANDOVER, not one shared id. `run_in_session` is
+            # idempotent-REPLACE: a second call with the same id CANCELS the
+            # pending one. That is right for a chatty rule that only needs its
+            # latest firing — and wrong here, where every handover is a distinct
+            # turn that must actually run. With a constant id, a nudge for turn 3
+            # silently cancelled turn 2 and the game stopped dead with nobody to
+            # act. Observed live: five nudges, three turns.
+            job = f"bloodbowl-turn-h{d.get('half')}t{d.get('turn')}-{d.get('side')}-{d.get('why')}"
+            out = sdk.run_in_session(session, prompt, job_id=job)
+            log.info("[bloodbowl] nudged %s (%s): %s", session, job, out.get("message"))
 
         registry.on("bloodbowl.turn_ready", _turn_ready)
         log.info("[bloodbowl] turn nudge subscribed")
