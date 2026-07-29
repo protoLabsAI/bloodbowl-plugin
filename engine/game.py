@@ -13,11 +13,18 @@ from .events import Event
 from .rerolls import DEFAULT_REROLLS
 from .skills import NOTED, activation_gates, first_mentions, partly_modelled_on_pitch, unmodelled_on_pitch
 from .state import Match, starting_positions
+from .weather import from_roll as _weather_from_roll
+from .weather import name_of as weather_name
 
 TURNOVER_TEXT = {
     True: "Turnover — the team's turn ends.",
     False: "",
 }
+
+
+def roll_weather(dice) -> str:
+    """S3: "each Coach rolls a D6 and adds the two rolls together"."""
+    return _weather_from_roll(dice.d6() + dice.d6())[0]
 
 
 def new_match(
@@ -26,6 +33,7 @@ def new_match(
     kicking_to: str = "home",
     rerolls: int | None = None,
     staff: dict | None = None,
+    weather: str | None = None,
 ) -> Match:
     """Start a match from a set-up board.
 
@@ -40,6 +48,10 @@ def new_match(
     # board was never drafted — so it is an input with a stated default rather
     # than a number invented from the roster. See engine/rerolls.py.
     n = DEFAULT_REROLLS if rerolls is None else max(0, int(rerolls))
+    # "each Coach rolls a D6 and adds the two rolls together" — rolled from the
+    # match seed so it is reproducible, or forced outright for a drill.
+    sky = SeededDice(seed=seed)
+    condition = weather if weather else roll_weather(sky)
     m.apply(
         Event(
             kind="match_started",
@@ -51,8 +63,10 @@ def new_match(
                 # Table asks for all three, and a practice board hired none of
                 # them. Zero unless told otherwise, and reported either way.
                 "staff": {side: dict((staff or {}).get(side) or {}) for side in ("home", "away")},
+                "weather": condition,
             },
-            text=f"Match begins. {m.home_team or 'Home'} vs {m.away_team or 'Away'}. {n} Team Re-roll(s) each.",
+            text=f"Match begins. {m.home_team or 'Home'} vs {m.away_team or 'Away'}. "
+            f"{n} Team Re-roll(s) each. Weather: {weather_name(condition)}.",
         )
     )
     start_drive(m, receiving=kicking_to, dice=dice_for(m))

@@ -2127,7 +2127,7 @@ def test_a_sent_off_player_leaves_for_good_and_does_not_come_back_next_drive():
     assert m.by_id("h00").place == "sent_off"
 
     m.setup = [{"id": "h00", "x": 7, "y": 13}, {"id": "a01", "x": 7, "y": 14}]
-    start_drive(m, receiving="home", dice=_dice([3, 1, 4, 4, 3, 3]))
+    start_drive(m, receiving="home", dice=_dice([3, 1, 4, 4, 3, 3] + [4] * 12))
     assert m.by_id("h00").place == "sent_off", "a Sent-off player came back for the next drive"
 
 
@@ -3291,7 +3291,7 @@ def test_brilliant_coaching_grants_a_re_roll_for_the_drive_only():
     assert m.drive_rerolls == {"home": 1}
     assert available(m, m.by_id("h00")) == 3, "2 bought plus 1 for the Drive"
 
-    start_drive(m, receiving="home", dice=_dice([3, 1, 4, 4, 3, 3, 2, 2]))
+    start_drive(m, receiving="home", dice=_dice([3, 1, 4, 4, 3, 3, 2, 2] + [4] * 12))
     assert m.drive_rerolls == {}, "the Drive re-roll outlived its Drive"
     assert m.rerolls["home"] == 2
 
@@ -3595,3 +3595,141 @@ def test_passing_the_ball_away_instead_of_scoring_is_not_stalling():
     assert m.ball.carrier == "h01", "the hand-off should have connected"
     assert not any("could have scored" in (e["text"] or "") for e in out["events"])
     assert not out["turnover"]
+
+
+# --- the Weather, and the kick-off events it unblocked ---------------------
+
+
+def _weathered(condition, *extra):
+    """A lone home player unless told otherwise — an adjacent opponent would add a
+    Marking penalty and hide the one modifier under test."""
+    from bloodbowl.engine.events import Event
+
+    m = _match(("home", 7, 13, 6), *extra)
+    m.apply(Event(kind="match_started", detail={"kicking_to": "home", "weather": condition}))
+    return m
+
+
+def test_the_weather_table_bands():
+    """ "each Coach rolls a D6 and adds the two rolls together" — 2, 3, 4-10, 11, 12,
+    and the wide band in the middle is where most games live."""
+    from bloodbowl.engine.weather import from_roll
+
+    assert from_roll(2)[0] == "sweltering_heat"
+    assert from_roll(3)[0] == "very_sunny"
+    for total in range(4, 11):
+        assert from_roll(total)[0] == "perfect", total
+    assert from_roll(11)[0] == "pouring_rain"
+    assert from_roll(12)[0] == "blizzard"
+
+
+def test_pouring_rain_makes_the_ball_slippery():
+    """ "Whenever a player attempts to pick up or Catch the ball, or Intercept a
+    Pass Action, they suffer a -1 modifier to the roll." Three tests, one
+    condition — and it rides the same hook Skills use."""
+    from bloodbowl.engine.ball import pick_up
+
+    m = _weathered("pouring_rain")
+    m.apply(_ball_at(7, 13))
+    events = pick_up(m, m.by_id("h00"), _dice([4]))[0]
+    r = next(r for e in events for r in e.rolls if r.kind == "Pick up")
+    assert r.modifier == -1 and "Pouring Rain" in (r.note or "")
+
+    dry = _weathered("perfect")
+    dry.apply(_ball_at(7, 13))
+    dry_events = pick_up(dry, dry.by_id("h00"), _dice([4]))[0]
+    assert next(r for e in dry_events for r in e.rolls if r.kind == "Pick up").modifier == 0
+
+
+def test_a_blizzard_slows_the_rush_and_forbids_the_long_throws():
+    """ "Whenever a player attempts to Rush, apply an additional -1 modifier …
+    Additionally, when a player makes a Pass Action, they may only attempt to make
+    a Quick Pass or a Short Pass."
+
+    The second clause is a LEGALITY, not a penalty — a Long Bomb in a blizzard is
+    refused with a reason rather than thrown at long odds.
+    """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _weathered("blizzard")
+    m.by_id("h00").player.PA = "3+"
+    m.apply(_ball_at(7, 13, carrier="h00"))
+
+    short = actions.get("pass")["validate"](m, {"player": "h00", "x": 7, "y": 17})
+    assert short.ok and short.detail["range"] == "Short Pass"
+    long_one = actions.get("pass")["validate"](m, {"player": "h00", "x": 7, "y": 24})
+    assert not long_one.ok and "Blizzard" in long_one.reason
+
+    # …and the Rush is a modifier, not a ban. No opponent nearby, so nothing but
+    # the weather touches the roll.
+    rushing = _weathered("blizzard")
+    rushing.by_id("h00").player.MA = "1"
+    assert _move(rushing, "h00", 6, 12, _dice([])).ok
+    out = _move(rushing, "h00", 6, 11, _dice([5]))
+    rush = next(r for e in out.events for r in e.rolls if r.kind == "Rush")
+    assert rush.modifier == -1
+
+
+def test_changing_weather_rerolls_the_table_and_scatters_on_perfect():
+    """ "Roll again on the Weather Table … If the new result is Perfect Conditions,
+    the ball will Scatter (3) in the air before it lands." """
+    from bloodbowl.engine import kickoff
+
+    m = _weathered("blizzard")
+    m.apply(_ball_at(7, 8))
+    out = kickoff.kickoff_event(m, _dice([4, 4, 3, 3, 1, 1, 1, 1]), receiving="home")
+    assert m.weather == "perfect", "the weather should have changed"
+    assert any(e.kind == "weather_changed" for e in out)
+    assert sum(1 for e in out for r in e.rolls if r.kind == "Scatter") >= 1 or any(
+        "Scatters three times" in (e.text or "") for e in out
+    )
+
+
+def test_a_random_player_pick_is_uniform_and_replayable():
+    """ "randomly selects one of their players on the pitch" — a die with as many
+    sides as they have, recorded like any other roll so a replay picks the same
+    player."""
+    from bloodbowl.engine.kickoff import _random_player
+
+    m = _match(("home", 1, 1, 6), ("home", 2, 2, 6), ("home", 3, 3, 6), ("away", 9, 9, 6))
+    assert _random_player(m, "home", _dice([1])).id == "h00"
+    assert _random_player(m, "home", _dice([3])).id == "h02"
+    assert _random_player(m, "home", _dice([2]), exclude={"h00"}).id == "h02"
+    assert _random_player(m, "away", _dice([1])).id == "a03"
+    assert _random_player(m, "home", _dice([1]), exclude={"h00", "h01", "h02"}) is None
+
+
+def test_pitch_invasion_stuns_d3_of_the_losing_sides_players():
+    """ "The Coach that rolled lowest, or BOTH on a tie, randomly selects D3 of
+    their players on the pitch. The selected players are immediately Placed Prone
+    and become Stunned." """
+    from bloodbowl.engine import kickoff
+    from bloodbowl.engine.events import Event
+
+    m = _match(*[("home", x, 5, 6) for x in range(1, 6)], *[("away", x, 20, 6) for x in range(1, 6)])
+    m.apply(Event(kind="match_started", detail={"kicking_to": "home", "staff": {"home": {"fan_factor": 3}}}))
+    # 5 + 3 fans = 8 for home, 2 for away → away loses. D3 rolls 2.
+    kickoff.kickoff_event(m, _dice([6, 6, 5, 2, 2, 1, 1]), receiving="home")
+    stunned = [p for p in m.players if p.down == "stunned"]
+    assert len(stunned) == 2, [p.id for p in stunned]
+    assert all(p.side == "away" for p in stunned), "the wrong side was invaded"
+
+
+def test_dodgy_snack_either_weakens_a_player_or_sends_them_off_the_pitch():
+    """ "On a 2+ the player reduces their MA and AV by 1 for the Drive. On a 1,
+    place the player in the Reserves box." """
+    from bloodbowl.engine import kickoff
+
+    def board():
+        return _match(("home", 1, 5, 6), ("home", 2, 5, 6), ("away", 1, 20, 6))
+
+    # 2D6 for the event (5+6 = 11, Dodgy Snack), then home 6 / away 5 so AWAY is
+    # the lowest, then the pick, then the snack roll.
+    sick = board()
+    kickoff.kickoff_event(sick, _dice([5, 6, 6, 5, 1, 1]), receiving="home")
+    assert sick.by_id("a02").place == "reserves"
+
+    queasy = board()
+    kickoff.kickoff_event(queasy, _dice([5, 6, 6, 5, 1, 4]), receiving="home")
+    assert queasy.by_id("a02").place == "pitch"

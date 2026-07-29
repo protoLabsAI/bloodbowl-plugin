@@ -22,14 +22,14 @@ Three verdicts, and the middle one is the important one:
 | SETTING UP THE GAME | partly | the practice board is permissive by design; no formal set-up phase |
 | YOUR FIRST FEW GAMES | n/a | advice, not a rule |
 | PRE-GAME SEQUENCE | no | a league-and-inducements sequence |
-| THE FANS · FAN FACTOR | no | an input the Kick-off table wants; zero for now |
-| THE WEATHER · WEATHER TABLE · WEATHER CONDITION | no | |
+| THE FANS · FAN FACTOR | partly | an input, defaulting to zero; Pitch Invasion uses it |
+| THE WEATHER · WEATHER TABLE · WEATHER CONDITION | yes | rolled at kick-off; rides the same modifier hook as Skills |
 | DETERMINE KICKING TEAM | partly | `bb_game_new(kicking_to=…)` says who receives; no coin toss |
 | START OF A DRIVE! · START OF DRIVE SEQUENCE | partly | the opening set-up is reused each drive |
 | SET-UP · TOO MANY PLAYERS | partly | reported by `bb_pitch_review`, never enforced |
 | THE KICK-OFF · NOMINATE KICKING PLAYER · PLACE THE KICK | yes | |
 | THE KICK DEVIATES | yes | D6 distance, D8 direction |
-| THE KICK-OFF EVENT · KICK-OFF EVENT TABLE | partly | all 11 rolled and quoted; 3 applied |
+| THE KICK-OFF EVENT · KICK-OFF EVENT TABLE | partly | all 11 rolled and quoted; 6 applied |
 | TOUCHBACKS | yes | including a bounce that crosses back |
 | A TEAM'S TURN! · ROUNDS · TURNS | yes | |
 | PLAYER ACTIVATIONS | yes | `acted` begins one, `done` ends it |
@@ -103,10 +103,10 @@ Four things, and knowing which one a rule is waiting on is most of the work:
    High Kick, Quick Snap, Blitz!, Get the Ref) and several Skills currently run on
    a stated engine policy where the rules give a coach a real choice. This is the
    one genuine design question left.
-2. ~~A uniform random pick.~~ `Dice.dn(sides)` exists now; Dodgy Snack and Pitch
-   Invasion are unblocked and just need writing.
+2. ~~A uniform random pick.~~ Done — `Dice.dn(sides)`.
 3. **Roster facts a practice board never bought** — Fan Factor, Apothecaries,
    Inducements. The pattern is settled: take them as input, default them, and say
    what was assumed.
-4. **Whole subsystems** — Throw Team-mate, Special Actions, Weather, Casualty
-   Rolls. Each is a day's work of its own, not a gap in something existing.
+4. **Whole subsystems** — Throw Team-mate, Special Actions, Apothecaries,
+   Inducements. Each is a piece of work of its own, not a gap in something that
+   exists.

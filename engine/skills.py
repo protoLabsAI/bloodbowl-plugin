@@ -136,6 +136,16 @@ def roll_modifier(match, player, test: str, base: int = 0, **flags) -> SkillCont
     for skill, fn in hooks_for("roll_modifier"):
         if can_use(player, skill):
             fn(ctx)
+    # …and the sky. Three of the five Weather conditions are modifiers on named
+    # tests, which is what this hook already carries, so they ride the same rail
+    # rather than being sprinkled through every roll site.
+    from .weather import modifier as weather_modifier
+    from .weather import name_of
+
+    sky = weather_modifier(getattr(match, "weather", "perfect"), test)
+    if sky:
+        ctx.value += sky
+        ctx.notes.append(f"{name_of(match.weather)}: {sky} to the {test.replace('_', ' ')}")
     return ctx
 
 
