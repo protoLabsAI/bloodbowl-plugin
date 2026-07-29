@@ -217,6 +217,9 @@ class Match:
     # Assistant Coaches, Cheerleaders and Fan Factor: roster facts a practice
     # board never bought, so they are inputs with a stated default of zero.
     staff: dict = field(default_factory=dict)
+    # The Weather Table result in force. Modifies named rolls through the same
+    # hook Skills use, so nothing has to ask the sky twice.
+    weather: str = "perfect"
     # Cheering Fans: which side's next Turn gets a free Offensive Assist on its
     # first Block, and whether that Turn has begun yet.
     cheer: dict = field(default_factory=dict)
@@ -266,6 +269,7 @@ class Match:
             self.rerolls_max = {"home": int(full.get("home", 0)), "away": int(full.get("away", 0))}
             self.rerolls = dict(self.rerolls_max)
             self.staff = {side: dict(vals) for side, vals in (d.get("staff") or {}).items()}
+            self.weather = str(d.get("weather") or "perfect")
 
         elif kind == "turn_started":
             self.clock.active = str(d.get("side") or self.clock.active)
@@ -337,6 +341,9 @@ class Match:
                 self.drive_rerolls[side] -= 1
             elif side in self.rerolls:
                 self.rerolls[side] = max(0, self.rerolls[side] - 1)
+
+        elif kind == "weather_changed":
+            self.weather = str(d.get("weather") or "perfect")
 
         elif kind == "kickoff_bonus":
             side = str(d.get("side") or "")
@@ -563,6 +570,7 @@ class Match:
             "rerolls_max": dict(self.rerolls_max),
             "drive_rerolls": dict(self.drive_rerolls),
             "staff": {k: dict(v) for k, v in self.staff.items()},
+            "weather": self.weather,
             "cheer": dict(self.cheer),
             "argue_banned": list(self.argue_banned),
             "turn_actions": dict(self.turn_actions),

@@ -41,6 +41,8 @@ from ..ruler import band, in_corridor
 from ..rules import markers_of_square
 from ..skills import may_reroll, roll_modifier, unmodelled_skills
 from ..state import Match
+from ..weather import bands_allowed
+from ..weather import name_of as weather_name
 from . import Legality, Outcome, Recorder, ended, refuse_if_spent, register
 
 
@@ -82,6 +84,12 @@ def validate(match: Match, cmd: dict) -> Legality:
     if reach is None:
         return Legality(False, f"({x},{y}) is beyond a Long Bomb — out of range")
     name, modifier = reach
+    # Blizzard: "when a player makes a Pass Action, they may only attempt to make
+    # a Quick Pass or a Short Pass." A legality rather than a penalty, so it is
+    # refused with a reason instead of thrown at long odds.
+    allowed = bands_allowed(match.weather)
+    if allowed is not None and name not in allowed:
+        return Legality(False, f"a {name} cannot be thrown in a {weather_name(match.weather)}")
     marking = len(markers_of_square(match, p.side, p.x, p.y))
     return Legality(
         True,

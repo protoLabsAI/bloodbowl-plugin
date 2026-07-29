@@ -28,9 +28,10 @@ the alternative is a coach believing a Blitz happened when nothing moved.
 from __future__ import annotations
 
 from ..pitch import LENGTH, LOS_ROWS, in_bounds
-from .ball import DIRECTIONS, bounce, catch
+from .ball import DIRECTIONS, bounce, catch, scatter
 from .dice import Roll, roll_2d6
 from .events import Event
+from .weather import from_roll as weather_from_roll
 
 # 2D6 -> (name, rule text, applied-by-this-engine?)
 KICKOFF_EVENTS: dict[int, tuple[str, str, bool]] = {
@@ -74,7 +75,7 @@ KICKOFF_EVENTS: dict[int, tuple[str, str, bool]] = {
         "Changing Weather",
         "Immediately make a new roll on the Weather Table. If the new result is Perfect Conditions, "
         "the ball will Scatter (3) in the air before it lands.",
-        False,  # Weather is not modelled.
+        True,  # Weather is modelled now.
     ),
     9: (
         "Quick Snap",
@@ -92,14 +93,14 @@ KICKOFF_EVENTS: dict[int, tuple[str, str, bool]] = {
         "Both Coaches roll a D6. The Coach that rolled the lowest, or BOTH Coaches on a tie, "
         "randomly selects one of their players on the pitch and rolls a D6. On a 2+ the player "
         "reduces their MA and AV by 1 for the Drive. On a 1, place the player in the Reserves box.",
-        False,  # Needs an unbiased random player pick this engine has no die for.
+        True,  # Dice.dn gives the unbiased pick this needed.
     ),
     12: (
         "Pitch Invasion",
         "Both Coaches roll a D6 and add their Fan Factor. The Coach that rolled lowest, or both on "
         "a tie, randomly selects D3 of their players on the pitch. The selected players are "
         "immediately Placed Prone and become Stunned.",
-        False,  # Fan Factor is not modelled.
+        True,  # Fan Factor is an input, like the other roster numbers.
     ),
 }
 
@@ -163,6 +164,33 @@ def kick(match, dice, receiving: str, aim: tuple[int, int] | None = None) -> lis
     # "Once the Kick-off Event has been fully resolved, the ball will land."
     events.extend(land(match, dice, receiving))
     return events
+
+
+def _random_player(match, side: str, dice, exclude=()):
+    """ "randomly selects one of their players on the pitch."
+
+    A uniform pick among however many they have, which is what ``Dice.dn`` is for
+    — and it is a recorded roll like any other, so a replay picks the same player.
+    """
+    pool = sorted((p for p in match.on_pitch(side) if p.id not in exclude), key=lambda p: p.id)
+    if not pool:
+        return None
+    return pool[dice.dn(len(pool)) - 1]
+
+
+def _losers(match, dice, label: str, staff_key: str = ""):
+    """The side(s) a kick-off event lands on: "the Coach that rolled the LOWEST,
+    or BOTH Coaches on a tie"."""
+    totals = {}
+    for side in ("home", "away"):
+        bonus = int((match.staff.get(side) or {}).get(staff_key, 0)) if staff_key else 0
+        d = dice.d6()
+        roll = Roll(kind=label, dice=[d], total=d + bonus, modifier=bonus, note=side)
+        dice.rolls.append(roll)
+        totals[side] = d + bonus
+    if totals["home"] == totals["away"]:
+        return ("home", "away")
+    return ("home",) if totals["home"] < totals["away"] else ("away",)
 
 
 def _contested(match, dice, staff_key: str, label: str):
@@ -247,6 +275,92 @@ def kickoff_event(match, dice, receiving: str) -> list[Event]:
                 )
             )
             match.apply(events[-1])
+
+    elif name == "Changing Weather":
+        # "Roll again on the Weather Table … If the new result is Perfect
+        # Conditions, the ball will Scatter (3) in the air before it lands."
+        total_w = dice.d6() + dice.d6()
+        key, wname, wtext = weather_from_roll(total_w)
+        roll = Roll(kind="Weather", dice=[total_w], total=total_w, note=wname)
+        dice.rolls.append(roll)
+        events.append(
+            Event(
+                kind="weather_changed",
+                detail={"weather": key, "roll": total_w},
+                rolls=[roll],
+                text=f"The weather turns: {wname.upper()} — {wtext}",
+            )
+        )
+        match.apply(events[-1])
+        if key == "perfect":
+            events.append(
+                Event(
+                    kind="note",
+                    text="Perfect Conditions — the ball Scatters three times in the air before it lands.",
+                )
+            )
+            match.apply(events[-1])
+            events.extend(scatter(match, dice, 3))
+
+    elif name == "Dodgy Snack":
+        # "Both Coaches roll a D6. The Coach that rolled the LOWEST, or BOTH
+        # Coaches on a tie, randomly selects one of their players on the pitch and
+        # rolls a D6. On a 2+ the player reduces their MA and AV by 1 for the
+        # Drive. On a 1, place the player in the Reserves box."
+        for side in _losers(match, dice, "Dodgy Snack"):
+            victim = _random_player(match, side, dice)
+            if victim is None:
+                continue
+            d = dice.d6()
+            r = Roll(kind="Dodgy Snack", dice=[d], total=d, target=2, passed=d >= 2)
+            dice.rolls.append(r)
+            if d >= 2:
+                events.append(
+                    Event(
+                        kind="player_status",
+                        actor=victim.id,
+                        detail={"snacked": True},
+                        rolls=[r],
+                        text=f"{victim.name()} eats something dodgy — MA and AV down 1 for the Drive. {r.describe()}",
+                    )
+                )
+            else:
+                events.append(
+                    Event(
+                        kind="player_left_pitch",
+                        actor=victim.id,
+                        detail={"reason": "dodgy snack"},
+                        rolls=[r],
+                        text=f"{victim.name()} is violently unwell and leaves the pitch. {r.describe()}",
+                    )
+                )
+            match.apply(events[-1])
+
+    elif name == "Pitch Invasion":
+        # "Both Coaches roll a D6 and add their Fan Factor. The Coach that rolled
+        # lowest, or both on a tie, randomly selects D3 of their players on the
+        # pitch. The selected players are immediately Placed Prone and become
+        # Stunned."
+        for side in _losers(match, dice, "Pitch Invasion", staff_key="fan_factor"):
+            n = dice.dn(3)
+            events.append(Event(kind="note", text=f"The crowd gets to {side}: D3 rolled {n}."))
+            match.apply(events[-1])
+            picked = []
+            for _ in range(n):
+                v = _random_player(match, side, dice, exclude={q.id for q in picked})
+                if v is None:
+                    break
+                picked.append(v)
+            for v in picked:
+                events.append(
+                    Event(
+                        kind="player_condition",
+                        actor=v.id,
+                        detail={"outcome": "stunned"},
+                        text=f"{v.name()} is dragged down by the crowd and Stunned.",
+                    )
+                )
+                match.apply(events[-1])
 
     elif name == "Time-out!":
         kicking = match.opponent(receiving)

@@ -218,6 +218,8 @@ def _tools(cfg: dict):
         rerolls: int = -1,
         assistant_coaches: int = 0,
         cheerleaders: int = 0,
+        fan_factor: int = 0,
+        weather: str = "",
     ) -> str:
         """Start a match from the current practice board.
 
@@ -233,7 +235,14 @@ def _tools(cfg: dict):
         ``assistant_coaches`` and ``cheerleaders`` are the same kind of number, and
         the Kick-off Event Table asks for both: Brilliant Coaching adds Assistant
         Coaches to a D6 for a free Team Re-roll, Cheering Fans adds Cheerleaders
-        for a free Offensive Assist. Both sides get whatever you pass.
+        for a free Offensive Assist, and Pitch Invasion adds ``fan_factor``. Both
+        sides get whatever you pass.
+
+        ``weather`` forces a condition for a drill — one of ``sweltering_heat``,
+        ``very_sunny``, ``perfect``, ``pouring_rain``, ``blizzard``. Left out, it
+        is rolled on the Weather Table like a real game, and the reply says which
+        came up. Rain penalises every ball roll and a Blizzard forbids a Long
+        Pass outright, so it is worth knowing before planning a drive.
         """
         from .engine.game import new_match
         from .store import load, save_match
@@ -247,9 +256,14 @@ def _tools(cfg: dict):
             kicking_to=("away" if kicking_to == "away" else "home"),
             rerolls=None if int(rerolls) < 0 else int(rerolls),
             staff={
-                side: {"assistant_coaches": int(assistant_coaches), "cheerleaders": int(cheerleaders)}
+                side: {
+                    "assistant_coaches": int(assistant_coaches),
+                    "cheerleaders": int(cheerleaders),
+                    "fan_factor": int(fan_factor),
+                }
                 for side in ("home", "away")
             },
+            weather=weather or None,
         )
         save_match(m)
         return json.dumps({"ok": True, "match": m.to_dict(include_log=False), "message": m.events[0].text})
