@@ -848,6 +848,42 @@ def _run_activation_gates(match: Match, action: str, cmd: dict, dice) -> dict | 
     return None
 
 
+def _pick_me_up(match: Match, dice) -> None:
+    """The Trait that hauls team-mates up between turns. See the quote in end_turn.
+
+    "Should a player with this Trait STAND UP AS A RESULT OF A TEAM-MATE using this
+    Trait, they may not also use this Trait during the same Turn" — so the helpers
+    are fixed before anybody is helped, rather than a player standing up and then
+    immediately helping the next one.
+    """
+    from .dice import Roll
+
+    side = match.opponent(match.clock.active)
+    helpers = [p for p in match.on_pitch(side) if p.down == "standing" and p.has_skill("Pick-me-up")]
+    if not helpers:
+        return
+    lifted = [h.id for h in helpers]
+    for p in match.on_pitch(side):
+        if p.down != "prone" or p.id in lifted:
+            continue
+        if not any(max(abs(h.x - p.x), abs(h.y - p.y)) <= 3 for h in helpers):
+            continue
+        d = dice.d6()
+        roll = Roll(kind="Pick-me-up", dice=[d], total=d, target=5, passed=d >= 5)
+        dice.rolls.append(roll)
+        match.apply(
+            Event(
+                kind="player_stood_up" if roll.passed else "note",
+                actor=p.id,
+                rolls=[roll],
+                detail={"skill": "Pick-me-up", "ma_used": 0} if roll.passed else {"skill": "Pick-me-up"},
+                text=f"{p.name()} is hauled to their feet between turns. {roll.describe()}"
+                if roll.passed
+                else f"{p.name()} stays down. {roll.describe()}",
+            )
+        )
+
+
 def _gate_report(match: Match, p, events: list, turnover: bool, text: str) -> dict:
     """A failed gate ends the activation before the declared Action happens."""
     from .actions import ended
@@ -932,7 +968,7 @@ def _unresolved_touchdown(match: Match):
     return None
 
 
-def end_turn(match: Match, forced: bool = False, start_next: bool = True) -> dict:
+def end_turn(match: Match, forced: bool = False, start_next: bool = True, dice=None) -> dict:
     """End the active team's turn.
 
     Stunned players recover to Prone at the end of a turn — modelled here rather
@@ -948,6 +984,14 @@ def end_turn(match: Match, forced: bool = False, start_next: bool = True) -> dic
                     text=f"{p.name()} recovers from Stunned to Prone.",
                 )
             )
+    # PICK-ME-UP: "At the end of each of the OPPOSITION'S Turns, roll a D6 for each
+    # PRONE TEAM-MATE WITHIN 3 SQUARES of one or more STANDING players with this
+    # Trait. On a 5+, the Prone player may immediately STAND UP."
+    #
+    # The opposition's turn, so it fires for the side that is NOT active — standing
+    # up for free and out of turn, which is why it is worth a Trait at all.
+    _pick_me_up(match, dice or dice_for(match))
+
     was = match.clock.active
     before = match.clock.half
     match.apply(

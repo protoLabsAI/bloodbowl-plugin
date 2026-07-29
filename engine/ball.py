@@ -29,7 +29,7 @@ from . import rerolls as team_rerolls
 from .dice import roll_target
 from .events import Event
 from .rules import agility_target, markers_of_square
-from .skills import may_reroll, roll_modifier
+from .skills import may_reroll, pro_reroll, roll_modifier
 from .state import touchdown_row
 
 
@@ -177,6 +177,12 @@ def catch(
         if allowed:
             r = roll_target(dice, "Catch (re-roll)", agility_target(player), mod, note=f"{skill} skill")
             rolls.append(r)
+        # PRO goes here rather than earlier: attempting it "cannot use a re-roll
+        # from any other source" on that die, so it is only worth trying when a
+        # free Skill re-roll was not available.
+        elif pro_reroll(match, player, "catch", dice, _sink(match, events)):
+            r = roll_target(dice, "Catch (Pro)", agility_target(player), mod)
+            rolls.append(r)
         elif team_reroll and team_rerolls.spend(match, player, "Catch", dice, _sink(match, events)):
             r = roll_target(dice, "Catch (Team Re-roll)", agility_target(player), mod)
             rolls.append(r)
@@ -238,6 +244,9 @@ def pick_up(match, player, dice, team_reroll: bool = False) -> tuple[list[Event]
         allowed, skill = may_reroll(match, player, "pick_up")
         if allowed:
             r = roll_target(dice, "Pick up (re-roll)", agility_target(player), mod, note=f"{skill} skill")
+            rolls.append(r)
+        elif pro_reroll(match, player, "pick_up", dice, _sink(match, events)):
+            r = roll_target(dice, "Pick up (Pro)", agility_target(player), mod)
             rolls.append(r)
         elif team_reroll and team_rerolls.spend(match, player, "Pick up", dice, _sink(match, events)):
             r = roll_target(dice, "Pick up (Team Re-roll)", agility_target(player), mod)

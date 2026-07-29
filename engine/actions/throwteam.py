@@ -51,7 +51,7 @@ from ..events import Event
 from ..injury import injure_by_crowd, knock_down
 from ..ruler import band
 from ..rules import adjacent, agility_target, markers_of_square
-from ..skills import roll_modifier, unmodelled_skills
+from ..skills import can_use, roll_modifier, unmodelled_skills
 from ..state import Match
 from . import Legality, Outcome, Recorder, ended, refuse_if_spent, register
 
@@ -132,9 +132,41 @@ def validate(match: Match, cmd: dict) -> Legality:
 def _scatter_player(match: Match, who, dice, rec: Recorder, times: int = 3) -> None:
     """ "Scatter (3) from the target square" — three D8 steps, applied to a PLAYER.
 
+    SWOOP replaces this: "they may CHOOSE NOT TO SCATTER before landing as normal.
+    If they do, position the Throw-in Template … Roll a D6 to determine the
+    direction … and then a second die to determine how many squares." One roll of
+    each rather than three D8 steps, so a Swooping player travels further in one
+    direction rather than staggering — and "may RE-ROLL the Agility Test when
+    attempting to land", which is the half that makes it worth taking.
+
     The ball's scatter moves the ball; this moves a body, and a body can end up
     off the pitch or on top of somebody, which is why it is its own walk.
     """
+    if can_use(who, "Swoop"):
+        # The Throw-in Template is three D8 directions wide; the engine takes the
+        # middle one, which is the direction the template faces. Documented as the
+        # measured half of a diagram, like the Range Ruler.
+        direction, distance = dice.d8(), dice.d6()
+        rec.emit(
+            Event(
+                kind="note",
+                actor=who.id,
+                detail={"skill": "Swoop", "direction": direction, "distance": distance},
+                text=f"{who.name()} Swoops rather than scattering — {distance} squares on a {direction}.",
+            )
+        )
+        dx, dy = DIRECTIONS[direction]
+        nx, ny = who.x + dx * distance, who.y + dy * distance
+        rec.emit(
+            Event(
+                kind="player_pushed",
+                actor=who.id,
+                detail={"x": nx, "y": ny, "swoop": True},
+                text=f"{who.name()} glides to ({nx},{ny}).",
+            )
+        )
+        return
+
     for _ in range(times):
         d = dice.d8()
         roll = Roll(kind="Scatter", dice=[d], total=d, note="D8")
@@ -178,7 +210,22 @@ def _land(match: Match, who, dice, rec: Recorder, penalty: int, had_ball: bool) 
                 text=f"{who.name()} crash-lands on {occupant.name()}.",
             )
         )
-        rec.absorb(knock_down(match, occupant, dice, by=who, cause="landed on"))
+        # LETHAL FLIGHT: "if they land in a square that contains an opposition
+        # player … and the opposition player is Knocked Down, then they may apply a
+        # +1 modifier to EITHER the Armour Roll or Injury Roll." The thrown
+        # player's Skill, spent on the player they landed on, the same way Mighty
+        # Blow's is.
+        lethal = 1 if (can_use(who, "Lethal Flight") and occupant.side != who.side) else 0
+        if lethal:
+            rec.emit(
+                Event(
+                    kind="note",
+                    actor=who.id,
+                    detail={"skill": "Lethal Flight"},
+                    text=f"{who.name()} comes down feet-first on {occupant.name()} — +1 to the Armour or Injury Roll.",
+                )
+            )
+        rec.absorb(knock_down(match, occupant, dice, by=who, cause="landed on", bonus=lethal))
         rec.absorb(bounce(match, dice))  # the thrown player bounces on from here
         rec.absorb(knock_down(match, who, dice, cause="crash-lands"))
         return had_ball

@@ -91,9 +91,25 @@ Three verdicts, and the middle one is the important one:
 
 ## Skills and Traits
 
-**94 of 108 modelled**, and all 108 quotable through `bb_get_skill` — see §2 for
-why those are two different jobs. `bb_list_skills(only_unmodelled=True)` is the
-live version of this count; the number above is only ever a snapshot.
+**108 of 108 modelled** — every Skill and Trait in the S3 core rules, and all 108
+quotable through `bb_get_skill`. `bb_list_skills(only_unmodelled=True)` is the live
+version of this count and now returns nothing.
+
+**"Modelled" is not the same as "complete", and 18 of them say so.** A Skill with a
+`partial=` is applied with a named clause left out, and `bb_game_state` reports
+those on the pitch under `partly_modelled_skills` every turn. They fall into four
+groups, and none of them is a gap in something that exists:
+
+* **A diagram the rules never put numbers to** — the Throw-in Template (Swoop,
+  Punt) and the Range Ruler, exactly as `engine/ruler.py` already says.
+* **A coach's free choice the engine takes for them, and says so** — Sidestep,
+  Stand Firm, Safe Pair of Hands, Trickster, Multiple Block's ordering.
+* **A roster fact the data does not carry** — team KEYWORDS (Hatred, Animosity)
+  and Thrall Linemen (Bloodlust). `data/rosters.json` has no keyword column
+  because the source tables do not print one.
+* **A League ledger the engine does not keep** — Star Player Points (Violent
+  Innovator), the Team Draft List (Insignificant), the post-game hire (Plague
+  Ridden).
 
 ## What blocks the rest
 
@@ -106,8 +122,9 @@ Four things, and knowing which one a rule is waiting on is most of the work:
    turn of activations with its own stop condition — runs on the same asking plus
    a mode (`engine/charge.py`).
 2. ~~A uniform random pick.~~ Done — `Dice.dn(sides)`.
-3. **Roster facts a practice board never bought** — Fan Factor, Apothecaries,
+3. **Roster facts a practice board never bought** — Fan Factor, team Keywords,
    Inducements. The pattern is settled: take them as input, default them, and say
    what was assumed.
-4. **Whole subsystems** — Inducements, and the League half of Apothecaries. Each is a piece of work of its own, not a gap in something that
-   exists.
+4. **Whole subsystems** — Inducements and the Pre-game Sequence, both of which are
+   LEAGUE play. Each is a piece of work of its own rather than a gap in something
+   that exists, and neither changes a match already under way.

@@ -45,6 +45,7 @@ not in this table.
 
 from __future__ import annotations
 
+from ...pitch import in_bounds
 from ..events import Event
 from ..injury import injury_roll, knock_down, place_prone, risk_injury
 from ..rules import adjacent, has_tackle_zone, strength_of
@@ -62,6 +63,7 @@ SPECIALS = {
     "Chainsaw": ("chainsaw", True),
     "Monstrous Mouth": ("chomp", True),
     "Hypnotic Gaze": ("gaze", True),
+    "Punt": ("punt", None),
 }
 BY_ACTION = {name: (skill, marked) for skill, (name, marked) in SPECIALS.items()}
 
@@ -156,6 +158,53 @@ def _resolve(action: str, match: Match, cmd: dict, dice) -> Outcome:
         # for whoever it landed on, and that can be the player who made it.
         _unmodified_armour(match, t if r.passed else p, dice, rec, "Projectile Vomit")
         turnover = not r.passed and p.down != "standing"
+
+    elif action == "punt":
+        # PUNT: "…they can Punt it downfield. Position the Throw-in Template over
+        # this player so it faces one of the two End Zones or either Sideline. Roll
+        # a D6 to determine the DIRECTION the ball is kicked, and then a SECOND D6
+        # to determine HOW MANY SQUARES in that direction the ball will travel. If
+        # this player has the KICK Skill, they may re-roll either or both of these
+        # dice — though they must decide whether to re-roll the direction OR NOT
+        # BEFORE ROLLING FOR THE DISTANCE."
+        #
+        # "No Turnover is caused if the ball comes to rest ON THE GROUND; however,
+        # if after the Punt … the ball is in possession of AN OPPOSITION PLAYER, or
+        # IN THE CROWD, a Turnover IS caused." Which makes it a way of clearing
+        # your own half rather than a way of scoring.
+        from ..ball import DIRECTIONS, bounce, catch
+
+        if match.ball.carrier != p.id:
+            return Outcome(ok=False, text=f"{p.name()} is not holding the ball and cannot Punt it")
+        direction, distance = dice.d8(), dice.d6()
+        rec.emit(
+            Event(
+                kind="note",
+                actor=p.id,
+                detail={"direction": direction, "distance": distance},
+                text=f"{p.name()} punts it {distance} squares.",
+            )
+        )
+        dx, dy = DIRECTIONS[direction]
+        nx, ny = p.x + dx * distance, p.y + dy * distance
+        rec.emit(
+            Event(
+                kind="ball_moved",
+                detail={"x": nx, "y": ny, "carrier": "", "punt": True},
+                text=f"The ball sails to ({nx},{ny}).",
+            )
+        )
+        landed = match.at(nx, ny)
+        if not in_bounds(nx, ny):
+            rec.emit(Event(kind="note", text="…and into the crowd. Turnover."))
+            turnover = True
+        elif landed is not None:
+            rec.absorb(catch(match, landed, dice))
+        else:
+            rec.absorb(bounce(match, dice))
+        holder = match.by_id(match.ball.carrier) if match.ball.carrier else None
+        if holder is not None and holder.side != p.side:
+            turnover = True
 
     elif action == "gaze":
         # HYPNOTIC GAZE: "they select a Standing opposition player adjacent to them

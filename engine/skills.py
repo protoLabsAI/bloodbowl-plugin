@@ -26,6 +26,8 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
+from .events import Event
+
 CATALOGUE = Path(__file__).resolve().parent.parent / "data" / "skills.json"
 
 # --- the registry ---------------------------------------------------------
@@ -164,6 +166,12 @@ def roll_modifier(match, player, test: str, base: int = 0, **flags) -> SkillCont
     return ctx
 
 
+# PRO cannot re-roll these: "an Armour Roll, Injury Roll, Casualty roll, a roll
+# made OUTSIDE OF THE PLAYER'S ACTIVATION, or any dice roll NOT MADE ON THE
+# PLAYER'S BEHALF (such as Argue the Call or if the Crowd Takes Action)".
+PRO_CANNOT_REROLL = ("armour", "injury", "casualty", "argue", "crowd", "intercept")
+
+
 def may_reroll(match, player, test: str, **flags) -> tuple[bool, str]:
     """May ``player`` re-roll this failed ``test``, and under what name?
 
@@ -176,6 +184,41 @@ def may_reroll(match, player, test: str, **flags) -> tuple[bool, str]:
             if ctx.flags.get("may_reroll"):
                 return True, skill
     return False, ""
+
+
+def pro_reroll(match, player, test: str, dice, rec) -> bool:
+    """PRO: "During this player's activation, they may attempt to re-roll a single
+    dice … To use this Skill, THE PLAYER MUST ROLL A D6: on a 3+ the dice may be
+    re-rolled, on a 1-2 the dice may not be re-rolled … Once a player has ATTEMPTED
+    to use this Skill, they CANNOT USE A RE-ROLL FROM ANY OTHER SOURCE to re-roll
+    the dice."
+
+    A re-roll that can fail, which is what makes it a General Skill rather than a
+    good one — and attempting it burns the Team Re-roll option for that die, so it
+    is asked LAST, after the free Skill re-rolls and only in place of a Team one.
+
+    Returns True if the die may be rolled again.
+    """
+    if not can_use(player, "Pro") or player.pro_used:
+        return False
+    if any(test.casefold().startswith(x) for x in PRO_CANNOT_REROLL):
+        return False
+    from .dice import Roll
+
+    d = dice.d6()
+    roll = Roll(kind="Pro", dice=[d], total=d, target=3, passed=d >= 3)
+    dice.rolls.append(roll)
+    rec.emit(
+        Event(
+            kind="skill_spent",
+            actor=player.id,
+            rolls=[roll],
+            detail={"flag": "pro_used", "skill": "Pro"},
+            text=f"{player.name()} is a Pro and tries to re-roll the {test}. {roll.describe()}"
+            + ("" if roll.passed else " No re-roll — and no other re-roll may be used on it either."),
+        )
+    )
+    return bool(roll.passed)
 
 
 # --- activation gates ------------------------------------------------------
@@ -857,6 +900,21 @@ def _steady_footing(ctx: SkillContext) -> None:
 # --- Skills that grant a re-roll ------------------------------------------
 
 
+@skill_hook("Pro", "pro")
+def _pro(ctx: SkillContext) -> None:
+    """S3: "During this player's activation, they may attempt to re-roll a SINGLE
+    DICE … the player must roll a D6: ON A 3+ the dice may be re-rolled … The Skill
+    CANNOT be used to re-roll a dice made as part of an ARMOUR ROLL, INJURY ROLL,
+    CASUALTY roll, a roll made OUTSIDE OF THE PLAYER'S ACTIVATION, or any dice roll
+    NOT MADE ON THE PLAYER'S BEHALF … Once a player has ATTEMPTED to use this
+    Skill, they cannot use a re-roll from ANY OTHER SOURCE to re-roll the dice."
+
+    A re-roll that can fail, and attempting it burns the Team Re-roll option for
+    that die — so it is asked LAST, after the free Skill re-rolls and in place of
+    a Team Re-roll rather than before one. See `pro_reroll`.
+    """
+
+
 @skill_hook("Sure Hands", "reroll")
 def _sure_hands(ctx: SkillContext) -> None:
     """S3: "This player may re-roll the D6 when attempting to pick up the ball,
@@ -974,6 +1032,64 @@ def _blitzy(ctx: SkillContext) -> bool:
     return ctx.flags.get("action") in ("block", "blitz")
 
 
+@skill_hook(
+    "Bloodlust",
+    "activation_gate",
+    partial="the bite itself — the engine applies the failure (Distracted, the ball dropped, "
+    "the Touchdown denied) rather than offering the Thrall Lineman it has no roster for",
+)
+def _bloodlust(ctx: SkillContext) -> None:
+    """S3: "…they must roll a D6, ADDING 1 TO THE ROLL if they declared a Block
+    Action or a Blitz Action. If they roll EQUAL TO OR HIGHER THAN the number shown
+    in brackets, they may activate as normal … If this player DOES NOT BITE a
+    Thrall Lineman for any reason, then A TURNOVER IS CAUSED, this player becomes
+    DISTRACTED, and will IMMEDIATELY DROP THE BALL if they were holding it. If this
+    player was in the opposing End Zone, NO TOUCHDOWN IS SCORED."
+
+    The one gate with a MODIFIER that depends on the declared Action, which is why
+    the gate mechanism carries `action` in its flags at all. The bite is the half
+    the engine cannot offer — a Thrall Lineman is a roster fact — so the failure
+    branch is the one that applies, and it is the harsher of the two.
+    """
+    import re as _re
+
+    target = 4
+    for raw in ctx.player.player.skills or []:
+        if raw.split("(")[0].strip().casefold() == "bloodlust":
+            m = _re.search(r"\d+", raw)
+            target = int(m.group(0)) if m else 4
+    ctx.flags.update(
+        target=target,
+        modifier=1 if ctx.flags.get("action") in ("block", "blitz") else 0,
+        on_fail="distracted",
+    )
+    ctx.notes.append("Bloodlust — and no Thrall Lineman to bite")
+
+
+@skill_hook(
+    "Animosity",
+    "activation_gate",
+    partial="the keyword in brackets is not checked — the engine has no team keywords, so it "
+    "applies to every team-mate, which is the Animosity (all) several rosters print",
+)
+def _animosity(ctx: SkillContext) -> None:
+    """S3: "Whenever this player attempts to perform A PASS ACTION OR A HAND-OFF
+    ACTION to a team-mate WITH THE SAME KEYWORD as the one shown in brackets, roll
+    a D6. ON A 1, the player REFUSES to perform the action and their activation
+    immediately ends."
+
+    Keywords are a roster fact `data/rosters.json` does not carry, so the engine
+    rolls it for the two Actions the rule names and applies it against every
+    team-mate — which is Animosity (all), the version several rosters print. The
+    narrowing is stated rather than silently dropped.
+    """
+    if ctx.flags.get("action") not in ("pass", "handoff"):
+        ctx.flags.update(skip=True)
+        return
+    ctx.flags.update(target=2, modifier=0, on_fail="end_activation")
+    ctx.notes.append("Animosity — they may refuse")
+
+
 @skill_hook("Bone Head", "activation_gate")
 def _bone_head(ctx: SkillContext) -> None:
     """S3: "Whenever this player is activated, after declaring their Action they
@@ -1045,6 +1161,24 @@ def _stab(ctx: SkillContext) -> None:
 
     Unmodifiable is why it passes no responsible player — Mighty Blow and Claws
     both hang off one, and letting either through would modify the unmodifiable.
+    """
+
+
+@skill_hook(
+    "Punt",
+    "special_action",
+    partial="the Kick Skill's re-roll of the direction or distance, and the Throw-in "
+    "Template's spread — the template is a diagram, like the Range Ruler",
+)
+def _punt(ctx: SkillContext) -> None:
+    """S3: "…they can Punt it downfield. Position the Throw-in Template … Roll a D6
+    to determine the DIRECTION … and then a SECOND D6 to determine HOW MANY SQUARES
+    … NO TURNOVER is caused if the ball comes to rest ON THE GROUND; however, if
+    after the Punt Special Action is resolved the ball is in possession of AN
+    OPPOSITION PLAYER, or IN THE CROWD, a Turnover IS caused."
+
+    Which makes it a way of clearing your own half rather than a way of scoring:
+    the ball landing loose downfield costs nothing, and only handing it over does.
     """
 
 
@@ -1208,6 +1342,37 @@ def _always_hungry(ctx: SkillContext) -> None:
     Fumbled Throw. On a 1, the player will eat their team-mate — immediately
     remove them from your Team Draft List. No Apothecary can be used to save them,
     and no Regeneration rolls can be attempted." """
+
+
+@skill_hook("Lethal Flight", "action")
+def _lethal_flight(ctx: SkillContext) -> None:
+    """S3: "When this player is thrown as part of a Throw Team-mate Action, if they
+    land in a square that contains an opposition player … AND THE OPPOSITION PLAYER
+    IS KNOCKED DOWN, then they may apply a +1 modifier to EITHER the Armour Roll or
+    Injury Roll."
+
+    The thrown player's Skill, spent on the player they landed on — the same shape
+    as Mighty Blow and Arm Bar, so it rides the same `bonus`.
+    """
+
+
+@skill_hook(
+    "Swoop",
+    "action",
+    partial="the Throw-in Template's spread — the engine takes the direction the template "
+    "faces, as it does for the Range Ruler, because the template is a diagram",
+)
+def _swoop(ctx: SkillContext) -> None:
+    """S3: "…they may CHOOSE NOT TO SCATTER before landing as normal. If they do,
+    position the Throw-in Template over this player … Roll a D6 to determine the
+    direction this player will travel, and then a second die … Additionally, if
+    they choose not to Scatter as normal, this player MAY RE-ROLL THE AGILITY TEST
+    when attempting to land."
+
+    One roll of each rather than three D8 steps, so a Swooping player travels
+    further in one direction rather than staggering — and the landing re-roll is
+    the half that makes it worth taking.
+    """
 
 
 @skill_hook("Bullseye", "action")
@@ -1467,6 +1632,56 @@ def _put_the_boot_in(ctx: SkillContext) -> None:
 # --- The Skills that make a Block into more than one thing ----------------
 
 
+@skill_hook(
+    "Violent Innovator",
+    "scoring",
+    partial="the whole Skill — it awards STAR PLAYER POINTS, which are a post-game ledger this engine does not keep",
+)
+def _violent_innovator(ctx: SkillContext) -> None:
+    """S3: "If an opposition player suffers a Casualty as a result of a Special
+    Action this player performed, this player WILL EARN STAR PLAYER POINTS for
+    causing a Casualty as appropriate."
+
+    Nothing in a match turns on it. Stated rather than left unmodelled, because
+    "not modelled" implies a gap the engine could close — SPP are a League ledger,
+    not a rule about the pitch.
+    """
+
+
+@skill_hook(
+    "Plague Ridden",
+    "scoring",
+    partial="the whole Trait — it adds a player to a TEAM ROSTER between matches, and "
+    "this engine has no roster to add to",
+)
+def _plague_ridden(ctx: SkillContext) -> None:
+    """S3: "Once per game, when a player with this Trait causes a Casualty … and
+    that player suffers a DEAD result … you may immediately add one new Lineman
+    player from your team's Team Roster to your RESERVES BOX … During the Post-game
+    Sequence, this player may be hired…"
+
+    The Reserves Box half would be in scope, but the player added comes from a Team
+    Roster the engine does not have, and the rest is explicitly Post-game.
+    """
+
+
+@skill_hook(
+    "Hatred",
+    "block_reroll",
+    partial="the keyword in brackets is not checked — the engine has no team keywords, "
+    "so it applies against every opponent",
+)
+def _hatred(ctx: SkillContext) -> None:
+    """S3: "Whenever this player performs a Block Action against A PLAYER WITH THE
+    SAME KEYWORD AS THAT SHOWN IN BRACKETS, this player may re-roll a single Player
+    Down result."
+
+    The keyword is the half this engine cannot check: keywords are a roster fact
+    and `data/rosters.json` does not carry them. Applying it against everybody is
+    the generous reading and is stated as such, rather than silently doing nothing.
+    """
+
+
 @skill_hook("Frenzy", "second_action")
 def _frenzy(ctx: SkillContext) -> None:
     """S3: "Every time this player performs a Block Action, if the target is Pushed
@@ -1523,6 +1738,82 @@ def _hit_and_run(ctx: SkillContext) -> None:
 
     That last sentence makes it a retreat rather than a reposition: there has to BE
     a square with nobody adjacent, or the Skill cannot be used at all.
+    """
+
+
+@skill_hook("Saboteur", "block_reaction")
+def _saboteur_skill(ctx: SkillContext) -> None:
+    """S3: "When THIS PLAYER IS KNOCKED DOWN as a result of AN OPPOSITION PLAYER'S
+    Block Action, BEFORE THE ARMOUR ROLL IS MADE, they may roll a D6 … On a 4+ …
+    the opposition player is ALSO Knocked Down … If this player's sabotaged weapon
+    goes off, then they are AUTOMATICALLY KNOCKED OUT and THE ARMOUR ROLL IS NOT
+    MADE for them."
+
+    A trade, not a save, and the only way in the game to spend a player
+    deliberately. Whose Skill it is matters: it belongs to the player going to the
+    floor, not to the one who put them there.
+    """
+
+
+@skill_hook(
+    "Trickster",
+    "block_reaction",
+    partial="the engine picks the square — 'any other unoccupied square adjacent to the "
+    "player performing the Action' is a coach's choice, and it takes the one with fewest "
+    "opposition assists",
+)
+def _trickster(ctx: SkillContext) -> None:
+    """S3: "Whenever an opposition player attempts to perform a Block Action against
+    this player … BEFORE DETERMINING HOW MANY DICE ARE ROLLED, this player may be
+    removed from the pitch and placed in ANY OTHER UNOCCUPIED SQUARE ADJACENT TO
+    THE PLAYER PERFORMING THE ACTION. The Action then takes place as normal."
+
+    Before the dice are counted, so it is a way of changing the ASSISTS rather than
+    of escaping — they are still adjacent, still Blocked, just somewhere better.
+    """
+
+
+@skill_hook("Dump-off", "block_reaction")
+def _dump_off(ctx: SkillContext) -> None:
+    """S3: "Whenever an opposition player attempts to perform a Block Action against
+    this player … this player may immediately perform a QUICK PASS before the
+    Action targeting them is resolved. This Quick Pass CANNOT CAUSE A TURNOVER, but
+    otherwise follows all the normal rules … Once the Quick Pass has been resolved,
+    this Action targeting this player CONTINUES."
+
+    The ball leaving before the hit lands is the whole point: it is how a carrier
+    survives being caught, and the no-turnover clause is what makes trying it free.
+    """
+
+
+@skill_hook("Pick-me-up", "end_of_turn")
+def _pick_me_up(ctx: SkillContext) -> None:
+    """S3: "At the end of each of the OPPOSITION'S Turns, roll a D6 for each PRONE
+    TEAM-MATE WITHIN 3 SQUARES of one or more STANDING players with this Trait. On
+    a 5+, the Prone player may immediately STAND UP. Should a player with this
+    Trait stand up as a result of a team-mate using this Trait, they may not also
+    use this Trait during the same Turn."
+
+    Standing up for free and out of turn, which is why it is worth a Trait at all —
+    a Prone player normally spends three squares of their own activation on it.
+    """
+
+
+@skill_hook(
+    "On the Ball",
+    "reaction",
+    partial="only the KICK-OFF half — 'after the Kick Deviates but before the Kick-off Event "
+    "is rolled'. The Pass-Action half needs the engine to interrupt an opponent's Action, "
+    "which nothing else in here does",
+)
+def _on_the_ball(ctx: SkillContext) -> None:
+    """S3, two halves. The one the engine applies: "during the Start of Drive
+    Sequence, AFTER THE KICK DEVIATES but BEFORE THE KICK-OFF EVENT IS ROLLED, a
+    single OPEN player on the RECEIVING team with this Skill may move UP TO 3
+    SQUARES … they cannot Rush … may not move into the opposition half."
+
+    The other half interrupts an opponent's Pass Action mid-declaration, which is
+    a shape nothing else in this engine has, and is stated rather than faked.
     """
 
 
