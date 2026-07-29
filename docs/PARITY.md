@@ -39,7 +39,7 @@ Three verdicts, and the middle one is the important one:
 | BLITZ ACTION | yes | |
 | PASS ACTION | yes | ranges are measured, not quoted — see §2 |
 | HAND-OFF ACTION | yes | |
-| THROW TEAM-MATE ACTION | no | |
+| THROW TEAM-MATE ACTION | yes | Quick and Short Throws only |
 | FOUL ACTION | yes | |
 | SPECIAL ACTION | no | Stab, Chainsaw, Breathe Fire, Projectile Vomit, Chomp, Bombardier |
 | FOREGO ACTIVATION | yes | and it still faces the crowd |
@@ -75,9 +75,9 @@ Three verdicts, and the middle one is the important one:
 | THROW-INS | partly | thrown straight back in; the template is a diagram |
 | CORNER THROW-INS | no | |
 | HAND-OFF ACTIONS! · PERFORMING A HAND-OFF | yes | |
-| THROW TEAM-MATE ACTIONS! · PERFORMING A THROW TEAM-MATE ACTION | no | |
-| SUPERB THROW · SUBPAR THROW · FUMBLED THROW · LANDING | no | |
-| LANDING IN AN OCCUPIED SQUARE | no | |
+| THROW TEAM-MATE ACTIONS! · PERFORMING A THROW TEAM-MATE ACTION | yes | |
+| SUPERB THROW · SUBPAR THROW · FUMBLED THROW · LANDING | yes | dropping them is only a turnover if they held the ball |
+| LANDING IN AN OCCUPIED SQUARE | yes | the occupant is flattened even if already down |
 | TOUCHDOWN! · SCORING A TOUCHDOWN | yes | |
 | SCORING DURING YOUR OPPONENT'S TURN | yes | a push into the End Zone scores |
 | STALLING | yes | including the hand-off exception |
@@ -91,7 +91,7 @@ Three verdicts, and the middle one is the important one:
 
 ## Skills and Traits
 
-**34 of 108 modelled**, and all 108 quotable through `bb_get_skill` — see §2 for
+**38 of 108 modelled**, and all 108 quotable through `bb_get_skill` — see §2 for
 why those are two different jobs. `bb_list_skills(only_unmodelled=True)` is the
 live version of this count; the number above is only ever a snapshot.
 
@@ -107,6 +107,5 @@ Four things, and knowing which one a rule is waiting on is most of the work:
 3. **Roster facts a practice board never bought** — Fan Factor, Apothecaries,
    Inducements. The pattern is settled: take them as input, default them, and say
    what was assumed.
-4. **Whole subsystems** — Throw Team-mate, Special Actions, Apothecaries,
-   Inducements. Each is a piece of work of its own, not a gap in something that
+4. **Whole subsystems** — Special Actions, Apothecaries, Inducements. Each is a piece of work of its own, not a gap in something that
    exists.

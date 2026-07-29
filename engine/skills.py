@@ -722,6 +722,36 @@ def _animal_savagery(ctx: SkillContext) -> None:
     ctx.flags.update(target=4, modifier=2 if _blitzy(ctx) else 0, on_fail="lash_out")
 
 
+@skill_hook("Throw Team-mate", "action")
+def _throw_team_mate(ctx: SkillContext) -> None:
+    """S3: "This player may declare the Throw Team-mate Action." The permission
+    IS the Trait — see actions/throwteam.py."""
+
+
+@skill_hook("Right Stuff", "action")
+def _right_stuff(ctx: SkillContext) -> None:
+    """S3: "This player can be thrown by a team-mate with the Throw Team-mate
+    Trait, EVEN IF THIS PLAYER IS PRONE." Being on the floor is explicitly no
+    obstacle to being thrown — though it does mean an automatic fail on landing."""
+
+
+@skill_hook("Always Hungry", "action")
+def _always_hungry(ctx: SkillContext) -> None:
+    """S3: "Whenever this player performs a Throw Team-mate Action, BEFORE making
+    the Passing Ability Test, they must roll a D6. On a 2+ … as normal. On a 1,
+    the player will attempt to eat their team-mate … On a 2+, the team-mate will
+    squirm free and the Throw Team-mate Action will automatically result in a
+    Fumbled Throw. On a 1, the player will eat their team-mate — immediately
+    remove them from your Team Draft List. No Apothecary can be used to save them,
+    and no Regeneration rolls can be attempted." """
+
+
+@skill_hook("Bullseye", "action")
+def _bullseye(ctx: SkillContext) -> None:
+    """S3: "if the result of the throw is a Superb Throw then the thrown player
+    will not Scatter before landing and will instead land in the target square." """
+
+
 @skill_hook("Loner", "team_reroll")
 def _loner(ctx: SkillContext) -> None:
     """S3: "Whenever this player wishes to use a Team Re-roll, they must roll a D6.

@@ -12,6 +12,21 @@ from __future__ import annotations
 import pytest
 
 
+def _unmodelled_pair():
+    """Two Skills the engine does not model, chosen from the catalogue at run time.
+
+    Hard-coding names here has gone stale three times — Really Stupid, then Always
+    Hungry — because the whole point of the project is that the list shrinks. The
+    fixtures below are about the REPORTING mechanism, not about which Skill it
+    names, so they ask.
+    """
+    from bloodbowl.engine.skills import find_skills
+
+    names = [s["name"].title() for s in find_skills(only_unmodelled=True)]
+    assert len(names) >= 2, "everything is modelled — these fixtures need rewriting, happily"
+    return names[0], names[1]
+
+
 def _match(*players, active="home"):
     """A match with the given (side, x, y, MA, AG, skills) players, ids h00.. a00.."""
     from bloodbowl.engine.state import Match, PlayerState
@@ -340,10 +355,10 @@ def test_prehensile_tail_is_an_opponents_skill_that_modifies_our_roll():
 def test_unmodelled_skills_are_reported_rather_than_ignored():
     """A Troll's Always Hungry is not implemented. The engine says so instead of
     quietly playing as though the player did not have it."""
-    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry", "Regeneration", "Jump Up", "Mighty Blow"]))
+    m = _match(("home", 7, 13, 6, "3+", [*_unmodelled_pair(), "Jump Up", "Mighty Blow"]))
     out = _move(m, "h00", 7, 14, _dice([]))
-    assert "Always Hungry" in out.unmodelled
-    assert "Regeneration" in out.unmodelled  # was Really Stupid until that became modelled
+    first, second = _unmodelled_pair()
+    assert first in out.unmodelled and second in out.unmodelled
     # Both of these ARE modelled, and the list must shrink as skills land — this
     # test caught Mighty Blow moving from unmodelled to modelled when Blocking
     # was added, which is exactly the drift it is here to notice.
@@ -362,16 +377,16 @@ def test_an_unmodelled_skill_is_announced_once_per_match_not_once_per_step():
     """
     from bloodbowl.engine.game import act
 
-    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry", "Regeneration"]))
+    m = _match(("home", 7, 13, 6, "3+", list(_unmodelled_pair())))
     first = act(m, "move", {"player": "h00", "x": 7, "y": 14})
-    assert first["unmodelled_skills"] == ["Always Hungry", "Regeneration"]
+    assert first["unmodelled_skills"] == list(_unmodelled_pair())
 
     again = act(m, "move", {"player": "h00", "x": 7, "y": 15})
     assert again["unmodelled_skills"] == []
     # …but the raw list is untouched, so nothing has become invisible.
     from bloodbowl.engine.skills import unmodelled_skills
 
-    assert unmodelled_skills(m.by_id("h00")) == ["Always Hungry", "Regeneration"]
+    assert unmodelled_skills(m.by_id("h00")) == list(_unmodelled_pair())
 
 
 def test_the_first_mention_lands_in_the_log_not_only_in_the_reply():
@@ -379,12 +394,12 @@ def test_the_first_mention_lands_in_the_log_not_only_in_the_reply():
     result is invisible to anyone reading the match back."""
     from bloodbowl.engine.game import act
 
-    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry"]))
+    m = _match(("home", 7, 13, 6, "3+", [_unmodelled_pair()[0]]))
     act(m, "move", {"player": "h00", "x": 7, "y": 14})
     noted = [e for e in m.events if e.kind == "unmodelled_noted"]
     assert len(noted) == 1
-    assert "Always Hungry" in noted[0].text
-    assert noted[0].detail["skills"] == ["Always Hungry"]
+    assert _unmodelled_pair()[0] in noted[0].text
+    assert noted[0].detail["skills"] == [_unmodelled_pair()[0]]
 
 
 def test_the_already_said_that_ledger_survives_a_reload():
@@ -397,8 +412,8 @@ def test_the_already_said_that_ledger_survives_a_reload():
     from bloodbowl.engine.game import act
     from bloodbowl.engine.state import Match
 
-    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry"]))
-    assert act(m, "move", {"player": "h00", "x": 7, "y": 14})["unmodelled_skills"] == ["Always Hungry"]
+    m = _match(("home", 7, 13, 6, "3+", [_unmodelled_pair()[0]]))
+    assert act(m, "move", {"player": "h00", "x": 7, "y": 14})["unmodelled_skills"] == [_unmodelled_pair()[0]]
 
     reloaded = Match.from_dict(m.to_dict())
     assert act(reloaded, "move", {"player": "h00", "x": 7, "y": 15})["unmodelled_skills"] == []
@@ -410,13 +425,13 @@ def test_the_standing_summary_names_every_unmodelled_skill_and_its_holders():
     from bloodbowl.engine.skills import unmodelled_on_pitch
 
     m = _match(
-        ("home", 7, 13, 6, "3+", ["Always Hungry", "Block"]),
-        ("home", 8, 13, 6, "3+", ["Always Hungry"]),
-        ("away", 7, 14, 6, "3+", ["Regeneration"]),
+        ("home", 7, 13, 6, "3+", [_unmodelled_pair()[0], "Block"]),
+        ("home", 8, 13, 6, "3+", [_unmodelled_pair()[0]]),
+        ("away", 7, 14, 6, "3+", [_unmodelled_pair()[1]]),
     )
     summary = unmodelled_on_pitch(m)
-    assert {row["skill"] for row in summary} == {"Always Hungry", "Regeneration"}
-    hungry = next(row for row in summary if row["skill"] == "Always Hungry")
+    assert {row["skill"] for row in summary} == set(_unmodelled_pair())
+    hungry = next(row for row in summary if row["skill"] == _unmodelled_pair()[0])
     assert hungry["players"] == ["h00", "h01"] and hungry["count"] == 2
     # Block IS modelled, so it must not appear.
     assert "Block" not in {row["skill"] for row in summary}
@@ -430,10 +445,10 @@ def test_the_standing_summary_is_derived_so_it_drops_a_player_who_leaves():
     from bloodbowl.engine.events import Event
     from bloodbowl.engine.skills import unmodelled_on_pitch
 
-    m = _match(("home", 7, 13, 6, "3+", ["Always Hungry"]), ("away", 7, 14, 6, "3+", ["Regeneration"]))
+    m = _match(("home", 7, 13, 6, "3+", [_unmodelled_pair()[0]]), ("away", 7, 14, 6, "3+", [_unmodelled_pair()[1]]))
     assert len(unmodelled_on_pitch(m)) == 2
     m.apply(Event(kind="player_condition", actor=m.players[1].id, detail={"outcome": "casualty"}))
-    assert [row["skill"] for row in unmodelled_on_pitch(m)] == ["Always Hungry"]
+    assert [row["skill"] for row in unmodelled_on_pitch(m)] == [_unmodelled_pair()[0]]
 
 
 # --- strict in play --------------------------------------------------------
@@ -1962,7 +1977,9 @@ def test_only_one_of_each_capped_action_per_team_per_turn(action, first, second)
     holder = m.ball.carrier or "h01"
     legal = actions.get(action)["validate"](m, {"player": holder, **second})
     assert not legal.ok
-    assert f"one {action.title()} Action this turn" in legal.reason, legal.reason
+    from bloodbowl.engine.actions import DISPLAY
+
+    assert f"one {DISPLAY[action]} Action this turn" in legal.reason, legal.reason
 
 
 def test_block_and_move_are_not_capped():
@@ -3733,3 +3750,161 @@ def test_dodgy_snack_either_weakens_a_player_or_sends_them_off_the_pitch():
     queasy = board()
     kickoff.kickoff_event(queasy, _dice([5, 6, 6, 5, 1, 4]), receiving="home")
     assert queasy.by_id("a02").place == "pitch"
+
+
+# --- Throw Team-mate -------------------------------------------------------
+
+
+def _ttm_board(thrower=("Throw Team-mate",), thrown=("Right Stuff",), pa="3+"):
+    m = _match(("home", 7, 8, 6, "3+", list(thrower)), ("home", 7, 9, 6, "3+", list(thrown)))
+    m.by_id("h00").player.PA = pa
+    return m
+
+
+def _throw(m, dice, x=7, y=12, **cmd):
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    return actions.get("throwteam")["resolve"](m, {"player": "h00", "target": "h01", "x": x, "y": y, **cmd}, dice)
+
+
+def test_only_a_thrower_may_throw_and_only_right_stuff_may_be_thrown():
+    """ "A player may only declare this Action if they have the Throw Team-mate
+    Trait … they may pick up an adjacent team-mate with the Right Stuff Trait." """
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    v = actions.get("throwteam")["validate"]
+
+    no_trait = _ttm_board(thrower=())
+    assert not v(no_trait, {"player": "h00", "target": "h01", "x": 7, "y": 12}).ok
+
+    wrong_cargo = _ttm_board(thrown=())
+    out = v(wrong_cargo, {"player": "h00", "target": "h01", "x": 7, "y": 12})
+    assert not out.ok and "Right Stuff" in out.reason
+
+    ok = _ttm_board()
+    assert v(ok, {"player": "h00", "target": "h01", "x": 7, "y": 12}).ok
+
+
+def test_a_team_mate_does_not_go_as_far_as_a_ball():
+    """ "The declared square must be wholly underneath the FIRST TWO SECTIONS of the
+    Range Ruler … I: Quick Throw, II: Short Throw." There is no Long Throw."""
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _ttm_board()
+    v = actions.get("throwteam")["validate"]
+
+    assert v(m, {"player": "h00", "target": "h01", "x": 7, "y": 10}).detail["range"] == "Quick Throw"
+    assert v(m, {"player": "h00", "target": "h01", "x": 7, "y": 13}).detail["range"] == "Short Throw"
+    far = v(m, {"player": "h00", "target": "h01", "x": 7, "y": 18})
+    assert not far.ok and "does not go as far as a ball" in far.reason
+
+
+def test_a_prone_team_mate_can_still_be_thrown_but_cannot_land_on_their_feet():
+    """ "can be thrown by a team-mate with the Throw Team-mate Trait, EVEN IF THIS
+    PLAYER IS PRONE" — and then "Players that were Prone, Stunned or Distracted
+    when they were thrown will AUTOMATICALLY FAIL the Agility Test to land." """
+    from bloodbowl.engine import actions
+    from bloodbowl.engine.events import Event
+
+    actions.load_all()
+    m = _ttm_board()
+    m.apply(Event(kind="player_placed_prone", actor="h01", detail={"down": "prone"}))
+    assert actions.get("throwteam")["validate"](m, {"player": "h00", "target": "h01", "x": 7, "y": 12}).ok
+
+    out = _throw(m, _dice([5, 1, 1, 1, 2, 2]))  # a Superb Throw, then scatter, then the fall
+    assert any("cannot land on their feet" in (e.text or "") for e in out.events)
+    assert m.by_id("h01").down != "standing"
+
+
+def test_dropping_a_team_mate_is_only_a_turnover_if_they_had_the_ball():
+    """ "this will only cause a Turnover IF THE THROWN PLAYER WAS HOLDING THE BALL,
+    otherwise no Turnover is caused."
+
+    Nearly everything that goes wrong on your own turn ends it. This does not —
+    which is what makes launching a Goblin at somebody a sane thing to do.
+    """
+    empty = _ttm_board()
+    out = _throw(empty, _dice([5, 1, 1, 1, 1, 2, 2]))
+    assert empty.by_id("h01").down != "standing", "they should have hit the ground"
+    assert not out.turnover, "an empty-handed Goblin costs nothing"
+
+    carrying = _ttm_board()
+    carrying.apply(_ball_at(7, 9, carrier="h01"))
+    out2 = _throw(carrying, _dice([5, 1, 1, 1, 1, 2, 2, 3]))
+    assert out2.turnover, "the ball was in their hands"
+
+
+def test_a_fumbled_throw_drops_them_on_the_throwers_square():
+    """ "The thrown player is dropped and will Bounce from the THROWING player's
+    square" — not the target square, which is the whole cost of a fumble."""
+    m = _ttm_board()
+    out = _throw(m, _dice([1, 2, 4]))  # natural 1 = Fumbled, scatter north, then land
+    assert any("Fumbled Throw" in (e.text or "") for e in out.events)
+    launched = next(e for e in out.events if e.detail.get("thrown"))
+    assert (launched.detail["x"], launched.detail["y"]) == (7, 8), "they should drop on the thrower"
+
+
+def test_a_crash_landing_flattens_whoever_was_standing_there():
+    """ "the player in the occupied square is automatically Knocked Down EVEN IF
+    THEY ARE ALREADY PRONE OR STUNNED. The thrown player will then Bounce from the
+    occupied square and will Fall Over." """
+    m = _match(
+        ("home", 7, 8, 6, "3+", ["Throw Team-mate"]),
+        ("home", 7, 9, 6, "3+", ["Right Stuff"]),
+        ("away", 7, 7, 6),
+    )
+    m.by_id("h00").player.PA = "3+"
+    # A natural 1 fumbles them onto the thrower's square, then a Scatter of 2 —
+    # direction (0,-1) — drops them straight onto the Skaven standing at (7,7).
+    out = _throw(m, _dice([1, 2, 2, 2, 5, 2, 2]), x=7, y=12)
+    assert any("crash-lands" in (e.text or "") for e in out.events), [e.text for e in out.events]
+    assert m.by_id("a02").down != "standing", "the player landed on should be flattened"
+    assert m.by_id("h01").down != "standing", "and the thrown player Falls Over"
+    assert not out.turnover, "nobody had the ball"
+
+
+def test_always_hungry_may_eat_the_team_mate():
+    """ "On a 1, the player will attempt to eat their team-mate … On a 2+, the
+    team-mate will squirm free and the Throw Team-mate Action will automatically
+    result in a Fumbled Throw. On a 1, the player will eat their team-mate —
+    immediately remove them … No Apothecary … no Regeneration." """
+    escaped = _ttm_board(thrower=("Throw Team-mate", "Always Hungry"))
+    out = _throw(escaped, _dice([1, 4, 2, 4]))  # hunger 1, squirm 4 → Fumbled, scatter, land
+    assert any("squirm" in (e.text or "").lower() for e in out.events)
+    assert not any("EATS" in (e.text or "") for e in out.events)
+
+    eaten = _ttm_board(thrower=("Throw Team-mate", "Always Hungry"))
+    out2 = _throw(eaten, _dice([1, 1]))  # hunger 1, squirm 1 → eaten
+    assert any("EATS" in (e.text or "") for e in out2.events)
+    assert eaten.by_id("h01").place == "casualty"
+    assert out2.turnover
+
+
+def test_bullseye_lands_a_superb_throw_on_the_target_square():
+    """ "if the result of the throw is a Superb Throw then the thrown player will
+    not Scatter before landing and will instead land in the target square." """
+    m = _ttm_board(thrower=("Throw Team-mate", "Bullseye"))
+    out = _throw(m, _dice([5, 4]), x=7, y=12)  # Superb, then the landing roll
+    assert out.ok
+    assert (m.by_id("h01").x, m.by_id("h01").y) == (7, 12), "Bullseye should have skipped the Scatter"
+    assert not any(r.kind == "Scatter" for e in out.events for r in e.rolls)
+
+
+def test_throw_team_mate_is_once_per_team_per_turn():
+    from bloodbowl.engine import actions
+
+    actions.load_all()
+    m = _match(
+        ("home", 7, 8, 6, "3+", ["Throw Team-mate"]),
+        ("home", 7, 9, 6, "3+", ["Right Stuff"]),
+        ("home", 2, 8, 6, "3+", ["Throw Team-mate"]),
+        ("home", 2, 9, 6, "3+", ["Right Stuff"]),
+    )
+    for who in ("h00", "h02"):
+        m.by_id(who).player.PA = "3+"
+    _throw(m, _dice([5, 2, 2, 2, 4]), x=7, y=12)  # Superb: three Scatters, then the landing
+    second = actions.get("throwteam")["validate"](m, {"player": "h02", "target": "h03", "x": 2, "y": 12})
+    assert not second.ok and "one Throw Team-mate Action this turn" in second.reason
