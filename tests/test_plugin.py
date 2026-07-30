@@ -1580,3 +1580,95 @@ def test_not_choosing_a_block_die_is_not_the_same_as_choosing_the_first_one(regi
     # whole live game was played taking the first die every single time.
     tools["bb_game_act"].invoke({"action": "block", "player": "h00", "target": "a00", "choice": 0})
     assert "choice" not in seen[-1], f"a die index reached the engine: {seen[-1]}"
+
+
+# --- unreadable state files must be loud, not silent -----------------------
+
+
+def test_a_corrupt_match_is_moved_aside_and_logged_not_swallowed(tmp_path, caplog):
+    """ "No match in progress" is a perfectly ordinary state, so a match that failed
+    to parse came back looking like a match that had never been started — board
+    empty, log empty, and nothing anywhere saying a file had been rejected. A
+    recoverable problem became an invisible one, and that is how a finished game can
+    appear never to have happened."""
+    from bloodbowl import store
+
+    store.match_path().write_text("{ this is not json", encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        assert store.load_match() is None
+    assert not store.match_path().exists(), "the unreadable file must not be left to be re-swallowed"
+    aside = store.state_dir() / "match.broken.json"
+    assert aside.exists(), "…it is kept, so it can still be looked at"
+    assert "cannot read match.json" in caplog.text
+    assert "match.broken.json" in caplog.text, "the log must say where it went"
+
+
+def test_a_match_that_cannot_be_folded_is_treated_the_same_as_bad_json():
+    """`from_dict` rebuilds the position by REPLAYING the log, so a single
+    unfoldable event does this — not just a truncated file."""
+    from bloodbowl import store
+
+    # An unknown event `kind` is deliberately TOLERATED — it coerces to a string
+    # and folds — so the case that matters is a payload of the wrong SHAPE. Most of
+    # those raise AttributeError, which was in none of the old except clauses: a
+    # match.json with `"events": "nope"` propagated out of the loader and 500ed
+    # every request that touched the match, rather than degrading to "no match".
+    store.match_path().write_text('{"events": "nope"}', encoding="utf-8")
+    assert store.load_match() is None, "an AttributeError must not escape the loader"
+    assert (store.state_dir() / "match.broken.json").exists()
+
+
+def test_a_corrupt_board_is_kept_rather_than_silently_replaced_by_an_empty_one(caplog):
+    """An empty pitch appearing where a worked-out setup used to be is exactly the
+    failure nobody can diagnose after the fact."""
+    from bloodbowl import store
+
+    store.state_path().write_text("not json either", encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        assert not store.load().players, "a corrupt board must not brick the view"
+    assert (store.state_dir() / "pitch.broken.json").exists()
+    assert "cannot read pitch.json" in caplog.text
+
+
+def test_an_unreadable_file_is_reported_but_NOT_moved(monkeypatch, caplog):
+    """The distinction that keeps this from being destructive. A parse failure is
+    permanent, so the file is quarantined; an OSError is a locked file or a full
+    disk, the content may be perfectly good, and moving it would turn a passing
+    squall into data loss."""
+    from pathlib import Path
+
+    from bloodbowl import store
+
+    store.match_path().write_text('{"events": []}', encoding="utf-8")
+    real = Path.read_text
+
+    def _boom(self, *a, **k):
+        if self.name == "match.json":
+            raise OSError("device is busy")
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(Path, "read_text", _boom)
+    with caplog.at_level("WARNING"):
+        assert store.load_match() is None
+    assert store.match_path().exists(), "a transient failure must never move the file"
+    assert not (store.state_dir() / "match.broken.json").exists()
+    assert "cannot read match.json" in caplog.text
+    assert "moved to" not in caplog.text
+
+
+def test_an_absent_state_file_is_silent():
+    """Absence is the normal case — a fresh install must not log a warning."""
+    import logging
+
+    from bloodbowl import store
+
+    records = []
+    handler = logging.Handler()
+    handler.emit = records.append
+    logging.getLogger("protoagent.plugins.bloodbowl").addHandler(handler)
+    try:
+        assert store.load_match() is None
+        assert not store.load().players
+    finally:
+        logging.getLogger("protoagent.plugins.bloodbowl").removeHandler(handler)
+    assert not records, f"a missing file is not a problem: {[r.getMessage() for r in records]}"
