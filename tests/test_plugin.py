@@ -1586,7 +1586,7 @@ def test_not_choosing_a_block_die_is_not_the_same_as_choosing_the_first_one(regi
 
 
 def test_a_corrupt_match_is_moved_aside_and_logged_not_swallowed(tmp_path, caplog):
-    """"No match in progress" is a perfectly ordinary state, so a match that failed
+    """ "No match in progress" is a perfectly ordinary state, so a match that failed
     to parse came back looking like a match that had never been started — board
     empty, log empty, and nothing anywhere saying a file had been rejected. A
     recoverable problem became an invisible one, and that is how a finished game can
