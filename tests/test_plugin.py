@@ -1672,3 +1672,91 @@ def test_an_absent_state_file_is_silent():
     finally:
         logging.getLogger("protoagent.plugins.bloodbowl").removeHandler(handler)
     assert not records, f"a missing file is not a problem: {[r.getMessage() for r in records]}"
+
+
+# --- the reply-level nudge toward `path` -------------------------------------------
+
+
+def _drill(registry):
+    """An unclaimed (permissive) board with the ball settled, ready for agent moves."""
+    import bloodbowl
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+    tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home"})
+    json.loads(tools["bb_game_choose"].invoke({"decline": True}))
+    bloodbowl._STEP_CALLS.update({"turn": None, "counts": {}, "told": set()})
+    return tools
+
+
+def _step(tools, pid, x, y, **kw):
+    return json.loads(tools["bb_game_act"].invoke({"action": "move", "player": pid, "x": x, "y": y, **kw}))
+
+
+def test_a_second_single_square_call_is_nudged_toward_path(registry):
+    """The docstring is read once at the top of a long context; this lands in the loop,
+    at the moment of the decision. That difference is the whole feature — `path` shipped
+    fully documented and an agent still spent a turn one call per square."""
+    tools = _drill(registry)
+    first = _step(tools, "h00", 7, 12)
+    assert first["ok"], first
+    assert "hint" not in first, "one square is an ordinary thing to ask for — do not lecture on the first"
+
+    second = _step(tools, "h00", 7, 11)
+    assert second["ok"], second
+    assert "hint" in second, "by the second call in a turn it is a pattern worth interrupting"
+    assert "`path`" in second["hint"]
+    assert "Move Allowance left" in second["hint"]
+
+
+def test_the_nudge_fires_once_per_player_per_turn(registry):
+    """Honest, not loud — the `first_mentions` precedent. A note repeated every call is
+    noise, and noise is what got ignored the first time."""
+    tools = _drill(registry)
+    _step(tools, "h00", 7, 12)
+    assert "hint" in _step(tools, "h00", 7, 11)
+    assert "hint" not in _step(tools, "h00", 7, 10), "said once; saying it again every call is nagging"
+
+
+def test_using_path_is_never_nudged_and_clears_the_count(registry):
+    """A coach who took the advice must not keep being told, and must not be held to
+    the calls they made before they switched."""
+    tools = _drill(registry)
+    _step(tools, "h00", 7, 12)  # one single-square call banked
+    walked = json.loads(tools["bb_game_act"].invoke({"action": "move", "player": "h00", "path": [[7, 11]]}))
+    assert walked["ok"], walked
+    assert "hint" not in walked
+
+    # The count restarted, so the very next single square is a "first" again.
+    assert "hint" not in _step(tools, "h00", 7, 10)
+
+
+def test_no_nudge_when_there_is_nothing_left_to_batch(registry):
+    """Advice that cannot be taken is noise: a player with no Move Allowance left has no
+    run to collapse.
+
+    Driven through `_step_hint` rather than the tool on purpose. Spending a player out
+    through the tool would need Rushes, whose dice can floor them — and a floored player
+    is suppressed by a DIFFERENT clause, so the test would pass without ever exercising
+    this one. (Mutating `ma_used` and saving does not work either: `from_dict` folds the
+    log, so the cheat is discarded on the next load — the log-is-truth design catching a
+    test red-handed.)
+    """
+    import bloodbowl
+
+    tools = _drill(registry)
+    _step(tools, "h00", 7, 12)
+    m = bloodbowl.store.load_match()
+    who = m.by_id("h00")
+
+    who.ma_used = who.movement() - 1  # one square left: not worth batching
+    assert bloodbowl._step_hint(m, "h00", False) == ""
+
+    # The positive control, same player and same call count — so the pair discriminates
+    # between "the budget guard fired" and "the hint is simply never produced here".
+    bloodbowl._STEP_CALLS.update({"turn": None, "counts": {}, "told": set()})
+    who.ma_used = 0
+    assert bloodbowl._step_hint(m, "h00", False) == "", "still only the first call"
+    assert "`path`" in bloodbowl._step_hint(m, "h00", False)

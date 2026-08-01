@@ -307,6 +307,42 @@ Two things about it worth keeping:
 The view keeps its own client-side walk (`web/js/game.js:walkPath`) because it has
 to render between steps; the halt conditions are deliberately the same list.
 
+**SHIPPING `path` DID NOT MAKE THE AGENT USE IT, AND THAT IS THE REAL LESSON.** The
+first live turn after deploying it crashed exactly as before: 25 model calls, one
+square per call, `path` untouched. The parameter was deployed, registered and
+visible — asked in a clean session the agent quoted the new documentation back
+**verbatim** and then went on moving one square at a time. It was copying its own
+transcript, which by then held over a hundred single-square calls. **A model
+copies its own recent behaviour over instructions it read once.**
+
+Two things fixed it, and the second is the durable one:
+
+* Clearing the session transcript. Same board, same turn, same schema — with the
+  examples gone it reached for `path` unprompted on the first try: 6 model calls,
+  runs of four squares, turn completed. Proof of the cause, but a RESET, not a
+  cure: the thread refills with single-square calls over a long game.
+* **`_step_hint` in `__init__.py` — the nudge lives in the REPLY.** A docstring is
+  read once at the top of a long context; a reply lands at the moment of the
+  decision, every time, and is the only thing that competes with the transcript.
+  It fires on the SECOND single-square call for a player in a turn (the first is
+  an ordinary ask — a step into a tackle zone, a shuffle — and lecturing on it
+  teaches nothing), at most once per player per turn (`first_mentions` precedent:
+  honest, not loud), only when there is Move Allowance left worth batching, and
+  never when `path` was used — which also CLEARS the count, so a coach who takes
+  the advice is not held to the calls they made before switching.
+
+**The counter is deliberately not in the log.** How many tool calls a coach spent
+is a fact about the conversation, not about the match, and the log is for facts a
+replay must reproduce. It is process-local module state, on the same line
+`engine/pace.py` sits on; a restart forgets it, which is the right cost for a hint.
+The hint rides its own `hint` field rather than `log`, for the same reason.
+
+**A test tried to cheat here and the design caught it**: setting `ma_used` directly
+and saving does nothing, because `from_dict` folds the log. The budget guard is
+tested through `_step_hint` directly — driving it through the tool would need
+Rushes, whose dice can floor the player, and a floored player is suppressed by a
+different clause, so the test would have passed without exercising the guard at all.
+
 ## 4. Working on it
 
 ```bash

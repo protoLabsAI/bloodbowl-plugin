@@ -51,6 +51,69 @@ log = logging.getLogger("protoagent.plugins.bloodbowl")
 # as a no-op so every host-free test and the harness behave exactly as before.
 _emit = None
 
+# How many separate single-square Move calls each player has cost in the CURRENT turn,
+# and who has already been told about it.
+#
+# NOT game state, and deliberately not an event: how many tool calls a coach spent is a
+# fact about the conversation, not about the match, and the log is for facts a replay must
+# reproduce. Same line `engine/pace.py` sits on. Process-local, so a restart forgets it —
+# which is the right cost for a hint.
+_STEP_CALLS: dict = {"turn": None, "counts": {}, "told": set()}
+
+#: Say something on the SECOND single-square call for a player in a turn. The first is
+#: ordinary — a step into a tackle zone, a shuffle for position, and a coach who wanted one
+#: square should not be lectured for asking for one. By the second it is a pattern, and the
+#: whole point is to interrupt it while the run is still ahead of them rather than after.
+_HINT_AFTER = 2
+
+#: Below this there is nothing left to batch and the advice would just be noise.
+_HINT_MIN_LEFT = 2
+
+
+def _step_hint(match, player: str, used_path: bool) -> str:
+    """A nudge toward ``path``, delivered in the REPLY rather than the docstring.
+
+    The docstring is read once, at the top of a long context; the reply lands at the
+    moment of the decision, every time. That difference is not theoretical — the `path`
+    parameter shipped fully documented and an agent went on spending one call per square
+    for a whole turn until it ran out of budget mid-activation, having quoted the
+    documentation back verbatim when asked. It was copying its own recent calls, and only
+    something arriving IN the loop can compete with that.
+
+    Fires at most once per player per turn (`first_mentions` precedent — honest, not
+    loud), only when there is enough Move Allowance left for the advice to be worth
+    taking, and never when they already used ``path``.
+    """
+    clock = match.clock
+    turn = (clock.half, clock.turn, clock.active)
+    if _STEP_CALLS["turn"] != turn:
+        _STEP_CALLS.update({"turn": turn, "counts": {}, "told": set()})
+    counts = _STEP_CALLS["counts"]
+
+    if used_path:
+        # They took the advice — start them clean rather than holding the earlier
+        # single-square calls against them for the rest of the turn.
+        counts[player] = 0
+        return ""
+
+    counts[player] = counts.get(player, 0) + 1
+    if counts[player] < _HINT_AFTER or player in _STEP_CALLS["told"]:
+        return ""
+    who = match.by_id(player)
+    if who is None or who.done or who.down != "standing":
+        return ""
+    left = who.movement() - who.ma_used
+    if left < _HINT_MIN_LEFT:
+        return ""
+    _STEP_CALLS["told"].add(player)
+    return (
+        f"That is {counts[player]} separate calls to move {who.name()} this turn, and they have "
+        f"{left} squares of Move Allowance left. Send the rest of the run as one `path` — "
+        "the squares in order, each adjacent to the last. Every square is still adjudicated "
+        "on its own; you are only saving the round trip, and a turn spent one call per square "
+        "runs out of turn before the team runs out of Move Allowance."
+    )
+
 
 def announce(before: dict, after: dict) -> dict:
     """Publish `bloodbowl.turn_ready` when the match starts waiting on somebody NEW.
@@ -734,6 +797,12 @@ def _tools(cfg: dict):
             report["paced_s"] = round(waited, 2)
         report["rolls"] = [r.describe() for e in m.events[before:] for r in e.rolls]
         report["log"] = [e.text for e in m.events[before:] if e.text]
+        # Its own field, not a log line: `log` carries what HAPPENED on the pitch, and a
+        # note about how the coach is spending calls is not that.
+        if action == "move" and report.get("ok"):
+            hint = _step_hint(m, player, bool(path))
+            if hint:
+                report["hint"] = hint
         return json.dumps(report)
 
     @tool
