@@ -148,6 +148,14 @@ other than the square asked for — and reports `steps_taken` / `steps_requested
 `halted`. `ok` is true only if every square was walked. The board still animates: the
 match is saved and paced between squares, not just at the end.
 
+**And the reply says so if you forget.** A second single-square Move for the same player
+in one turn comes back with a `hint` pointing at `path`. This exists because documenting
+the parameter was not enough on its own: `path` shipped fully described, and an agent
+went on spending one call per square until it ran out of budget mid-turn — then quoted
+that description back verbatim when asked about it. It was copying its own recent calls,
+and only something arriving in the loop competes with that. Once per player per turn,
+only when there is Move Allowance left worth batching, never when `path` was used.
+
 **Choosing** — `bb_game_choose` answers a Kick-off Event that asks the Coach
 something (High Kick, Quick Snap!, Solid Defence, Charge!). While one is pending
 the engine refuses everything else and says what it is waiting for — the ball is
