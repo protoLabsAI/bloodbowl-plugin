@@ -636,6 +636,94 @@ def act(match: Match, action: str, cmd: dict, dice=None, by: str = "") -> dict:
     return _report(match, outcome, noted)
 
 
+#: A path longer than this is a mistake, not a plan — the pitch is 26 squares long and no
+#: legal activation covers a fraction of that. NOT a rule: purely a guard so a malformed
+#: list cannot walk the caller into an unbounded loop. The engine's own refusals are what
+#: really bound a run; this only stops nonsense arriving in the first place.
+MAX_PATH = 32
+
+
+def walk(
+    match: Match,
+    player: str,
+    squares,
+    cmd: dict | None = None,
+    dice=None,
+    by: str = "",
+    after_step=None,
+) -> dict:
+    """Walk a player along ``squares`` in order, one engine Move per square.
+
+    A Move IS one square at a time — that is the rule, and this does not bend it. What it
+    removes is the round trip per square: a coach who has decided on a six-square run
+    should not have to spend six separate calls describing it, because a turn's worth of
+    those exhausts an agent's step budget long before it exhausts the team's Move
+    Allowance. The ROUTE stays the caller's decision (which squares, past whose tackle
+    zones) — only the repetition is collapsed.
+
+    Every square is adjudicated exactly as a lone Move would be, and the run stops where
+    the plan stops applying rather than pressing on:
+
+      * a refusal (``ok: false``) — including a square that is not adjacent to the last
+      * a Turnover
+      * the player leaving the pitch, or ending up anything other than Standing
+      * arriving somewhere other than the square asked for — a push means the rest of the
+        plan was drawn against a board that no longer exists
+
+    ``after_step`` is called with the just-applied report after each successful square.
+    Persistence and the agent's pacing live there rather than here, so the engine stays
+    free of both — but a caller that saves per step is what lets a run be WATCHED rather
+    than arriving as a single jump cut.
+
+    The reply is the last step's report, so the clock, the Turnover flag and any Touchdown
+    are the current ones, plus ``steps_taken`` / ``steps_requested`` / ``halted``.
+    ``ok`` is true only when EVERY requested square was walked — a partial run reports how
+    far it got and why it stopped.
+    """
+    path = [(int(sq[0]), int(sq[1])) for sq in squares]
+    if not path:
+        return {"ok": False, "error": "no squares given to walk"}
+    if len(path) > MAX_PATH:
+        return {"ok": False, "error": f"a path of {len(path)} squares is not a plan (max {MAX_PATH})"}
+
+    report: dict = {}
+    taken = 0
+    halted = ""
+    for x, y in path:
+        step = dict(cmd or {})
+        step.update({"player": player, "x": x, "y": y})
+        report = act(match, "move", step, dice=dice, by=by)
+        if not report.get("ok"):
+            halted = str(report.get("error") or report.get("text") or "refused")
+            break
+        taken += 1
+        if after_step is not None:
+            after_step(report)
+        if report.get("turnover"):
+            halted = "turnover"
+            break
+        who = match.by_id(player)
+        if who is None or who.place != "pitch":
+            halted = "the player is off the pitch"
+            break
+        if who.down != "standing":
+            halted = f"the player is {who.down}"
+            break
+        if (who.x, who.y) != (x, y):
+            # Pushed, or stopped short. Either way the remaining squares were chosen
+            # against a board that no longer exists.
+            halted = f"the player is at ({who.x},{who.y}), not ({x},{y})"
+            break
+
+    report = dict(report)
+    report["steps_taken"] = taken
+    report["steps_requested"] = len(path)
+    report["ok"] = taken == len(path)
+    if halted:
+        report["halted"] = halted
+    return report
+
+
 def end_charge(match: Match, why: str, dice) -> list[Event]:
     """Close a Charge and finish the kick-off it interrupted.
 

@@ -6732,3 +6732,94 @@ def test_the_defender_still_gets_the_worst_face_for_the_attacker():
     m.by_id("a01").player.ST = "5"  # stronger, so the defender chooses
     out = _block(m, "h00", "a01", _dice([4] * 10, block=[["pow", "player_down"]]))
     assert out.turnover is True and m.by_id("h00").down != "standing", "they take the Player Down"
+
+
+# --- walking a whole run in one call (engine.game.walk) ----------------------------
+
+
+def _walk(m, pid, squares, dice, **cmd):
+    from bloodbowl.engine import game
+
+    return game.walk(m, pid, squares, cmd=cmd or None, dice=dice)
+
+
+def test_a_walk_covers_every_square_it_was_given():
+    m = _match(("home", 7, 13))
+    out = _walk(m, "h00", [(7, 14), (7, 15), (7, 16)], _dice([]))  # unmarked: no roll
+    assert out["ok"]
+    assert out["steps_taken"] == 3 and out["steps_requested"] == 3
+    assert "halted" not in out
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 16)
+
+
+def test_a_walk_bends_no_rules_a_sequence_of_moves_would_not():
+    """The control that matters: collapsing the round trip must not change the game.
+    The same three squares walked as one call and as three land in the same place,
+    having rolled the same dice."""
+    one = _match(("home", 7, 13), ("away", 7, 14))
+    many = _match(("home", 7, 13), ("away", 7, 14))
+    squares = [(6, 12), (5, 11), (4, 10)]
+
+    walked = _walk(one, "h00", squares, _dice([4]))  # one Dodge leaving the marked square
+    from bloodbowl.engine.game import act
+
+    stepped = [
+        act(many, "move", {"player": "h00", "x": x, "y": y}, dice=_dice([4] if i == 0 else []))
+        for i, (x, y) in enumerate(squares)
+    ]
+
+    assert walked["ok"] and all(r["ok"] for r in stepped)
+    a, b = one.by_id("h00"), many.by_id("h00")
+    assert (a.x, a.y) == (b.x, b.y) == (4, 10)
+    assert a.ma_used == b.ma_used
+    dodges = [r for e in one.events for r in e.rolls if r.kind == "Dodge"]
+    assert len(dodges) == 1, "a walk must roll the Dodge once, exactly as three calls would"
+
+
+def test_a_walk_stops_where_the_player_goes_down():
+    """A failed Dodge floors the player mid-run. The rest of the route was drawn for a
+    standing player on a live turn, so pressing on would be playing a plan that no
+    longer applies — and the turn is over anyway."""
+    m = _match(("home", 7, 13), ("away", 7, 14))
+    out = _walk(m, "h00", [(6, 12), (5, 11), (4, 10)], _dice([2, 1, 1]))  # dodge fails, armour holds
+    assert not out["ok"], "a run that did not finish must not report ok"
+    assert out["steps_taken"] < 3
+    assert out["halted"]
+    p = m.by_id("h00")
+    assert p.down == "prone"
+    assert (p.x, p.y) == (6, 12), "it stopped where it fell, not at the end of the route"
+
+
+def test_a_walk_halts_on_a_refusal_and_says_which_square():
+    """A square that is not adjacent to the last is refused exactly as a lone Move
+    would be — the run reports how far it got rather than skipping the gap."""
+    m = _match(("home", 7, 13))
+    out = _walk(m, "h00", [(7, 14), (7, 20)], _dice([]))
+    assert not out["ok"]
+    assert out["steps_taken"] == 1 and out["steps_requested"] == 2
+    assert "one square at a time" in out["halted"]
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 14)
+
+
+def test_a_walk_reports_each_step_as_it_lands():
+    """`after_step` is what lets a run be watched — the caller saves and paces there, so
+    a board polling the saved match sees the player walk rather than teleport."""
+    from bloodbowl.engine import game
+
+    m = _match(("home", 7, 13))
+    seen: list = []
+    out = game.walk(m, "h00", [(7, 14), (7, 15)], dice=_dice([]), after_step=seen.append)
+    assert out["ok"]
+    assert len(seen) == 2, "one callback per square actually walked"
+    assert all(r.get("ok") for r in seen)
+
+
+def test_a_walk_refuses_nonsense_rather_than_looping_on_it():
+    m = _match(("home", 7, 13))
+    assert not _walk(m, "h00", [], _dice([]))["ok"]
+    from bloodbowl.engine.game import MAX_PATH
+
+    long_path = [(7, 14)] * (MAX_PATH + 1)
+    out = _walk(m, "h00", long_path, _dice([]))
+    assert not out["ok"] and "not a plan" in out["error"]
+    assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 13), "it refused before moving anyone"

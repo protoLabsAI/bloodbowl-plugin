@@ -530,6 +530,7 @@ def _tools(cfg: dict):
         x: int = 0,
         y: int = 0,
         target: str = "",
+        path: list | None = None,
         prefer: str = "",
         follow_up: bool = True,
         team_reroll: bool = False,
@@ -543,7 +544,8 @@ def _tools(cfg: dict):
         """Take an action.
 
         ``action`` is one of:
-          "move"    — with ``x``/``y``; picks the ball up automatically if it is
+          "move"    — with ``x``/``y`` for ONE square, or ``path`` for a whole run
+                      (see below); picks the ball up automatically if it is
                       lying on the square you step onto
           "block"   — with ``target``
           "blitz"   — with ``target``: DECLARES a Blitz against them. Rolls
@@ -581,6 +583,27 @@ def _tools(cfg: dict):
           "secure"  — S3's Secure the Ball: a flat 2+ pick-up that ends the
                       activation, legal only when no Standing opponent is within
                       2 squares OF THE BALL
+
+        ``path`` WALKS A WHOLE RUN IN ONE CALL: [[8,15],[8,16],[8,17]] — the
+        squares in order, each adjacent to the last. A Move is still one square at
+        a time and every square is adjudicated exactly as a lone Move would be,
+        with each Dodge and Rush rolled and logged in turn; what this saves is the
+        round trip, not the rules. Prefer it for any run of more than a square or
+        two — a turn spent one call per square is how a coach runs out of turn
+        before the team runs out of Move Allowance.
+
+        THE ROUTE IS STILL YOURS. The engine will not choose a way across the
+        pitch for you: which squares, and whose tackle zones they pass, is the
+        tactical decision. Check bb_game_legal for the squares around the player
+        before committing to one.
+
+        The run STOPS where the plan stops applying, and says where: a refusal, a
+        Turnover, your player going down or off the pitch, or a push landing them
+        somewhere other than the square you asked for — after which the rest of
+        the route was drawn against a board that no longer exists. The reply
+        carries ``steps_taken`` / ``steps_requested`` and, when it stopped early,
+        ``halted`` with the reason. ``ok`` is true only if EVERY square was walked,
+        so read ``steps_taken`` rather than assuming the run finished.
 
         A BLITZ IS THREE CALLS, not one: declare it, walk, hit them — and you may
         keep walking afterwards, which is the whole point of a Blitz. Your team
@@ -647,7 +670,7 @@ def _tools(cfg: dict):
         rather than describing what probably happened.
         """
         from .engine import handover, pace
-        from .engine.game import act
+        from .engine.game import act, walk
         from .store import load_match, save_match
 
         m = load_match()
@@ -689,7 +712,19 @@ def _tools(cfg: dict):
         waited = pace.wait()
         before = len(m.events)
         was = handover.owed(m)
-        report = act(m, action, cmd, by="agent")
+        if action == "move" and path:
+            # Save and pace BETWEEN squares, not just at the end. Both belong out here
+            # rather than in the engine, and both are the reason a run is watchable: the
+            # board polls every couple of seconds and reads the saved match, so a run
+            # persisted only once arrives as a jump cut — you cannot see which step cost
+            # the Dodge, which is the one thing worth watching a move for.
+            def after_step(_report):
+                save_match(m)
+                pace.wait()
+
+            report = walk(m, player, path, cmd=cmd, by="agent", after_step=after_step)
+        else:
+            report = act(m, action, cmd, by="agent")
         save_match(m)
         # The agent's own move can hand the game back — a Turnover does exactly
         # that — so this side announces too. `changed` is what stops it firing on
