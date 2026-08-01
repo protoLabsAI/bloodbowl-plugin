@@ -134,8 +134,19 @@ game — the pace is what makes a turn something you can watch happen. Your own
 clicks are never paced.
 
 **Playing** — `bb_game_new` · `bb_game_state` · `bb_game_legal` · `bb_game_odds` ·
-`bb_game_act` (`drop_ball=True` for a Fumblerooski) · `bb_game_end_turn` · `bb_game_kickoff` · `bb_game_log` ·
-`bb_game_abandon` · `bb_pass_ranges`
+`bb_game_act` (`path=[[8,15],[8,16]]` walks a run; `drop_ball=True` for a Fumblerooski) ·
+`bb_game_end_turn` · `bb_game_kickoff` · `bb_game_log` · `bb_game_abandon` · `bb_pass_ranges`
+
+**A run is one call, not one per square.** A Move is still one square at a time and
+every square is adjudicated as a lone Move would be — `path` collapses the round trip,
+not the rules, and the route stays the coach's decision. It matters because an agent's
+budget is measured in tool calls: a turn played one call per square runs out of turn
+long before the team runs out of Move Allowance, which is exactly how a real game
+stalled mid-activation. The run stops where the plan stops applying — a refusal, a
+Turnover, the player going down or off the pitch, or a push landing them somewhere
+other than the square asked for — and reports `steps_taken` / `steps_requested` plus
+`halted`. `ok` is true only if every square was walked. The board still animates: the
+match is saved and paced between squares, not just at the end.
 
 **Choosing** — `bb_game_choose` answers a Kick-off Event that asks the Coach
 something (High Kick, Quick Snap!, Solid Defence, Charge!). While one is pending

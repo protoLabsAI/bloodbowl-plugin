@@ -276,6 +276,37 @@ the autouse fixture and `_Registry.config`, because `register()` re-reads it and
 would otherwise turn it back on for any test that registers the plugin. Ten
 seconds appeared in the suite the first time; that is what it looks like.
 
+**THE AGENT'S REAL BUDGET IS TOOL CALLS, AND A MOVE COSTS ONE PER SQUARE.** This
+is not a rules problem and it does not show up in any test — it killed a live turn
+mid-activation. The host runs an agent turn as one graph invocation with a step
+budget (protoAgent: LangGraph `recursion_limit`, 200), and a middleware stack
+multiplies each model call into several steps — so the budget in practice was about
+25 tool calls per turn. One Blood Bowl turn is eleven activations of up to a dozen
+squares each. A Grail Knight walking eight squares spent ten calls on its own; the
+turn died three players in, with a Blitz declared and never thrown.
+
+`game.walk` is the fix: `bb_game_act(action="move", path=[[8,15],[8,16],…])` walks
+the whole run in one call. **It collapses the round trip, not the rules** — one
+engine Move per square, every Dodge and Rush rolled and logged in turn, and the
+ROUTE stays the coach's decision, because which squares a run crosses is the
+tactical choice and an engine picking them would be inventing play. It stops where
+the plan stops applying (refusal · Turnover · down or off the pitch · pushed
+somewhere other than the square asked for) and reports `steps_taken` /
+`steps_requested` / `halted`; `ok` means EVERY square was walked.
+
+Two things about it worth keeping:
+
+* **Saving and pacing live in the tool, not in `walk`** — `after_step` is the seam.
+  The engine stays free of both, and a caller that saves per square is what keeps a
+  run watchable: the board polls the saved match, so a run persisted only at the end
+  arrives as a jump cut and you cannot see which step cost the Dodge.
+* **The test that matters is the control**: three squares walked as one call and as
+  three calls land in the same square having rolled the same dice. A collapsing
+  optimisation that quietly changed the game would otherwise look like a feature.
+
+The view keeps its own client-side walk (`web/js/game.js:walkPath`) because it has
+to render between steps; the halt conditions are deliberately the same list.
+
 ## 4. Working on it
 
 ```bash
