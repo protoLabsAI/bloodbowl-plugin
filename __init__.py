@@ -70,6 +70,19 @@ _HINT_AFTER = 2
 _HINT_MIN_LEFT = 2
 
 
+def _ai_sessions(base: str) -> dict:
+    """A chat per seat for a full-AI match.
+
+    Derived from the conversation the game was started in rather than minted at
+    random, so both are findable afterwards (the whole match is readable as two
+    transcripts) and stable across a reload. A match started from the BOARD has no
+    conversation behind it, so the seats hang off a fixed prefix instead of the
+    Activity thread — which one seat could otherwise flood.
+    """
+    root = (base or "bloodbowl").strip() or "bloodbowl"
+    return {"home": f"{root}:home", "away": f"{root}:away"}
+
+
 def _step_hint(match, player: str, used_path: bool) -> str:
     """A nudge toward ``path``, delivered in the REPLY rather than the docstring.
 
@@ -205,14 +218,28 @@ def register(registry) -> None:
                     "Answer it with bb_game_choose, then carry on with your turn."
                 )
             else:
+                # Who is on the other side changes what the closing sentence is FOR.
+                # Against a person it is a message to them. In a full-AI match the
+                # other seat is a separate conversation that will never read it, and
+                # telling an agent to address an opponent who cannot hear it invites
+                # exactly the narrating-to-yourself the human version warns against —
+                # so there it becomes the note the SPECTATOR reads, which is the only
+                # audience a self-playing game has.
+                closing = (
+                    "Then say in a sentence or two what you did and what it means for the "
+                    "position — somebody is watching the board, and that note is the only "
+                    "commentary they get. The other coach is a separate conversation and "
+                    "will never see it; all they get is the board, so do not address them."
+                    if d.get("opponent") == "agent"
+                    else "Then tell your opponent in a sentence or two what you did and what it "
+                    "means for the position — you are playing a person, not narrating to yourself."
+                )
                 prompt = (
                     f"Your turn in the Blood Bowl match: you play {d.get('side')}, and it is "
                     f"half {d.get('half')}, turn {d.get('turn')}.\n\n"
                     "Read the board with bb_game_state, then PLAY THE WHOLE TURN — activate the "
                     "players you want and finish with bb_game_end_turn, which hands the board back. "
-                    "bb_game_legal and bb_game_odds are free, so check before you commit. Then tell "
-                    "your opponent in a sentence or two what you did and what it means for the "
-                    "position — you are playing a person, not narrating to yourself."
+                    "bb_game_legal and bb_game_odds are free, so check before you commit. " + closing
                 )
             # A match started from the BOARD has no chat behind it, so fall back to
             # the durable Activity thread rather than dropping the turn on the
@@ -434,6 +461,12 @@ def _tools(cfg: dict):
         refuse to move theirs, and when the turn comes to you the engine says so.
         Leave it out for a practice match where one coach moves both teams.
 
+        ``you="neither"`` starts a FULL-AI match — you play BOTH sides and the game
+        plays itself to full time, one turn handing over to the next. Each side gets
+        its OWN conversation, so neither seat can read the other's plan; all either
+        knows about the opposition is what is on the board. Nobody has to be
+        watching for it to finish, and every roll is in the log afterwards.
+
         ``dedicated_fans`` feeds the Pre-game Sequence's first step: Fan Factor is
         ROLLED as "a D3 [for Fair-weather Fans] plus your Dedicated Fans
         Characteristic", and a drafted team "automatically" has 1 of those. Pitch
@@ -470,12 +503,18 @@ def _tools(cfg: dict):
             # other. Left out, nobody owns a side and either may move anyone, which
             # is the practice board and is still the default.
             controllers=(
-                {you: "human", ("away" if you == "home" else "home"): "agent"} if you in ("home", "away") else {}
+                {"home": "agent", "away": "agent"}
+                if str(you).strip().lower() == "neither"
+                else ({you: "human", ("away" if you == "home" else "home"): "agent"} if you in ("home", "away") else {})
             ),
             # The chat you start the game in is the chat it gets played in — your
             # opponent's turns arrive where you are looking rather than in the
             # Activity thread. See Match.session_id.
             session_id=_session_of(state),
+            # FULL AI: a chat per seat, derived from this one so they are findable
+            # and stable across a reload. Two agent seats sharing a conversation
+            # would be one coach with both hands — see Match.session_ids.
+            session_ids=_ai_sessions(_session_of(state)) if str(you).strip().lower() == "neither" else None,
         )
         save_match(m)
         out = {"ok": True, "match": m.to_dict(include_log=False), "message": m.events[0].text}

@@ -29,7 +29,8 @@ from .state import Match
 def owed(match: Match) -> dict:
     """What the match is waiting for. ``{}`` when it is waiting for nothing.
 
-    Returns ``{"side", "controller", "why", "half", "turn"}`` — enough for a bus
+    Returns ``{"side", "controller", "opponent", "session_id", "why", "half", "turn"}``
+    — enough for a bus
     payload and for a prompt, without the caller having to reach back into the
     match to build either.
     """
@@ -45,7 +46,8 @@ def owed(match: Match) -> dict:
             return {
                 "side": side,
                 "controller": who,
-                "session_id": match.session_id,
+                "opponent": str(match.controllers.get(match.opponent(side)) or ""),
+                "session_id": match.session_for(side),
                 "why": "answer",
                 "question": str(pending.get("text") or pending.get("choice") or ""),
                 "half": match.clock.half,
@@ -60,7 +62,8 @@ def owed(match: Match) -> dict:
     return {
         "side": side,
         "controller": who,
-        "session_id": match.session_id,
+        "opponent": str(match.controllers.get(match.opponent(side)) or ""),
+        "session_id": match.session_for(side),
         "why": "turn",
         "half": match.clock.half,
         "turn": match.clock.turn,

@@ -128,6 +128,14 @@ If the board is waiting and nothing is happening, `bb_game_nudge` (or
 `POST /game/nudge`) re-sends the signal. A nudge *can* be lost — an agent restart
 mid-turn, a cancelled job — and a lost one looks exactly like the agent thinking.
 
+**Full AI** — `bb_game_new(you="neither")`, or `POST /game/new {"you": "neither"}` from the
+board. Both seats are agent-played and the game runs itself to full time, each turn's end
+handing over to the next. **Each side gets its own conversation**: two seats out of one
+chat would be a single coach with both hands, reading the plan it just made for the other
+team straight out of its own context. All either seat knows about the opposition is what
+is on the board — which is the point of the engine being the authority. Nobody has to be
+watching; the log holds every roll afterwards, and each seat's chat is its own transcript.
+
 **The agent is paced** (`bloodbowl.agent_pace_s`, default 2s between its actions).
 A model can take eight activations in under a second, which is a diff rather than a
 game — the pace is what makes a turn something you can watch happen. Your own

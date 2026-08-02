@@ -307,15 +307,26 @@ def build_game_router(cfg: dict | None = None, announce=None):
         # agent takes the other. Left out, nobody owns anything and the board stays
         # permissive — one person moving both teams, which is the practice board and
         # is still the default.
+        # `you="neither"` is FULL AI: both seats are agent-played and the game runs
+        # itself to full time. Started from the board there is no conversation
+        # behind it, so the seats get their own pair rather than sharing the
+        # Activity thread — see Match.session_ids.
         yours = body.get("you")
-        controllers = {}
-        if yours in ("home", "away"):
+        controllers: dict = {}
+        session_ids = None
+        if str(yours or "").strip().lower() == "neither":
+            controllers = {"home": "agent", "away": "agent"}
+            from . import _ai_sessions
+
+            session_ids = _ai_sessions("")
+        elif yours in ("home", "away"):
             controllers = {yours: "human", ("away" if yours == "home" else "home"): "agent"}
         m = engine().new_match(
             sc,
             seed=int(body.get("seed") or 0),
             kicking_to=("away" if body.get("kicking_to") == "away" else "home"),
             controllers=controllers,
+            session_ids=session_ids,
         )
         _store().save_match(m)
         # The kick-off may already be waiting on the agent — for a question, or
