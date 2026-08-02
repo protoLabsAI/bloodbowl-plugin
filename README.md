@@ -128,6 +128,15 @@ If the board is waiting and nothing is happening, `bb_game_nudge` (or
 `POST /game/nudge`) re-sends the signal. A nudge *can* be lost — an agent restart
 mid-turn, a cancelled job — and a lost one looks exactly like the agent thinking.
 
+**Two boards, one engine.** `Pitch` is the 2D grid; `Pitch 3D` is the same match rendered
+with React Three Fiber — orbit the camera, pawns that fall over when they are knocked
+down, the ball riding above its carrier. Both ask `/game/legal` and neither computes a
+rule, so they cannot disagree about what is legal. The 3D view ships **prebuilt** in
+`web/3d/` (source in `web3d/`, rebuild with `cd web3d && npm install && npm run build`) so
+a git-URL install still needs no Node. Its End Zones are labelled by **who scores there** —
+you score in the opposition's End Zone, and possessive labelling answers the wrong
+question.
+
 **Full AI** — `bb_game_new(you="neither")`, or `POST /game/new {"you": "neither"}` from the
 board. Both seats are agent-played and the game runs itself to full time, each turn's end
 handing over to the next. **Each side gets its own conversation**: two seats out of one
