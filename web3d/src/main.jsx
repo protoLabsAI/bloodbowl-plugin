@@ -15,10 +15,27 @@ import { Pitch } from "./Pitch";
 // The fallback is a plain same-origin fetch against the derived base: no bearer, which is
 // correct for an ungated instance and honestly fails with a 401 on a gated one.
 const kitReady = import(/* @vite-ignore */ `${window.__base}/_ds/plugin-kit.js`)
-  .then((kit) => {
-    kit.initPluginView();
-    return kit;
-  })
+  .then(
+    (kit) =>
+      // WAIT FOR THE HANDSHAKE before the first fetch. The bearer never travels in the
+      // URL — it arrives by postMessage AFTER load — so a poll fired on mount races it
+      // and 401s on a gated instance. It self-heals on the next tick, but it logs an
+      // error and flashes one in the HUD every single load, which trains you to ignore
+      // the place errors appear.
+      new Promise((resolve) => {
+        let settled = false;
+        const go = () => {
+          if (!settled) {
+            settled = true;
+            resolve(kit);
+          }
+        };
+        kit.initPluginView(go);
+        // No console to hand us one (standalone, or the plugin's own harness): proceed
+        // unauthenticated rather than hanging on a message that is never coming.
+        setTimeout(go, 1500);
+      }),
+  )
   .catch(() => ({ apiFetch: (path) => fetch(`${window.__base}${path}`) }));
 
 async function get(path) {

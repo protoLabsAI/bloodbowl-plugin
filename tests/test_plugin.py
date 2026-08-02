@@ -1890,3 +1890,23 @@ def test_the_3d_view_needs_no_font_from_the_network(client):
         )
     body = "\n".join(p.read_text() for p in srcs)
     assert "CanvasTexture" in body, "labels come from a canvas, not a font file"
+
+
+def test_the_3d_hud_does_not_depend_on_the_theme_landing(client):
+    """`var(--pl-color-fg, …)` looks like a safe fallback and is not one: the DS kit's
+    stylesheet DEFINES that token, so the fallback never applies and the text inherits
+    the kit's default — which was dark-on-dark. Same class as the odds badge that drew
+    white on white for weeks. The HUD carries its own colour and backdrop."""
+    page = client.get("/plugins/bloodbowl/static/3d/index.html").text
+    hud = page[page.index("#hud") : page.index("</style>")]
+    assert "var(--pl-color-fg" not in hud, "the HUD must not depend on a token the kit defines"
+    assert "background:" in hud and "color:" in hud, "it needs its own colour AND backdrop"
+
+
+def test_the_3d_view_waits_for_the_bearer_before_fetching(client):
+    """The token arrives by postMessage AFTER load, so a poll fired on mount races it and
+    401s on a gated instance. It self-heals on the next tick — but it flashes an error
+    every load, which teaches you to ignore the one place errors appear."""
+    src = (ROOT / "web3d" / "src" / "main.jsx").read_text()
+    assert "initPluginView(go)" in src or "initPluginView((" in src, "the first fetch must wait on the handshake"
+    assert "setTimeout(go" in src, "and must not hang when no console is there to send one"

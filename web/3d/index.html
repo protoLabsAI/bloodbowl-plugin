@@ -13,9 +13,19 @@
     <style>
       html, body, #root { margin: 0; height: 100%; overflow: hidden; }
       body { background: var(--pl-color-bg, #0b0f0c); color: var(--pl-color-fg, #e8e8e8); }
-      #hud { position: absolute; z-index: 1; padding: 8px 12px; font: 12px/1.4 system-ui, sans-serif; pointer-events: none; }
+      /* The HUD must be readable BEFORE the theme handshake lands, and on whatever the
+         operator's theme turns out to be. `var(--pl-color-fg, …)` does not do that: the
+         kit's stylesheet DEFINES that token, so the fallback never applies and the text
+         inherits whatever the kit defaults to — which was dark-on-dark here. An explicit
+         colour plus its own backdrop is legible against any theme and against the pitch
+         itself. Same class as the odds badge that drew white on white for weeks. */
+      #hud {
+        position: absolute; z-index: 1; margin: 8px; padding: 6px 10px; border-radius: 6px;
+        font: 12px/1.4 system-ui, sans-serif; pointer-events: none;
+        color: #f2f4f2; background: rgba(8, 12, 9, 0.72);
+      }
     </style>
-    <script type="module" crossorigin src="./assets/index-DjsMugGH.js"></script>
+    <script type="module" crossorigin src="./assets/index-B0AKwhox.js"></script>
   </head>
   <body>
     <div id="root"></div>
