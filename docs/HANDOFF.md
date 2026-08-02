@@ -332,6 +332,38 @@ Two things about it worth keeping:
 The view keeps its own client-side walk (`web/js/game.js:walkPath`) because it has
 to render between steps; the halt conditions are deliberately the same list.
 
+### The 3D board (`web3d/` → `web/3d/`)
+
+A SECOND declared view, React + React Three Fiber, built with Vite. The 2D board is
+untouched: both call `/game/legal` and neither computes a rule, which is what
+stops two renderers becoming two silently diverging rules engines (there is a test
+per view pinning it).
+
+Four decisions worth not re-litigating:
+
+* **The page lives INSIDE the static tree** (`/plugins/bloodbowl/static/3d/index.html`)
+  rather than behind a new route. It therefore needs **no process restart** to
+  appear — a new FastAPI route would, because a mounted router cannot be swapped.
+  `base: "./"` in the Vite config is load-bearing with it: relative asset URLs
+  resolve correctly on the host window AND through the `/agents/<slug>` fleet
+  proxy, where an absolute base would silently address the wrong agent.
+* **The built output is COMMITTED.** The plugin installs from a git URL onto hosts
+  with no Node, exactly as the console ships a prebuilt dist. `web3d/node_modules`
+  is ignored; `web/3d` is not.
+* **Labels are canvas textures, never a font file.** drei's `<Text>` resolves an
+  unset `font` to a Google-hosted default — this plugin declares `network: []` and
+  runs sandboxed, so it would fail SILENTLY: the scene still renders, just with no
+  way to tell which player is which. A test pins that `Text` is not imported.
+* **The kit import degrades.** `_ds/plugin-kit.js` is served by the CONSOLE, so it
+  is absent in the plugin's own harness; a view that throws on import shows an
+  empty canvas with no clue why. It falls back to a plain same-origin fetch.
+
+**AND THE END ZONES ARE LABELLED BY WHO SCORES THERE.** The 2D board says "HOME END
+ZONE", which is true and answers the wrong question — you score in the OPPOSITION's
+End Zone. It cost a live false bug report: a home carrier standing in row 1 under a
+"HOME" sign reads as an unscored touchdown, and the engine was right all along
+(`touchdown_row("home") == 26`). The 2D board still has the old wording.
+
 **SHIPPING `path` DID NOT MAKE THE AGENT USE IT, AND THAT IS THE REAL LESSON.** The
 first live turn after deploying it crashed exactly as before: 25 model calls, one
 square per call, `path` untouched. The parameter was deployed, registered and

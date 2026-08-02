@@ -1812,3 +1812,81 @@ def test_head_to_head_and_the_practice_board_are_untouched(registry):
     tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home"})
     practice = bloodbowl.store.load_match()
     assert practice.controllers == {}, "and the practice board still owns nothing"
+
+
+# --- the 3D view --------------------------------------------------------------------
+
+
+def _manifest() -> dict:
+    import yaml
+
+    return yaml.safe_load((ROOT / "protoagent.plugin.yaml").read_text())
+
+
+def test_the_3d_view_is_declared_and_its_page_is_served(client):
+    """RULE 1 of the plugin-view guide: the manifest's `path` must equal something a
+    router actually serves, or the console iframes a blank page. This one is the BUILT
+    index.html inside the static tree, which is why it needs no new route."""
+    view = next(v for v in _manifest()["views"] if v["id"] == "pitch3d")
+    assert view["path"] == "/plugins/bloodbowl/static/3d/index.html"
+    r = client.get(view["path"])
+    assert r.status_code == 200, r.text[:200]
+    assert "text/html" in r.headers["content-type"]
+    assert '<div id="root">' in r.text
+
+
+def test_the_3d_bundle_ships_built(client):
+    """The plugin is installable from a git URL onto a host with no Node, so the built
+    output is committed. A missing bundle is a 404 the console renders as an empty
+    canvas — silent, and only visible by looking."""
+    built = sorted((ROOT / "web" / "3d" / "assets").glob("*.js"))
+    assert built, "web/3d/assets/*.js is missing — run: cd web3d && npm run build"
+    r = client.get(f"/plugins/bloodbowl/static/3d/assets/{built[0].name}")
+    assert r.status_code == 200
+    assert "javascript" in r.headers["content-type"]
+
+
+def test_the_3d_page_never_hardcodes_a_base(client):
+    """RULE 3. On the host window the base is ""; through the ADR 0042 fleet proxy it is
+    "/agents/<slug>". A hardcoded absolute path talks to the WRONG AGENT — it does not
+    fail loudly, it quietly shows somebody else's match."""
+    page = client.get("/plugins/bloodbowl/static/3d/index.html").text
+    assert "location.pathname.split" in page, "the page must derive its own base"
+    assert "localhost" not in page and "127.0.0.1" not in page
+    # The bundle DOES carry "/api/plugins/bloodbowl/..." strings — that is correct, they
+    # are root-relative paths handed to the kit's apiFetch, which prefixes the slug. What
+    # must not appear is an absolute ORIGIN, and the kit must actually be the thing
+    # fetching. (An `or` between those two would make this unfalsifiable; both are checked.)
+    js = sorted((ROOT / "web" / "3d" / "assets").glob("*.js"))[0].read_text()
+    assert "apiFetch" in js, "data must go through the kit's slug-aware fetch"
+    assert "http://localhost" not in js and "http://127.0.0.1" not in js
+
+
+def test_the_3d_view_asks_the_engine_for_legality(client):
+    """The invariant that makes a second view safe: a view computes NO rules. The 2D
+    board has this test and the 3D one needs it just as much — a renderer that decided
+    its own legal squares would be a second, silently diverging rules engine."""
+    src = (ROOT / "web3d" / "src").glob("*.js*")
+    body = "\n".join(p.read_text() for p in src)
+    assert "game/legal" in body, "it must ask the engine"
+    for invented in ("dodge", "tackle zone", "rush", "armour"):
+        assert invented not in body.lower(), f"the view is reasoning about {invented!r} itself"
+
+
+def test_the_3d_view_needs_no_font_from_the_network(client):
+    """The manifest declares `network: []` and the view runs in a sandbox. drei's <Text>
+    resolves an unset `font` to a Google-hosted default, which fails silently — the scene
+    still renders, just with no way to tell which player is which. Labels are drawn to a
+    canvas instead."""
+    import re
+
+    srcs = list((ROOT / "web3d" / "src").glob("*.js*"))
+    imports = [ln for p in srcs for ln in p.read_text().splitlines() if "@react-three/drei" in ln]
+    assert imports, "the drei import should exist — this test is pinning WHAT is imported"
+    for ln in imports:
+        names = re.findall(r"\{([^}]*)\}", ln)
+        assert not any(n.strip() == "Text" for part in names for n in part.split(",")), (
+            f"drei <Text> resolves an unset font over the network: {ln.strip()}"
+        )
+    body = "\n".join(p.read_text() for p in srcs)
+    assert "CanvasTexture" in body, "labels come from a canvas, not a font file"

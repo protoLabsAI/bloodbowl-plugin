@@ -7,3 +7,7 @@ shots/
 harness_theme.css
 # Scrape cache: ~90 pages of someone else's HTML. Local speed aid, not ours to ship.
 team_html/
+# 3D view SOURCE deps. The BUILT output (web/3d/) is committed on purpose — the plugin
+# ships prebuilt so a git-URL install needs no Node, exactly as the console is served
+# from a prebuilt dist. Rebuild with: cd web3d && npm install && npm run build
+web3d/node_modules/
