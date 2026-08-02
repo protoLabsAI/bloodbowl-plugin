@@ -1760,3 +1760,55 @@ def test_no_nudge_when_there_is_nothing_left_to_batch(registry):
     who.ma_used = 0
     assert bloodbowl._step_hint(m, "h00", False) == "", "still only the first call"
     assert "`path`" in bloodbowl._step_hint(m, "h00", False)
+
+
+# --- full-AI mode wiring ------------------------------------------------------------
+
+
+def test_you_neither_claims_both_seats_with_a_chat_each(registry):
+    """`you="neither"` is the full-AI entry point: both sides agent-played, and a
+    conversation per seat so neither can read the other's plan."""
+    import bloodbowl
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+    out = json.loads(tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home", "you": "neither"}))
+    assert out["ok"], out
+    m = bloodbowl.store.load_match()
+    assert m.controllers == {"home": "agent", "away": "agent"}
+    assert m.session_for("home") != m.session_for("away"), "two seats, two conversations"
+    assert m.session_for("home") and m.session_for("away")
+
+
+def test_the_board_can_start_a_full_ai_match_too(client):
+    """Started from the pitch view there is no conversation behind it, so the seats
+    hang off a fixed prefix rather than both flooding the Activity thread."""
+    base = "/api/plugins/bloodbowl"
+    client.post(f"{base}/place", json={"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    client.post(f"{base}/place", json={"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+    started = client.post(f"{base}/game/new", json={"seed": 4, "kicking_to": "home", "you": "neither"}).json()
+    assert started["match"]["controllers"] == {"home": "agent", "away": "agent"}
+    seats = started["match"]["session_ids"]
+    assert seats["home"] != seats["away"] and all(seats.values())
+
+
+def test_head_to_head_and_the_practice_board_are_untouched(registry):
+    """The restraint control: `you="neither"` is a THIRD mode, not a change to the two
+    that already existed."""
+    import bloodbowl
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+
+    tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home", "you": "home"})
+    h2h = bloodbowl.store.load_match()
+    assert h2h.controllers == {"home": "human", "away": "agent"}
+    assert h2h.session_ids == {}, "a head-to-head still runs out of one conversation"
+
+    tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home"})
+    practice = bloodbowl.store.load_match()
+    assert practice.controllers == {}, "and the practice board still owns nothing"

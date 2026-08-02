@@ -279,6 +279,15 @@ class Match:
     # Empty means nobody has claimed it: a match started from the board has no chat
     # behind it, and the nudge falls back to the durable Activity thread.
     session_id: str = ""
+    # Per-SIDE override of the above, for a match where both coaches are agents.
+    # Two seats played out of one conversation would be one coach with both hands:
+    # it would read its own plan for the opposition straight out of its context,
+    # and every argument for a screen or a cage would be made to somebody who had
+    # already seen it. So each side gets its own chat, and neither can see the
+    # other's reasoning — only the board, which is the whole point of the engine
+    # being the authority. Empty falls back to `session_id`, so the ordinary
+    # one-conversation head-to-head is unchanged.
+    session_ids: dict = field(default_factory=dict)
     # Set-ups declared for the NEXT Drive, per side. "The kicking team must set up
     # first followed by the receiving team", so the order is recorded too.
     setups: dict = field(default_factory=dict)
@@ -325,6 +334,17 @@ class Match:
     def opponent(self, side: str) -> str:
         return "away" if side == "home" else "home"
 
+    def session_for(self, side: str) -> str:
+        """Which conversation this side's turns belong in.
+
+        One field would have done for a head-to-head, where the only agent seat is
+        the opponent's. It does not survive both seats being agents: they would
+        share a context, and a coach that can read the plan it just made for the
+        other team is not playing a game. Per-side first, match-wide as the
+        fallback, so nothing that only ever set `session_id` changes.
+        """
+        return str(self.session_ids.get(side) or self.session_id or "")
+
     def carrier(self) -> PlayerState | None:
         return self.by_id(self.ball.carrier) if self.ball.carrier else None
 
@@ -348,6 +368,7 @@ class Match:
             self.apothecary = {"home": bool(apo.get("home")), "away": bool(apo.get("away"))}
             self.controllers = {k: str(v) for k, v in (d.get("controllers") or {}).items()}
             self.session_id = str(d.get("session_id") or "")
+            self.session_ids = {k: str(v) for k, v in (d.get("session_ids") or {}).items() if v}
 
         elif kind == "turn_started":
             self.clock.active = str(d.get("side") or self.clock.active)
@@ -518,8 +539,13 @@ class Match:
         elif kind == "session_bound":
             # "Play it here" — a match moving to the chat the coach is in. Recorded
             # rather than set, like everything else, so a reload keeps playing in
-            # the same place.
-            self.session_id = str(d.get("session_id") or "")
+            # the same place. A `side` binds ONE seat (an agent-vs-agent game moving
+            # one of its two chats); without one it rebinds the whole match.
+            side = str(d.get("side") or "")
+            if side:
+                self.session_ids[side] = str(d.get("session_id") or "")
+            else:
+                self.session_id = str(d.get("session_id") or "")
 
         elif kind == "spp_earned":
             self.spp[event.actor] = int(self.spp.get(event.actor, 0)) + int(d.get("points") or 0)
@@ -784,6 +810,7 @@ class Match:
             "spp": dict(self.spp),
             "controllers": dict(self.controllers),
             "session_id": self.session_id,
+            "session_ids": dict(self.session_ids),
             "setups": {k: [dict(r) for r in v] for k, v in self.setups.items()},
             "pending": dict(self.pending),
             "charge": dict(self.charge),

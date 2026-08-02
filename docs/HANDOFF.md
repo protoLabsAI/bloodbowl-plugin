@@ -249,6 +249,31 @@ whether that CHANGED; `__init__.announce` publishes `bloodbowl.turn_ready`; and
 session at registration, and the session varies per match. The whole point is that
 the opponent's turn arrives in the chat you are playing in.
 
+**FULL AI is a THIRD mode, not a variant of the head-to-head** — `you="neither"`
+claims both seats for the agent and the game plays itself to full time. It needed
+almost nothing new, because `handover.owed` never cared which side it was
+answering about: it reports whoever is owed and who controls them, so two agent
+seats alternate through the same nudge that always existed.
+
+**The one thing it did need is a conversation PER SEAT** (`Match.session_ids`,
+`session_for(side)`). One `session_id` is right while the only agent seat is the
+opponent's; it collapses the moment both seats are agents, because they would
+share a context and each would read the plan it had just made for the other team.
+Two chats, and all either seat gets is the board — which is the engine-is-the-
+authority invariant doing the work it was built for. Per-side first, match-wide as
+the fallback, so every existing caller is untouched (there is a restraint test
+pinning the head-to-head and the practice board unchanged).
+
+`session_bound` grew an optional `side`: with one it moves a single seat, without
+one it rebinds the whole match as before.
+
+**The nudge's closing line is conditional on `opponent`**, which `owed()` now
+reports. "Tell your opponent what you did" is right against a person and actively
+harmful when the other seat is a separate conversation that will never read it —
+it invites precisely the narrating-to-yourself the human version warns against.
+In a full-AI match the note is addressed to the SPECTATOR, who is the only
+audience a self-playing game has.
+
 **Which chat is `match.session_id`**, recorded by `bb_game_new` from the tool's
 `InjectedState`. `current_session_id()` reads EMPTY in a tool body — the tracing
 contextvar does not survive the hop — and graph state is the reliable carrier. The

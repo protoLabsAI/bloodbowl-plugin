@@ -6639,6 +6639,9 @@ def test_the_handover_says_who_is_waited_on_and_only_when_it_changes():
     assert mine == {
         "side": "home",
         "controller": "human",
+        # Who is on the OTHER side — the nudge's closing instruction differs when
+        # nobody is going to read it (a full-AI match talks to the spectator).
+        "opponent": "agent",
         "session_id": "",
         "why": "turn",
         "half": 1,
@@ -6823,3 +6826,84 @@ def test_a_walk_refuses_nonsense_rather_than_looping_on_it():
     out = _walk(m, "h00", long_path, _dice([]))
     assert not out["ok"] and "not a plan" in out["error"]
     assert (m.by_id("h00").x, m.by_id("h00").y) == (7, 13), "it refused before moving anyone"
+
+
+# --- full-AI mode: both seats agent-played, one conversation each -------------------
+
+
+def _ai_match(*players, active="home", sessions=None):
+    """A match with BOTH sides agent-played — the full-AI shape."""
+    from bloodbowl.engine.events import Event
+
+    m = _match(*players, active=active)
+    m.apply(
+        Event(
+            kind="match_started",
+            detail={
+                "kicking_to": active,
+                "controllers": {"home": "agent", "away": "agent"},
+                "session_id": "shared",
+                "session_ids": sessions or {"home": "seat-home", "away": "seat-away"},
+            },
+        )
+    )
+    m.clock.active = active
+    return m
+
+
+def test_each_ai_seat_is_owed_in_its_own_conversation():
+    """The whole reason `session_ids` exists. Two agent seats sharing a chat would be
+    one coach with both hands — it would read the plan it just made for the other team
+    straight out of its own context. All either seat gets is the board."""
+    from bloodbowl.engine import handover
+    from bloodbowl.engine.game import end_turn
+
+    m = _ai_match(("home", 7, 13), ("away", 7, 20), active="home")
+    mine = handover.owed(m)
+    assert mine["side"] == "home" and mine["controller"] == "agent"
+    assert mine["session_id"] == "seat-home"
+    assert mine["opponent"] == "agent", "and it knows the other seat is not a person"
+
+    end_turn(m, by="agent")
+    theirs = handover.owed(m)
+    assert theirs["side"] == "away" and theirs["session_id"] == "seat-away"
+    assert handover.changed(mine, theirs) == theirs, "one seat handing over to the other IS news"
+
+
+def test_a_match_without_per_side_sessions_is_unchanged():
+    """The ordinary head-to-head sets only `session_id`, and must keep resolving to it
+    for both sides — this is additive or it is a regression."""
+    from bloodbowl.engine import handover
+
+    m = _versus(("home", 7, 13), ("away", 7, 20), you="home", active="home")
+    m.session_id = "one-chat"
+    assert m.session_for("home") == "one-chat"
+    assert m.session_for("away") == "one-chat"
+    assert handover.owed(m)["session_id"] == "one-chat"
+
+
+def test_a_seat_can_be_rebound_without_moving_the_other():
+    """`bb_game_here` on one seat of a self-playing match moves that seat only. A
+    `session_bound` with no side keeps its old meaning: rebind the whole match."""
+    from bloodbowl.engine.events import Event
+
+    m = _ai_match(("home", 7, 13), ("away", 7, 20))
+    m.apply(Event(kind="session_bound", detail={"side": "home", "session_id": "moved"}))
+    assert m.session_for("home") == "moved"
+    assert m.session_for("away") == "seat-away", "the other seat did not move"
+
+    m.apply(Event(kind="session_bound", detail={"session_id": "whole-match"}))
+    assert m.session_id == "whole-match"
+    assert m.session_for("away") == "seat-away", "a per-side binding still wins over the fallback"
+
+
+def test_the_ai_seats_survive_a_fold():
+    """Per-side sessions are folded from the log like everything else, or a reload
+    would drop one seat back into the other's chat mid-game."""
+    from bloodbowl.engine.state import Match
+
+    m = _ai_match(("home", 7, 13), ("away", 7, 20))
+    rebuilt = Match.from_dict(m.to_dict())
+    assert rebuilt.session_for("home") == "seat-home"
+    assert rebuilt.session_for("away") == "seat-away"
+    assert rebuilt.controllers == {"home": "agent", "away": "agent"}
