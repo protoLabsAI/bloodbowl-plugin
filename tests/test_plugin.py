@@ -1912,8 +1912,13 @@ def test_the_3d_view_waits_for_the_bearer_before_fetching(client):
     401s on a gated instance. It self-heals on the next tick — but it flashes an error
     every load, which teaches you to ignore the one place errors appear."""
     src = (ROOT / "web3d" / "src" / "main.jsx").read_text()
-    assert "initPluginView(go)" in src or "initPluginView((" in src, "the first fetch must wait on the handshake"
-    assert "setTimeout(go" in src, "and must not hang when no console is there to send one"
+    # The fix is NOT "wait a bit then give up" — that races the console's own last retry
+    # (it re-posts at 0/100/300/700/1500ms) and falls through to an unauthenticated fetch
+    # that 401s on a gated instance. There must be no timing assumption at all: fetch
+    # immediately, and re-fetch whenever the handshake fires.
+    assert "onHandshake" in src, "a late token must trigger a re-fetch"
+    assert "[handshake]" in src, "the poller must re-run when the handshake lands"
+    assert "setTimeout(go" not in src, "no fixed-delay fallback — it races the console's retries"
 
 
 def test_every_declared_view_is_served_by_a_registered_route(client):
