@@ -7,35 +7,32 @@ import { Pitch } from "./Pitch";
 
 // The DS kit does the console handshake (operator bearer + live theme) and gives us a
 // slug-aware fetch. `@vite-ignore` because the specifier is built at runtime from
-// `window.__base` — it is "" on the host window and "/agents/<slug>" through the fleet
-// proxy, and a build-time resolve would bake in the wrong one.
-// Degrade rather than white-screen if the kit is not there. It is served by the CONSOLE,
-// so it is absent from the plugin's own test harness and from any host that does not
-// serve `_ds` — and a view that throws on import shows an empty canvas with no clue why.
-// The fallback is a plain same-origin fetch against the derived base: no bearer, which is
-// correct for an ungated instance and honestly fails with a 401 on a gated one.
+// `window.__base` — "" on the host window, "/agents/<slug>" through the fleet proxy — and
+// a build-time resolve would bake in the wrong one.
+//
+// NO TIMING ASSUMPTION ABOUT THE TOKEN. The bearer arrives by postMessage after load, and
+// the page's listener registers asynchronously (this module is itself loaded dynamically),
+// so the first post can land before anyone is listening. The console already re-posts on a
+// schedule (0/100/300/700/1500ms) for exactly that reason — but waiting a fixed interval
+// and then giving up races its LAST retry and falls through to an unauthenticated fetch,
+// which 401s on a gated instance. So: fetch immediately, and re-fetch whenever the
+// handshake fires. `initPluginView`'s callback runs on the initial init and on every live
+// re-theme, so a late token simply triggers another load.
+const listeners = new Set();
+/** Run `fn` whenever the console hands us a token/theme (init or re-theme). */
+export function onHandshake(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
 const kitReady = import(/* @vite-ignore */ `${window.__base}/_ds/plugin-kit.js`)
-  .then(
-    (kit) =>
-      // WAIT FOR THE HANDSHAKE before the first fetch. The bearer never travels in the
-      // URL — it arrives by postMessage AFTER load — so a poll fired on mount races it
-      // and 401s on a gated instance. It self-heals on the next tick, but it logs an
-      // error and flashes one in the HUD every single load, which trains you to ignore
-      // the place errors appear.
-      new Promise((resolve) => {
-        let settled = false;
-        const go = () => {
-          if (!settled) {
-            settled = true;
-            resolve(kit);
-          }
-        };
-        kit.initPluginView(go);
-        // No console to hand us one (standalone, or the plugin's own harness): proceed
-        // unauthenticated rather than hanging on a message that is never coming.
-        setTimeout(go, 1500);
-      }),
-  )
+  .then((kit) => {
+    kit.initPluginView(() => listeners.forEach((f) => f()));
+    return kit;
+  })
+  // Degrade rather than white-screen if the kit is absent — it is served by the CONSOLE,
+  // so it does not exist in the plugin's own harness or on a host without `_ds`. A view
+  // that throws on import shows an empty canvas with no clue why.
   .catch(() => ({ apiFetch: (path) => fetch(`${window.__base}${path}`) }));
 
 async function get(path) {
@@ -50,8 +47,13 @@ function App() {
   const [sel, setSel] = useState(null);
   const [legal, setLegal] = useState(null);
   const [err, setErr] = useState("");
+  // Bumped when the console completes the handshake, so the pollers re-run with a bearer
+  // they may not have had on mount.
+  const [handshake, setHandshake] = useState(0);
   const selRef = useRef(null);
   selRef.current = sel;
+
+  useEffect(() => onHandshake(() => setHandshake((n) => n + 1)), []);
 
   // Poll the SAME gated route the 2D board uses. This view computes no rules — it asks.
   useEffect(() => {
@@ -69,7 +71,7 @@ function App() {
     tick();
     const h = setInterval(tick, 2000);
     return () => { live = false; clearInterval(h); };
-  }, []);
+  }, [handshake]);
 
   // Legal squares come from the engine, never from here.
   useEffect(() => {
