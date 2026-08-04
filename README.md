@@ -132,7 +132,7 @@ mid-turn, a cancelled job — and a lost one looks exactly like the agent thinki
 with React Three Fiber — orbit the camera, pawns that fall over when they are knocked
 down, the ball riding above its carrier. Both ask `/game/legal` and neither computes a
 rule, so they cannot disagree about what is legal. The 3D view ships **prebuilt** in
-`web/3d/` (source in `web3d/`, rebuild with `cd web3d && npm install && npm run build`) so
+`web/3d/` and served at `/plugins/bloodbowl/view3d` (source in `web3d/`, rebuild with `cd web3d && npm install && npm run build`) so
 a git-URL install still needs no Node. Its End Zones are labelled by **who scores there** —
 you score in the opposition's End Zone, and possessive labelling answers the wrong
 question.
