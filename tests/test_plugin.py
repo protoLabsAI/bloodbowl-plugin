@@ -1828,7 +1828,7 @@ def test_the_3d_view_is_declared_and_its_page_is_served(client):
     router actually serves, or the console iframes a blank page. This one is the BUILT
     index.html inside the static tree, which is why it needs no new route."""
     view = next(v for v in _manifest()["views"] if v["id"] == "pitch3d")
-    assert view["path"] == "/plugins/bloodbowl/static/3d/index.html"
+    assert view["path"] == "/plugins/bloodbowl/view3d"
     r = client.get(view["path"])
     assert r.status_code == 200, r.text[:200]
     assert "text/html" in r.headers["content-type"]
@@ -1841,7 +1841,11 @@ def test_the_3d_bundle_ships_built(client):
     canvas — silent, and only visible by looking."""
     built = sorted((ROOT / "web" / "3d" / "assets").glob("*.js"))
     assert built, "web/3d/assets/*.js is missing — run: cd web3d && npm run build"
-    r = client.get(f"/plugins/bloodbowl/static/3d/assets/{built[0].name}")
+    assert (ROOT / "web" / "3d" / "assets" / "app.js").is_file(), (
+        "the bundle name is FIXED — the page addresses it by name at runtime, so a hashed "
+        "filename would load nothing and show an empty canvas"
+    )
+    r = client.get("/plugins/bloodbowl/static/3d/assets/app.js")
     assert r.status_code == 200
     assert "javascript" in r.headers["content-type"]
 
@@ -1850,7 +1854,7 @@ def test_the_3d_page_never_hardcodes_a_base(client):
     """RULE 3. On the host window the base is ""; through the ADR 0042 fleet proxy it is
     "/agents/<slug>". A hardcoded absolute path talks to the WRONG AGENT — it does not
     fail loudly, it quietly shows somebody else's match."""
-    page = client.get("/plugins/bloodbowl/static/3d/index.html").text
+    page = client.get("/plugins/bloodbowl/view3d").text
     assert "location.pathname.split" in page, "the page must derive its own base"
     assert "localhost" not in page and "127.0.0.1" not in page
     # The bundle DOES carry "/api/plugins/bloodbowl/..." strings — that is correct, they
@@ -1897,7 +1901,7 @@ def test_the_3d_hud_does_not_depend_on_the_theme_landing(client):
     stylesheet DEFINES that token, so the fallback never applies and the text inherits
     the kit's default — which was dark-on-dark. Same class as the odds badge that drew
     white on white for weeks. The HUD carries its own colour and backdrop."""
-    page = client.get("/plugins/bloodbowl/static/3d/index.html").text
+    page = client.get("/plugins/bloodbowl/view3d").text
     hud = page[page.index("#hud") : page.index("</style>")]
     assert "var(--pl-color-fg" not in hud, "the HUD must not depend on a token the kit defines"
     assert "background:" in hud and "color:" in hud, "it needs its own colour AND backdrop"
@@ -1910,3 +1914,29 @@ def test_the_3d_view_waits_for_the_bearer_before_fetching(client):
     src = (ROOT / "web3d" / "src" / "main.jsx").read_text()
     assert "initPluginView(go)" in src or "initPluginView((" in src, "the first fetch must wait on the handshake"
     assert "setTimeout(go" in src, "and must not hang when no console is there to send one"
+
+
+def test_every_declared_view_is_served_by_a_registered_route(client):
+    """The host validates a view's declared path against the paths its ROUTERS serve, by
+    EXACT string match (`graph/plugins/loader.py::_served_paths`). A parameterised route
+    is stored literally as `/plugins/bloodbowl/static/{path:path}`, so no concrete file
+    under it can ever match — declaring the built page there made the host warn "no
+    registered router serves it" on every single boot, and it was right about the shape
+    even though the file served fine by hand.
+
+    This is Rule 1 of the plugin-view guide, pinned: every declared view path must be a
+    literal route, not a path that merely happens to resolve.
+    """
+    import bloodbowl
+
+    routes = set()
+    for router, prefix in ((bloodbowl.api.build_view_router({}), "/plugins/bloodbowl"),):
+        for rt in router.routes:
+            routes.add((prefix + getattr(rt, "path", "")).rstrip("/") or "/")
+    for view in _manifest()["views"]:
+        path = str(view["path"]).rstrip("/") or "/"
+        assert path in routes, (
+            f"view {view['id']!r} declares {view['path']!r}, which no literal route serves — "
+            f"the host will warn and the console may refuse it. Served: {sorted(routes)}"
+        )
+        assert client.get(view["path"]).status_code == 200

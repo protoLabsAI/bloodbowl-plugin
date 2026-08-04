@@ -39,6 +39,24 @@ def build_view_router(cfg: dict | None = None):
     async def _view() -> HTMLResponse:
         return HTMLResponse((WEB / "index.html").read_text(encoding="utf-8"))
 
+    @r.get("/view3d", response_class=HTMLResponse)
+    async def _view3d() -> HTMLResponse:
+        """The 3D board's page — a REAL route, not a file inside the static tree.
+
+        It was originally declared straight at the built `…/static/3d/index.html`, which
+        serves fine by hand and is still the wrong shape: the host validates a view's
+        declared path against the paths its ROUTERS serve (`graph/plugins/loader.py::
+        _served_paths`), that set is built by exact string match, and a parameterised
+        route is stored literally as `/plugins/bloodbowl/static/{path:path}` — so no
+        concrete file under it can ever match. The host said so on every boot ("no
+        registered router serves it — it will render a blank/404 iframe") and it was
+        right about the shape even though curl got a 200.
+
+        Rule 1 of docs/guides/building-react-plugin-views.md exists for this. Serving the
+        page from a declared route is what every reference plugin does.
+        """
+        return HTMLResponse((WEB / "3d" / "index.html").read_text(encoding="utf-8"))
+
     @r.get("/static/{path:path}")
     async def _static(path: str):
         """Serve the page's own modules and stylesheet.

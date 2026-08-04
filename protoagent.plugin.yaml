@@ -19,12 +19,13 @@ config:
 
 views:
   - { id: pitch, label: "Pitch", icon: LayoutGrid, path: /plugins/bloodbowl/view }
-  # The 3D board. Its page is the BUILT index.html sitting inside the static tree, so it
-  # needs no new FastAPI route — which also means it appears on a plugin reload rather
-  # than requiring a process restart (a new route would: FastAPI cannot swap a mounted
-  # router in place). Relative asset URLs in that page resolve correctly on the host
-  # window and through the /agents/<slug> fleet proxy alike.
-  - { id: pitch3d, label: "Pitch 3D", icon: Box, path: /plugins/bloodbowl/static/3d/index.html }
+  # The 3D board, served by a REAL route (Rule 1 of the plugin-view guide). Declaring the
+  # built file inside the static tree served fine by hand but is the wrong shape: the
+  # host validates a view path against the paths its ROUTERS serve, by exact match, so a
+  # `{path:path}` route can never match a concrete file under it — it warned on every
+  # boot. A new route needs a PROCESS RESTART to appear (FastAPI cannot swap a mounted
+  # router); the static assets it pulls in do not.
+  - { id: pitch3d, label: "Pitch 3D", icon: Box, path: /plugins/bloodbowl/view3d }
 
 # The host auto-exempts a DECLARED VIEW's own path from the auth gate, because the
 # console iframes it with a plain navigation that cannot carry a bearer. It does

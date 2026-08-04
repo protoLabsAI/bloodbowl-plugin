@@ -341,12 +341,22 @@ per view pinning it).
 
 Four decisions worth not re-litigating:
 
-* **The page lives INSIDE the static tree** (`/plugins/bloodbowl/static/3d/index.html`)
-  rather than behind a new route. It therefore needs **no process restart** to
-  appear — a new FastAPI route would, because a mounted router cannot be swapped.
-  `base: "./"` in the Vite config is load-bearing with it: relative asset URLs
-  resolve correctly on the host window AND through the `/agents/<slug>` fleet
-  proxy, where an absolute base would silently address the wrong agent.
+* **The page is served by a REAL route** (`/plugins/bloodbowl/view3d`). It was
+  first declared straight at the built file inside the static tree, to dodge the
+  process restart a new route costs. That serves fine by hand and is the WRONG
+  SHAPE: the host validates a view path against the paths its ROUTERS serve
+  (`graph/plugins/loader.py::_served_paths`) by **exact string match**, and a
+  parameterised route is stored literally as `/plugins/bloodbowl/static/{path:path}`
+  — so no concrete file beneath it can ever match. The host warned on every boot
+  ("no registered router serves it — it will render a blank/404 iframe") and was
+  right about the shape even though `curl` got a 200. **Rule 1 of the plugin-view
+  guide is not advisory.** A test now pins every declared view to a literal route.
+* **The page therefore cannot use relative asset URLs**: it is served from
+  `…/view3d` while its bundle lives under `…/static/3d/assets/`. It addresses the
+  bundle absolutely off the base it already derives, so one HTML is correct at any
+  route, on the host window and through the `/agents/<slug>` proxy alike. That is
+  why the bundle filename is FIXED rather than content-hashed — the page names it
+  at runtime, so a hash would need a build-time rewrite of the HTML.
 * **The built output is COMMITTED.** The plugin installs from a git URL onto hosts
   with no Node, exactly as the console ships a prebuilt dist. `web3d/node_modules`
   is ignored; `web/3d` is not.
