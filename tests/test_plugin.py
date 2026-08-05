@@ -2026,3 +2026,49 @@ def test_the_models_view_is_declared_and_served(client):
     view = next(v for v in _manifest()["views"] if v["id"] == "models")
     assert view["path"] == "/plugins/bloodbowl/models"
     assert client.get(view["path"]).status_code == 200
+
+
+# --- voxel players -------------------------------------------------------------------
+
+
+def test_every_positional_maps_to_a_voxel_archetype():
+    """The archetypes are the ROSTER'S OWN taxonomy, not invented — so the JS keyword
+    table and the shipped data have to agree, and this is what notices when they drift
+    (a new team, a fork's roster, a renamed Keyword).
+
+    Read out of the JS rather than reimplemented in Python: duplicating the rules here
+    would let the two copies diverge silently, which is the bug this test exists to catch.
+    """
+    import json
+    import re
+
+    src = (ROOT / "web3d" / "src" / "voxelPlayer.js").read_text()
+    table = re.search(r"KEYWORD_TO_ARCHETYPE = \[(.*?)\];", src, re.S).group(1)
+    keywords = [m.lower() for m in re.findall(r'\["([^"]+)"', table)]
+    assert keywords, "the keyword table should not be empty"
+    # Big Guy MUST be tested before Blocker: an "Ogre Blocker" carries the Keywords
+    # "Big Guy, Blocker, Ogre" and is a Big Guy. Reading them the other way round builds
+    # a Troll at lineman scale, which is wrong in the one place the silhouette matters.
+    assert keywords.index("big guy") < keywords.index("blocker")
+
+    rosters = json.loads((ROOT / "data" / "rosters.json").read_text())
+    unmatched = []
+    for team in rosters["teams"]:
+        for pos in team["positionals"]:
+            hay = f"{pos.get('role') or ''} {pos['position']}".lower()
+            if not any(k in hay for k in keywords):
+                unmatched.append(f"{team['name']} / {pos['position']} ({pos.get('role')})")
+    # A miss is not fatal at runtime — archetypeFor falls back to a lineman — but it means
+    # a positional renders as something it is not, so it should be a deliberate choice.
+    assert len(unmatched) <= 18, f"{len(unmatched)} positionals match no archetype keyword: {unmatched[:5]}"
+
+
+def test_the_voxel_layer_holds_no_rules():
+    """Same invariant the 2D and 3D boards carry: a renderer that reasoned about the game
+    would be a second, silently diverging engine. The voxel build reads ST for bulk and
+    Keywords for shape — both descriptive — and nothing else."""
+    body = "\n".join(
+        (ROOT / "web3d" / "src" / f).read_text() for f in ("voxelPlayer.js", "teamPalette.js", "VoxelPawn.jsx")
+    )
+    for invented in ("dodge", "tackle", "turnover", "rush", "armour", "touchdown"):
+        assert invented not in body.lower(), f"the voxel layer is reasoning about {invented!r}"

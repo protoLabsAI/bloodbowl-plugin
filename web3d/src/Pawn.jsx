@@ -3,6 +3,7 @@ import { useRef } from "react";
 import { labelTexture } from "./label";
 import { SIDE_COLOR, poseFor, squareToWorld } from "./pitchMath";
 import { useModel } from "./useModel";
+import { VoxelPawn } from "./VoxelPawn";
 
 /** One player. A primitive for now — and the point of the split is that swapping this
  *  mesh for a loaded .glb changes nothing else: position, pose and picking all come from
@@ -47,14 +48,13 @@ export function Pawn({ p, selected, carrying, onPick, getBuffer }) {
           )}
         </group>
       ) : (
-        <mesh castShadow onClick={(e) => { e.stopPropagation(); onPick?.(p); }}>
-          <capsuleGeometry args={[0.3, 0.5, 4, 12]} />
-          <meshStandardMaterial
-            color={colour}
-            emissive={selected ? colour : "#000"}
-            emissiveIntensity={selected ? 0.7 : 0}
-          />
-        </mesh>
+        // No uploaded mesh — the VOXEL build, not a capsule. It is the default rather
+        // than a placeholder: it reads the positional's archetype off the roster's own
+        // Keywords and its bulk off ST, so a Troll and a Gnoblar differ before any asset
+        // exists. An upload replaces it; nothing requires one.
+        <group onClick={(e) => { e.stopPropagation(); onPick?.(p); }}>
+          <VoxelPawn player={p} selected={selected} />
+        </group>
       )}
       {/* The ball rides ABOVE its carrier. In 2D it was a badge on the token, which a
           camera can hide behind a pawn the moment the view is not top-down. */}

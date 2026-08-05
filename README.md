@@ -137,6 +137,12 @@ a git-URL install still needs no Node. Its End Zones are labelled by **who score
 you score in the opposition's End Zone, and possessive labelling answers the wrong
 question.
 
+Players are drawn as **voxel figures** whose build comes from the roster: the archetype
+off each positional's Keywords (Lineman, Big Guy, Blitzer, Thrower, Blocker, Runner,
+Catcher) and the bulk off its ST, so a Troll and a Snotling differ before any asset
+exists. Team colour is derived from the side and the team's name — the side owns the
+jersey, because telling two teams apart at a glance beats cosmetic fidelity.
+
 **Models** — a third view, `/plugins/bloodbowl/models`. Upload one mesh (`.glb`/`.gltf`)
 per positional, organised by team, and the 3D board uses it for every player of that
 position. **A missing model is the normal case**: the board falls back to its primitive
