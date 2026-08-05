@@ -35,6 +35,14 @@ const kitReady = import(/* @vite-ignore */ `${window.__base}/_ds/plugin-kit.js`)
   // that throws on import shows an empty canvas with no clue why.
   .catch(() => ({ apiFetch: (path) => fetch(`${window.__base}${path}`) }));
 
+/** Raw bytes for a gated asset (the uploaded meshes) — same auth path as the JSON. */
+async function getBuffer(path) {
+  const kit = await kitReady;
+  const res = await kit.apiFetch(path);
+  if (!res.ok) throw new Error(String(res.status));
+  return res.arrayBuffer();
+}
+
 async function get(path) {
   const kit = await kitReady;
   const res = await kit.apiFetch(path);
@@ -110,6 +118,7 @@ function App() {
             p={p}
             selected={sel === p.id}
             carrying={match?.ball?.carrier === p.id}
+            getBuffer={getBuffer}
             onPick={(q) => setSel(q.id === selRef.current ? null : q.id)}
           />
         ))}

@@ -137,6 +137,14 @@ a git-URL install still needs no Node. Its End Zones are labelled by **who score
 you score in the opposition's End Zone, and possessive labelling answers the wrong
 question.
 
+**Models** — a third view, `/plugins/bloodbowl/models`. Upload one mesh (`.glb`/`.gltf`)
+per positional, organised by team, and the 3D board uses it for every player of that
+position. **A missing model is the normal case**: the board falls back to its primitive
+pawn, so an empty library plays exactly as it does today and a broken upload cannot break
+the board. Uploads live beside the match in the agent's own state — never committed, and
+a fresh install ships none. The meshes stay behind the gated `/api/` prefix, because a
+coach's files should not become unauthenticated content on the box.
+
 **Full AI** — `bb_game_new(you="neither")`, or `POST /game/new {"you": "neither"}` from the
 board. Both seats are agent-played and the game runs itself to full time, each turn's end
 handing over to the next. **Each side gets its own conversation**: two seats out of one
