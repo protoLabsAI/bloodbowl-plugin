@@ -6907,3 +6907,20 @@ def test_the_ai_seats_survive_a_fold():
     assert rebuilt.session_for("home") == "seat-home"
     assert rebuilt.session_for("away") == "seat-away"
     assert rebuilt.controllers == {"home": "agent", "away": "agent"}
+
+
+def test_a_player_row_carries_its_roster_keywords():
+    """`role` is the roster's own taxonomy ("Big Guy, Troll") and the only way a consumer
+    can tell a Big Guy from a Blocker — an "Ogre Blocker" is a Big Guy, and reading the
+    position NAME would say otherwise. Server-side it already drives Hatred, Animosity and
+    Bloodlust; the 3D board builds its silhouettes from it."""
+    from bloodbowl.pitch import player_from_roster
+
+    troll, why = player_from_roster("home", 7, 13, "Ogre", "Ogre Blocker")
+    assert troll is not None, why
+    assert "big guy" in (troll.role or "").lower(), troll.role
+
+    m = _match(("home", 7, 13))
+    m.players[0].player = troll
+    row = next(p for p in m.to_dict()["players"] if p["id"] == "h00")
+    assert "role" in row and "big guy" in row["role"].lower()

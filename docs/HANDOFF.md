@@ -368,6 +368,42 @@ Four decisions worth not re-litigating:
   is absent in the plugin's own harness; a view that throws on import shows an
   empty canvas with no clue why. It falls back to a plain same-origin fetch.
 
+### Voxel players (`web3d/src/voxelPlayer.js`, `teamPalette.js`, `VoxelPawn.jsx`)
+
+The DEFAULT pawn, not a placeholder: an uploaded mesh replaces it, nothing requires
+one. Architecture lifted from MechArena's `visual-engine/src/voxel` — sparse unit
+voxels tagged with a MATERIAL SLOT, composed per ARCHETYPE, palette resolved
+separately, all derivation in zero-import modules.
+
+**The archetypes are the roster's own taxonomy.** Every positional carries Keywords
+under `role`, and Lineman / Big Guy / Blitzer / Thrower / Blocker / Runner / Catcher
+cover all 159. Bulk comes from ST. Nothing is invented — a test reads the keyword
+table out of the JS and checks it against `rosters.json`, rather than
+reimplementing the rules in Python where the two copies could drift apart.
+
+**`role` had to be added to the wire.** It already drove Hatred, Animosity and
+Bloodlust server-side but was never serialised, and a view cannot tell a Big Guy
+from a Blocker by position NAME — an "Ogre Blocker" is `Big Guy, Blocker, Ogre`,
+so keyword ORDER decides it and Big Guy must win.
+
+**⚠️ three.js `Color.setStyle` ONLY PARSES THE LEGACY COMMA SYNTAX.**
+`hsl(14 72% 52%)` — CSS Color 4, what every browser and stylesheet accepts —
+silently yields WHITE. No throw, no warning: a `Color` constructed white simply
+stays white. Every player rendered in the material's default with a perfectly
+correct scene graph: 512 instances, `instanceColor` allocated, all of it [1,1,1].
+Counting instances could not see it and neither could a console listener; only
+reading the instance buffer back did. Use `hsl(h, s%, l%)`.
+
+**The palette is tuned for the TOP-DOWN read**, because that is the angle a board
+is mostly looked at. A near-white accent (l=0.82) on helmet and shoulders put the
+team colour underneath the parts nobody sees, and the board read as two rows of
+pale slabs.
+
+`window.__bbVoxel[playerId]` is a deliberate testability hook — count, whether
+`instanceColor` exists, and the first instance's colour. There is no DOM per cube
+and `getComputedStyle` sees nothing, so the scene's own state is the only thing a
+browser harness can asserted against.
+
 ### The model library (`models.py`, view `/plugins/bloodbowl/models`)
 
 One mesh per positional, organised by team; the 3D board loads it and **falls back to

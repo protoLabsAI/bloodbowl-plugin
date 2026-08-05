@@ -148,6 +148,12 @@ class PlayerState:
                 "x": self.player.x,
                 "y": self.player.y,
                 "position": self.player.position,
+                # The roster's own Keywords ("Blitzer, Human"; "Big Guy, Troll"). Carried
+                # onto the wire because a VIEW cannot tell a Big Guy from a Blocker by
+                # position NAME alone — an "Ogre Blocker" is a Big Guy, and reading the
+                # name would build it as a lineman-sized blocker. Already load-bearing
+                # server-side for Hatred, Animosity and Bloodlust.
+                "role": self.player.role or "",
                 "team": self.player.team,
                 "badge": self.player.badge(),
                 "MA": self.player.MA,
