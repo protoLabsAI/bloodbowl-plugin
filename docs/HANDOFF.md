@@ -368,6 +368,34 @@ Four decisions worth not re-litigating:
   is absent in the plugin's own harness; a view that throws on import shows an
   empty canvas with no clue why. It falls back to a plain same-origin fetch.
 
+### The model library (`models.py`, view `/plugins/bloodbowl/models`)
+
+One mesh per positional, organised by team; the 3D board loads it and **falls back to
+the primitive pawn when there is none**, which is the ordinary case. That fallback is
+the contract: the library can only ever upgrade the board, never break it.
+
+* **No user input becomes a path.** A request names slugs; those are matched against
+  the SHIPPED ROSTER and the canonical entry supplies the filename. An unknown slug is
+  a 404 — there is no arrangement of dots and slashes that resolves to something the
+  roster does not already contain. Tested with three traversal shapes.
+* **Uploads are RAW BODY, not multipart.** `UploadFile` needs `python-multipart`, and
+  FastAPI raises for it at ROUTER-BUILD time rather than per request — one missing
+  wheel took down every route on the data router, the board included, in a form the
+  test suite reported as 29 unrelated failures. This plugin ships no runtime pip deps
+  and a single file needs no form parser.
+* **`Request` is imported at MODULE level in api.py and must stay there.**
+  `from __future__ import annotations` makes annotations strings, and FastAPI resolves
+  them with `get_type_hints` against the module's globals — a `Request` imported inside
+  a router-builder is invisible to it and the parameter is silently demoted to a QUERY
+  field (422 "Field required"). Every other route here annotates with builtins, which
+  is why this only bit once.
+* **Replacing removes the other container first**, so a positional cannot hold both a
+  `.glb` and a `.gltf` with the winner decided by sort order.
+* The meshes are served from the GATED prefix, so the 3D view fetches them through the
+  kit and parses the bytes itself — drei's `useGLTF` takes a bare URL and carries no
+  bearer, so it cannot reach them. One fetch per positional per session, cloned per
+  pawn: the cached scene is one object, and placing it twice moves the first.
+
 **AND THE END ZONES ARE LABELLED BY WHO SCORES THERE.** The 2D board says "HOME END
 ZONE", which is true and answers the wrong question — you score in the OPPOSITION's
 End Zone. It cost a live false bug report: a home carrier standing in row 1 under a

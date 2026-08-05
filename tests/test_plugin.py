@@ -1945,3 +1945,84 @@ def test_every_declared_view_is_served_by_a_registered_route(client):
             f"the host will warn and the console may refuse it. Served: {sorted(routes)}"
         )
         assert client.get(view["path"]).status_code == 200
+
+
+# --- the model library ---------------------------------------------------------------
+
+
+def _glb(size: int = 64) -> bytes:
+    """Bytes that look like a .glb — the storage layer validates the SUFFIX and the size,
+    never the container, because parsing glTF to accept an upload would be a second,
+    worse glTF implementation."""
+    return b"glTF" + b"\0" * size
+
+
+def test_the_model_library_lists_every_team_and_positional(client):
+    d = client.get("/api/plugins/bloodbowl/models").json()
+    assert d["ok"] and len(d["teams"]) == 30
+    amazon = next(t for t in d["teams"] if t["team"] == "Amazon")
+    assert amazon["total"] == len(amazon["positionals"]) > 0
+    assert amazon["have"] == 0, "a fresh install ships no models"
+    assert all(not p["has_model"] for p in amazon["positionals"])
+
+
+def test_a_model_round_trips_and_is_served_back(client):
+    base = "/api/plugins/bloodbowl/models/amazon/eagle-warrior"
+    up = client.post(f"{base}?filename=eagle.glb", content=_glb())
+    assert up.status_code == 200, up.text
+    assert up.json()["model"]["has_model"] and up.json()["model"]["file"] == "eagle-warrior.glb"
+
+    got = client.get(f"{base}/file")
+    assert got.status_code == 200 and got.content == _glb()
+
+    listed = client.get("/api/plugins/bloodbowl/models").json()
+    amazon = next(t for t in listed["teams"] if t["team"] == "Amazon")
+    assert amazon["have"] == 1
+
+    assert client.delete(base).json()["ok"] is True
+    assert client.get(f"{base}/file").status_code == 404
+
+
+def test_an_unknown_positional_is_a_404_not_a_path(client):
+    """The security boundary: a request names slugs, and those are matched against the
+    SHIPPED ROSTER, which supplies the filename. There is no arrangement of dots and
+    slashes that resolves to something the roster does not already contain."""
+    for team, pos in [("../../etc", "passwd"), ("amazon", "../../../secrets"), ("nope", "nobody")]:
+        r = client.post(f"/api/plugins/bloodbowl/models/{team}/{pos}?filename=x.glb", content=_glb())
+        assert r.status_code == 404, f"{team}/{pos} should be unknown, got {r.status_code}"
+
+
+def test_only_model_files_are_accepted(client):
+    base = "/api/plugins/bloodbowl/models/amazon/python-warrior"
+    bad = client.post(f"{base}?filename=payload.py", content=b"import os")
+    assert bad.status_code == 400 and "not a model" in bad.json()["detail"]
+    empty = client.post(f"{base}?filename=x.glb", content=b"")
+    assert empty.status_code == 400
+    assert client.get(f"{base}/file").status_code == 404, "nothing was stored"
+
+
+def test_replacing_a_model_does_not_leave_both_containers(client):
+    """Otherwise a positional ends up with a .glb AND a .gltf and which one loads is
+    decided by sort order — a silent winner is worse than either answer."""
+    import bloodbowl
+
+    base = "/api/plugins/bloodbowl/models/amazon/jaguar-warrior"
+    client.post(f"{base}?filename=a.gltf", content=_glb(8))
+    client.post(f"{base}?filename=b.glb", content=_glb(16))
+    stored = sorted(p.name for p in (bloodbowl.models.models_dir() / "amazon").glob("jaguar-warrior.*"))
+    assert stored == ["jaguar-warrior.glb"], stored
+
+
+def test_uploads_live_in_the_state_dir_not_the_repo(client):
+    """A coach's models are their files: never committed, and a git-URL install ships
+    none. `state/` is already gitignored, which is why they go there."""
+    import bloodbowl
+
+    assert bloodbowl.models.models_dir().parent == bloodbowl.store.state_dir()
+    assert ROOT not in bloodbowl.models.models_dir().parents
+
+
+def test_the_models_view_is_declared_and_served(client):
+    view = next(v for v in _manifest()["views"] if v["id"] == "models")
+    assert view["path"] == "/plugins/bloodbowl/models"
+    assert client.get(view["path"]).status_code == 200

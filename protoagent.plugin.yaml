@@ -26,6 +26,10 @@ views:
   # boot. A new route needs a PROCESS RESTART to appear (FastAPI cannot swap a mounted
   # router); the static assets it pulls in do not.
   - { id: pitch3d, label: "Pitch 3D", icon: Box, path: /plugins/bloodbowl/view3d }
+  # The model library — upload a mesh per positional, organised by team. Its page is a
+  # real route like the others; the meshes themselves stay GATED under /api/, because a
+  # coach's uploads are their files and should not become unauthenticated content.
+  - { id: models, label: "Models", icon: Boxes, path: /plugins/bloodbowl/models }
 
 # The host auto-exempts a DECLARED VIEW's own path from the auth gate, because the
 # console iframes it with a plain navigation that cannot carry a bearer. It does

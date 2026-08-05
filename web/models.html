@@ -1,0 +1,118 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Blood Bowl — model library</title>
+    <script>
+      // RULE 3: derive the base first — "" on the host window, "/agents/<slug>" through
+      // the fleet proxy. The stylesheet is hand-prefixed because it loads before any
+      // script could help.
+      window.__base = location.pathname.split("/plugins/")[0];
+      document.write('<link rel="stylesheet" href="' + window.__base + '/_ds/plugin-kit.css">');
+    </script>
+    <style>
+      body { margin: 0; font: 13px/1.5 system-ui, sans-serif; background: var(--pl-color-bg); color: var(--pl-color-fg); }
+      .wrap { display: grid; grid-template-columns: 240px 1fr; height: 100vh; }
+      .teams { overflow: auto; border-right: 1px solid var(--pl-color-border); }
+      .team { display: flex; justify-content: space-between; gap: 8px; padding: 8px 12px; cursor: pointer; border: 0; width: 100%;
+              background: none; color: inherit; font: inherit; text-align: left; }
+      .team:hover { background: var(--pl-color-bg-panel); }
+      .team[aria-current="true"] { background: var(--pl-color-bg-panel); font-weight: 600; }
+      .count { opacity: .6; font-variant-numeric: tabular-nums; }
+      .count.some { opacity: 1; color: var(--pl-color-status-success); }
+      .body { overflow: auto; padding: 16px 20px; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--pl-color-border); }
+      th { font-weight: 600; opacity: .7; }
+      .has { color: var(--pl-color-status-success); }
+      .none { opacity: .45; }
+      .msg { margin: 10px 0; padding: 8px 10px; border-radius: 6px; }
+      .msg.err { background: color-mix(in srgb, var(--pl-color-status-error) 18%, transparent); }
+      .msg.ok { background: color-mix(in srgb, var(--pl-color-status-success) 18%, transparent); }
+      h1 { font-size: 16px; margin: 0 0 4px; }
+      .hint { opacity: .65; margin: 0 0 14px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="teams" id="teams"></div>
+      <div class="body">
+        <h1 id="title">Model library</h1>
+        <p class="hint" id="hint">One mesh per positional. Uploads live beside the board in this agent's own state — they are never committed, and a fresh install ships none.</p>
+        <div id="msg"></div>
+        <table><thead><tr><th>Positional</th><th>Model</th><th>Size</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+      </div>
+    </div>
+    <script type="module">
+      const kit = await import(window.__base + "/_ds/plugin-kit.js");
+      kit.initPluginView();
+      const API = "/api/plugins/bloodbowl";
+      const $ = (id) => document.getElementById(id);
+      let cat = [], current = null, limits = { max_bytes: 0, suffixes: [] };
+
+      const kb = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB");
+      function say(text, cls) { $("msg").innerHTML = text ? `<div class="msg ${cls}">${text}</div>` : ""; }
+
+      async function load() {
+        const d = await (await kit.apiFetch(`${API}/models`)).json();
+        cat = d.teams || [];
+        limits = { max_bytes: d.max_bytes, suffixes: d.suffixes || [] };
+        current = cat.find((t) => t.slug === current?.slug) || cat[0];
+        renderTeams();
+        renderRows();
+      }
+
+      function renderTeams() {
+        $("teams").innerHTML = cat
+          .map((t) => `<button class="team" data-slug="${t.slug}" aria-current="${t.slug === current?.slug}">
+            <span>${t.team}</span><span class="count ${t.have ? "some" : ""}">${t.have}/${t.total}</span></button>`)
+          .join("");
+        for (const el of document.querySelectorAll(".team")) {
+          el.onclick = () => { current = cat.find((t) => t.slug === el.dataset.slug); say(""); renderTeams(); renderRows(); };
+        }
+      }
+
+      function renderRows() {
+        if (!current) return;
+        $("title").textContent = `${current.team} — ${current.have}/${current.total} modelled`;
+        $("rows").innerHTML = current.positionals
+          .map((p) => `<tr>
+            <td>${p.position}</td>
+            <td class="${p.has_model ? "has" : "none"}">${p.has_model ? p.file : "—"}</td>
+            <td>${p.has_model ? kb(p.bytes) : ""}</td>
+            <td style="text-align:right">
+              <input type="file" id="f-${p.slug}" accept="${limits.suffixes.join(",")}" hidden>
+              <button class="pl-btn" data-up="${p.slug}">${p.has_model ? "Replace" : "Upload"}</button>
+              ${p.has_model ? `<button class="pl-btn" data-del="${p.slug}">Remove</button>` : ""}
+            </td></tr>`)
+          .join("");
+        for (const b of document.querySelectorAll("[data-up]")) {
+          const slug = b.dataset.up, input = $(`f-${slug}`);
+          b.onclick = () => input.click();
+          input.onchange = async () => {
+            const file = input.files?.[0];
+            if (!file) return;
+            if (file.size > limits.max_bytes) return say(`${file.name} is ${kb(file.size)} — over the ${kb(limits.max_bytes)} limit.`, "err");
+            // RAW BODY, not multipart — the server parses no form (see api.py: adding
+            // python-multipart would put a wheel between the board and every data route).
+            const url = `${API}/models/${current.slug}/${slug}?filename=${encodeURIComponent(file.name)}`;
+            const res = await kit.apiFetch(url, { method: "POST", body: file });
+            const d = await res.json().catch(() => ({}));
+            if (!res.ok) return say(d.detail || `Upload failed (${res.status}).`, "err");
+            say(`${file.name} → ${current.team} · ${slug}`, "ok");
+            await load();
+          };
+        }
+        for (const b of document.querySelectorAll("[data-del]")) {
+          b.onclick = async () => {
+            await kit.apiFetch(`${API}/models/${current.slug}/${b.dataset.del}`, { method: "DELETE" });
+            say("Removed.", "ok");
+            await load();
+          };
+        }
+      }
+
+      load().catch((e) => say(String(e.message || e), "err"));
+    </script>
+  </body>
+</html>

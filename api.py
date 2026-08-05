@@ -11,6 +11,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+# Module level ON PURPOSE. `from __future__ import annotations` turns every annotation
+# into a string, and FastAPI resolves them with `get_type_hints` against the MODULE's
+# globals — so a `Request` imported inside a router-builder is invisible to it and the
+# parameter is silently demoted to a query field (422 "Field required"). Every other
+# route here annotates with builtins, which is why this only bit once.
+from fastapi import Request
+
 from .pitch import Player, Scenario, find_team, geometry, player_from_roster, team_names
 
 # `store` is deliberately NOT imported here — the routers resolve it per request.
@@ -56,6 +63,11 @@ def build_view_router(cfg: dict | None = None):
         page from a declared route is what every reference plugin does.
         """
         return HTMLResponse((WEB / "3d" / "index.html").read_text(encoding="utf-8"))
+
+    @r.get("/models", response_class=HTMLResponse)
+    async def _models_page() -> HTMLResponse:
+        """The model library. A real route, like every other declared view."""
+        return HTMLResponse((WEB / "models.html").read_text(encoding="utf-8"))
 
     @r.get("/static/{path:path}")
     async def _static(path: str):
@@ -307,6 +319,60 @@ def build_game_router(cfg: dict | None = None, announce=None):
         if m is None:
             raise HTTPException(status_code=404, detail="no match in progress")
         return m
+
+    # --- the model library ------------------------------------------------------
+    # GATED, like every other data route. Uploads are a coach's own files; the meshes are
+    # served back through here rather than the public static tree so nothing a person
+    # drops in becomes unauthenticated content on the box.
+
+    @r.get("/models")
+    async def _models_catalogue() -> dict:
+        from . import models as _m
+
+        return {"ok": True, "teams": _m.catalogue(), "max_bytes": _m.MAX_BYTES, "suffixes": sorted(_m.ALLOWED_SUFFIXES)}
+
+    @r.post("/models/{team}/{position}")
+    async def _model_upload(team: str, position: str, request: Request, filename: str = "") -> dict:
+        """Upload a mesh as a RAW BODY, with the name in `?filename=`.
+
+        Not multipart, deliberately: `UploadFile` needs `python-multipart`, FastAPI raises
+        for it at ROUTER-BUILD time rather than on the request, and this plugin ships with
+        no runtime pip dependencies at all. One missing wheel would take down every route
+        on this router — the board included — to add a form parser we do not need for a
+        single file. `fetch(url, {method:"POST", body: file})` sends the bytes directly.
+        """
+        from . import models as _m
+
+        names = _m.resolve(team, position)
+        if names is None:
+            raise HTTPException(status_code=404, detail=f"no positional {position!r} on {team!r}")
+        try:
+            return {"ok": True, "model": _m.save_model(*names, filename, await request.body())}
+        except ValueError as exc:
+            # A rejected upload is an ordinary answer with a reason, not a 500 — the
+            # person is standing at a file picker and needs to know what to pick instead.
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @r.delete("/models/{team}/{position}")
+    async def _model_delete(team: str, position: str) -> dict:
+        from . import models as _m
+
+        names = _m.resolve(team, position)
+        if names is None:
+            raise HTTPException(status_code=404, detail="unknown positional")
+        return {"ok": _m.delete_model(*names)}
+
+    @r.get("/models/{team}/{position}/file")
+    async def _model_file(team: str, position: str):
+        from fastapi.responses import FileResponse as _FR
+
+        from . import models as _m
+
+        names = _m.resolve(team, position)
+        found = _m.find_model(*names) if names else None
+        if found is None:
+            raise HTTPException(status_code=404, detail="no model for that positional")
+        return _FR(found, media_type="model/gltf-binary" if found.suffix == ".glb" else "model/gltf+json")
 
     @r.get("/game")
     async def _game() -> dict:

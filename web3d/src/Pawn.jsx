@@ -2,12 +2,18 @@ import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
 import { labelTexture } from "./label";
 import { SIDE_COLOR, poseFor, squareToWorld } from "./pitchMath";
+import { useModel } from "./useModel";
 
 /** One player. A primitive for now — and the point of the split is that swapping this
  *  mesh for a loaded .glb changes nothing else: position, pose and picking all come from
  *  the pure layer and the engine's own state. */
-export function Pawn({ p, selected, carrying, onPick }) {
+export function Pawn({ p, selected, carrying, onPick, getBuffer }) {
   const ref = useRef();
+  // An uploaded mesh if the coach has one for this positional, else null — and null is
+  // the ordinary case. The primitive below is not a placeholder to be replaced later; it
+  // is the permanent fallback, so a missing or unreadable model degrades to a playable
+  // board rather than an empty square.
+  const model = useModel(getBuffer, p.team, p.position);
   const [wx, , wz] = squareToWorld(p.x, p.y);
   const pose = poseFor(p.down);
 
@@ -28,14 +34,28 @@ export function Pawn({ p, selected, carrying, onPick }) {
   const colour = SIDE_COLOR[p.side];
   return (
     <group ref={ref} position={[wx, 0.5, wz]}>
-      <mesh castShadow onClick={(e) => { e.stopPropagation(); onPick?.(p); }}>
-        <capsuleGeometry args={[0.3, 0.5, 4, 12]} />
-        <meshStandardMaterial
-          color={colour}
-          emissive={selected ? colour : "#000"}
-          emissiveIntensity={selected ? 0.7 : 0}
-        />
-      </mesh>
+      {model ? (
+        // Sized to a square and dropped to the turf. A tabletop mesh arrives at whatever
+        // scale it was exported in, so it is normalised rather than trusted.
+        <group onClick={(e) => { e.stopPropagation(); onPick?.(p); }}>
+          <primitive object={model} scale={0.9} position={[0, -0.5, 0]} />
+          {selected && (
+            <mesh position={[0, -0.48, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[0.38, 0.48, 24]} />
+              <meshBasicMaterial color={colour} />
+            </mesh>
+          )}
+        </group>
+      ) : (
+        <mesh castShadow onClick={(e) => { e.stopPropagation(); onPick?.(p); }}>
+          <capsuleGeometry args={[0.3, 0.5, 4, 12]} />
+          <meshStandardMaterial
+            color={colour}
+            emissive={selected ? colour : "#000"}
+            emissiveIntensity={selected ? 0.7 : 0}
+          />
+        </mesh>
+      )}
       {/* The ball rides ABOVE its carrier. In 2D it was a badge on the token, which a
           camera can hide behind a pawn the moment the view is not top-down. */}
       {carrying && (
