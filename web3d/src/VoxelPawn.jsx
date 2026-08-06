@@ -5,7 +5,7 @@ import { paletteFor } from "./teamPalette";
 
 /** One world unit is a square; a voxel is a small fraction of it. Sized so a lineman
  *  stands a little under a square tall and a Big Guy towers without covering neighbours. */
-const VOXEL = 0.085;
+export const VOXEL = 0.085;
 
 /**
  * A player built from unit cubes — ONE InstancedMesh per pawn, coloured per instance.
