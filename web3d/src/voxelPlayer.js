@@ -104,6 +104,20 @@ export function buildVoxels(archetype, { st = 3 } = {}) {
   return v;
 }
 
+/**
+ * How tall a build stands, in grid units, without building it.
+ *
+ * Derived from the same numbers `buildVoxels` uses: the head sits two voxels below the
+ * nominal height, then two of head and one of helmet, plus a crest. Callers need this to
+ * put the ball and the badge ABOVE a figure whose height varies from 10 (lineman) to 14
+ * (Big Guy) — a fixed offset either buries the marker in a Troll's helmet or leaves it
+ * floating over a Gnoblar.
+ */
+export function gridHeight(archetype) {
+  const a = ARCHETYPES[archetype] || ARCHETYPES.lineman;
+  return a.height + 1 + (a.crest ? 1 : 0);
+}
+
 /** Grid extents, so the renderer can centre and scale without knowing the build rules. */
 export function boundsOf(voxels) {
   const f = (k, fn) => fn(...voxels.map((p) => p[k]));

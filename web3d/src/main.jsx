@@ -2,6 +2,7 @@ import { OrbitControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { Ball } from "./Ball";
 import { Pawn } from "./Pawn";
 import { Pitch } from "./Pitch";
 
@@ -112,6 +113,7 @@ function App() {
         <hemisphereLight intensity={0.55} groundColor="#0b0f0c" />
         <directionalLight position={[10, 20, 8]} intensity={1.6} castShadow shadow-mapSize={[2048, 2048]} />
         <Pitch legal={legal} onPick={() => {}} />
+        <Ball ball={match?.ball} />
         {players.map((p) => (
           <Pawn
             key={p.id}

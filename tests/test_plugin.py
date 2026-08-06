@@ -2072,3 +2072,31 @@ def test_the_voxel_layer_holds_no_rules():
     )
     for invented in ("dodge", "tackle", "turnover", "rush", "armour", "touchdown"):
         assert invented not in body.lower(), f"the voxel layer is reasoning about {invented!r}"
+
+
+def test_the_3d_pawns_stand_on_the_turf_and_face_the_opposition(client):
+    """Two defects that only a render shows, pinned so they cannot come back.
+
+    The pawn group tweened toward y=0.5 — the CAPSULE's half-height, since a capsule's
+    origin is its centre. Every other body stands on its own feet at y=0, so voxel players
+    hovered half a square above the pitch.
+
+    And both bodies are built with their depth along Z, so untouched they face the
+    TOUCHLINE. They are turned down the length toward the End Zone they attack.
+    """
+    src = (ROOT / "web3d" / "src" / "Pawn.jsx").read_text()
+    assert "position={[wx, 0, wz]}" in src, "the pawn group must sit ON the turf"
+    assert "0.5 - pose.sagY" not in src, "the capsule-era half-height offset is back"
+    assert "const facing" in src and 'p.side === "home"' in src, "pawns must face the opposition"
+
+
+def test_a_loose_ball_is_drawn(client):
+    """A carried ball rides above its carrier; a loose one had nothing at all, so a
+    bounce, a fumble or a kick still in the air left the pitch looking empty. `in_air` is
+    a state the engine tracks separately — the ball cannot be caught until the Kick-off
+    Event resolves — so it is drawn differently, with the square it will land on."""
+    src = (ROOT / "web3d" / "src" / "Ball.jsx").read_text()
+    assert "ball.carrier" in src, "a carried ball is the Pawn's job, not this one's"
+    assert "in_air" in src and "in_play" in src
+    main = (ROOT / "web3d" / "src" / "main.jsx").read_text()
+    assert "<Ball ball={match?.ball} />" in main
