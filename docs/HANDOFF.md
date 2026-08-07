@@ -404,6 +404,38 @@ pale slabs.
 and `getComputedStyle` sees nothing, so the scene's own state is the only thing a
 browser harness can asserted against.
 
+### The roster builder (`draft.py`, view `/plugins/bloodbowl/draft`)
+
+A Team Draft List: who is on the team, costed and checked. NOT a board — placing it
+is a separate step, so one squad can be set up in as many shapes as a coach wants.
+
+**Every global limit in `draft.py` is QUOTED from the rulebook**, looked up in the
+agent's own S3 knowledge base rather than recalled, because this is precisely what
+recall gets subtly wrong. Budget "usually 1,000,000 gold pieces"; "at least 11 …
+when it is first drafted"; "never have more than 16"; "a maximum of 8 Team
+Re-rolls"; "a maximum of 6 Assistant Coaches … 10,000 gold pieces" (and the same
+sentence again for Cheerleaders); one Apothecary at 50,000, availability per team;
+Dedicated Fans start at 1 and improve "up to a maximum of 3 … at the cost of 5,000
+gold pieces per improvement". The TEAM-specific numbers are not in the module at
+all — Hiring Fees, quantity limits and the Team Re-roll cost live in
+`data/rosters.json`, scraped per team.
+
+**The budget is an INPUT with a stated default**, like the Range Ruler and
+`bb_game_new(rerolls=…)`: the rules say *usually* 1,000,000 for a rookie team, and
+Exhibition and Matched Play name their own.
+
+**An illegal roster SAVES; only placing refuses.** A team is over budget and short
+of players for nearly all of the time it is being drafted, so a builder that
+refused work-in-progress would be unusable. `problems()` returns EVERY broken rule
+rather than the first — a coach mid-draft is usually breaking several, and fixing
+them one refusal at a time is miserable. The board is shared state, so placement
+is where the line is drawn.
+
+**The view scores nothing itself.** Cost and legality come back from the server on
+every change, from the same functions that gate placement — a builder that scored
+itself would be a second rulebook, which is the failure this plugin exists to
+avoid.
+
 ### The model library (`models.py`, view `/plugins/bloodbowl/models`)
 
 One mesh per positional, organised by team; the 3D board loads it and **falls back to

@@ -64,6 +64,11 @@ def build_view_router(cfg: dict | None = None):
         """
         return HTMLResponse((WEB / "3d" / "index.html").read_text(encoding="utf-8"))
 
+    @r.get("/draft", response_class=HTMLResponse)
+    async def _draft_page() -> HTMLResponse:
+        """The roster builder."""
+        return HTMLResponse((WEB / "draft.html").read_text(encoding="utf-8"))
+
     @r.get("/models", response_class=HTMLResponse)
     async def _models_page() -> HTMLResponse:
         """The model library. A real route, like every other declared view."""
@@ -319,6 +324,105 @@ def build_game_router(cfg: dict | None = None, announce=None):
         if m is None:
             raise HTTPException(status_code=404, detail="no match in progress")
         return m
+
+    # --- drafting a team --------------------------------------------------------
+    # A saved roster is a DRAFT LIST — who is on the team — not a board. Placing it is a
+    # separate step, so the same squad can be set up in as many shapes as a coach wants.
+
+    @r.get("/draft/options/{team}")
+    async def _draft_options(team: str) -> dict:
+        from . import draft as _d
+
+        opts = _d.team_options(team)
+        if opts is None:
+            raise HTTPException(status_code=404, detail=f"unknown team {team!r}")
+        return {"ok": True, **opts}
+
+    @r.get("/draft")
+    async def _draft_list() -> dict:
+        from . import draft as _d
+        from .pitch import rosters
+
+        return {
+            "ok": True,
+            "rosters": _d.saved(),
+            "teams": [{"name": t["name"], "tier": t.get("tier")} for t in rosters().get("teams", [])],
+        }
+
+    @r.get("/draft/{name}")
+    async def _draft_get(name: str) -> dict:
+        from . import draft as _d
+
+        d = _d.load(name)
+        if d is None:
+            raise HTTPException(status_code=404, detail=f"no roster named {name!r}")
+        return {"ok": True, "roster": d, "price": _d.price(d), "problems": _d.problems(d)}
+
+    @r.put("/draft/{name}")
+    async def _draft_save(name: str, body: dict | None = None) -> dict:
+        """Save a draft list, LEGAL OR NOT, and report what is wrong with it.
+
+        Refusing an illegal roster would make the builder unusable: a team is over budget
+        and short of players for most of the time it is being built. The problems ride
+        with it instead, so nothing is lost and nothing is pretended.
+        """
+        from . import draft as _d
+
+        try:
+            saved_roster = _d.save(name, body or {})
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "ok": True,
+            "roster": saved_roster,
+            "price": _d.price(saved_roster),
+            "problems": _d.problems(saved_roster),
+        }
+
+    @r.delete("/draft/{name}")
+    async def _draft_delete(name: str) -> dict:
+        from . import draft as _d
+
+        return {"ok": _d.delete(name)}
+
+    @r.post("/draft/{name}/place")
+    async def _draft_place(name: str, side: str = "home") -> dict:
+        """Put a saved squad on the practice board — the scenario-testing path.
+
+        Refuses an ILLEGAL roster here, unlike saving: a half-drafted team on the board is
+        a scenario nobody meant to test, and the board is shared state.
+        """
+        from . import draft as _d
+        from .pitch import player_from_roster
+
+        roster = _d.load(name)
+        if roster is None:
+            raise HTTPException(status_code=404, detail=f"no roster named {name!r}")
+        bad = _d.problems(roster)
+        if bad:
+            raise HTTPException(status_code=400, detail="; ".join(bad))
+
+        side = "away" if side == "away" else "home"
+        sc = _store().load()
+        sc.players = [p for p in sc.players if p.side != side]
+        setattr(sc, f"{side}_team", roster.get("team") or "")
+        # Rows behind the Line of Scrimmage, filled outward from the centre — a legal-ish
+        # starting shape rather than a formation. `bb_pitch_setup` and the presets are
+        # where a coach picks the actual set-up; this just gets the squad onto the pitch.
+        rows = [13, 12, 11] if side == "home" else [14, 15, 16]
+        order = [8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
+        placed, refused = 0, []
+        for i, position in enumerate(_d.squad(roster)[: _d.MAX_PLAYERS]):
+            player, why = player_from_roster(
+                side, order[i % len(order)], rows[i // len(order)], roster.get("team") or "", position
+            )
+            if player is None:
+                refused.append(why)
+                continue
+            sc.players.append(player)
+            placed += 1
+        _store().save(sc)
+        return {"ok": True, "placed": placed, "side": side, "team": roster.get("team"), "refused": refused}
 
     # --- the model library ------------------------------------------------------
     # GATED, like every other data route. Uploads are a coach's own files; the meshes are

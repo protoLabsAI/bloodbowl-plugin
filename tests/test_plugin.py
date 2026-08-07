@@ -2100,3 +2100,91 @@ def test_a_loose_ball_is_drawn(client):
     assert "in_air" in src and "in_play" in src
     main = (ROOT / "web3d" / "src" / "main.jsx").read_text()
     assert "<Ball ball={match?.ball} />" in main
+
+
+# --- the roster builder --------------------------------------------------------------
+
+
+def _ogre(**over) -> dict:
+    """A legal-ish Ogre draft: 11 Gnoblars and 3 Ogres inside the million."""
+    base = {
+        "team": "Ogre",
+        "players": {"Gnoblar Lineman": 11, "Ogre Blocker": 3},
+        "rerolls": 2,
+        "coaches": 0,
+        "cheerleaders": 0,
+        "apothecary": False,
+        "fans": 1,
+    }
+    base.update(over)
+    return base
+
+
+def test_the_draft_limits_are_the_rulebook_s(client):
+    """These are quoted, not recalled — the numbers recall gets wrong are exactly these."""
+    from bloodbowl import draft as d
+
+    assert d.DEFAULT_BUDGET == 1_000_000
+    assert (d.MIN_PLAYERS, d.MAX_PLAYERS) == (11, 16)
+    assert d.MAX_REROLLS == 8
+    assert d.MAX_COACHES == d.MAX_CHEERLEADERS == 6
+    assert d.COACH_COST == d.CHEERLEADER_COST == 10_000
+    assert d.APOTHECARY_COST == 50_000
+    assert (d.MIN_FANS, d.MAX_FANS_AT_DRAFT, d.FAN_COST) == (1, 3, 5_000)
+
+
+def test_team_options_come_from_the_shipped_roster(client):
+    d = client.get("/api/plugins/bloodbowl/draft/options/Ogre").json()
+    assert d["ok"] and d["reroll_cost"] == 70_000
+    gnoblar = next(p for p in d["positionals"] if p["position"] == "Gnoblar Lineman")
+    assert (gnoblar["cost"], gnoblar["max"]) == (15_000, 16)
+    assert client.get("/api/plugins/bloodbowl/draft/options/Nonesuch").status_code == 404
+
+
+def test_a_draft_is_costed_and_checked(client):
+    from bloodbowl import draft
+
+    legal = _ogre()
+    assert draft.problems(legal) == [], draft.problems(legal)
+    assert draft.price(legal)["treasury"] >= 0
+
+    # Each limit reports in the rulebook's own terms, and ALL of them at once — a coach
+    # mid-draft breaks several, and one refusal at a time is miserable.
+    bad = draft.problems(_ogre(players={"Gnoblar Lineman": 20}, rerolls=9, coaches=7, fans=5))
+    joined = " | ".join(bad)
+    assert len(bad) >= 4, joined
+    assert "at most 16" in joined and "more than 8" in joined and "at most 6" in joined
+
+
+def test_an_illegal_roster_saves_but_will_not_be_placed(client):
+    """Saving records work in progress; placing is where the line is, because the board is
+    shared state and a half-drafted team is a scenario nobody meant to test."""
+    short = _ogre(players={"Gnoblar Lineman": 3})
+    saved = client.put("/api/plugins/bloodbowl/draft/wip", json=short).json()
+    assert saved["ok"] and saved["problems"], "an illegal roster saves, with its problems"
+
+    placed = client.post("/api/plugins/bloodbowl/draft/wip/place?side=home")
+    assert placed.status_code == 400 and "at least 11" in placed.json()["detail"]
+
+
+def test_a_legal_roster_places_a_squad_on_the_board(client):
+    client.put("/api/plugins/bloodbowl/draft/ogres", json=_ogre())
+    d = client.post("/api/plugins/bloodbowl/draft/ogres/place?side=home").json()
+    assert d["ok"] and d["placed"] == 14 and d["refused"] == []
+    board = client.get("/api/plugins/bloodbowl/state").json()
+    home = [p for p in (board.get("scenario") or board)["players"] if p["side"] == "home"]
+    assert len(home) == 14
+    assert {p["position"] for p in home} == {"Gnoblar Lineman", "Ogre Blocker"}
+    # The squad replaces that side only — the opposition is left alone.
+    assert client.post("/api/plugins/bloodbowl/draft/ogres/place?side=away").json()["side"] == "away"
+
+
+def test_saved_rosters_live_in_the_state_dir(client):
+    import bloodbowl
+    from bloodbowl import draft
+
+    client.put("/api/plugins/bloodbowl/draft/keepme", json=_ogre())
+    assert draft.rosters_dir().parent == bloodbowl.store.state_dir()
+    assert ROOT not in draft.rosters_dir().parents
+    assert any(r["name"] == "keepme" for r in client.get("/api/plugins/bloodbowl/draft").json()["rosters"])
+    assert client.delete("/api/plugins/bloodbowl/draft/keepme").json()["ok"] is True

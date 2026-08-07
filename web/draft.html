@@ -1,0 +1,189 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Blood Bowl — roster builder</title>
+    <script>
+      window.__base = location.pathname.split("/plugins/")[0];
+      document.write('<link rel="stylesheet" href="' + window.__base + '/_ds/plugin-kit.css">');
+    </script>
+    <style>
+      body { margin: 0; font: 13px/1.5 system-ui, sans-serif; background: var(--pl-color-bg); color: var(--pl-color-fg); }
+      .wrap { display: grid; grid-template-columns: 230px 1fr 260px; height: 100vh; }
+      .col { overflow: auto; padding: 12px 14px; }
+      .col + .col { border-left: 1px solid var(--pl-color-border); }
+      h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; opacity: .6; margin: 0 0 8px; }
+      table { border-collapse: collapse; width: 100%; }
+      td, th { padding: 6px 8px; border-bottom: 1px solid var(--pl-color-border); text-align: left; }
+      th { opacity: .65; font-weight: 600; }
+      .num { text-align: right; font-variant-numeric: tabular-nums; }
+      .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 0; }
+      .stepper { display: flex; align-items: center; gap: 6px; }
+      .stepper b { min-width: 1.6em; text-align: center; font-variant-numeric: tabular-nums; }
+      button.mini { width: 26px; height: 24px; padding: 0; }
+      .item { width: 100%; text-align: left; background: none; border: 0; color: inherit; font: inherit; padding: 6px 8px; cursor: pointer; border-radius: 5px; }
+      .item:hover, .item[aria-current="true"] { background: var(--pl-color-bg-panel); }
+      .item[aria-current="true"] { font-weight: 600; }
+      .bad { color: var(--pl-color-status-error); }
+      .good { color: var(--pl-color-status-success); }
+      .total { font-size: 20px; font-variant-numeric: tabular-nums; }
+      .muted { opacity: .6; }
+      ul.problems { margin: 6px 0 0; padding-left: 18px; }
+      ul.problems li { margin: 2px 0; }
+      .stat { font-variant-numeric: tabular-nums; opacity: .75; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="col">
+        <h2>Saved rosters</h2>
+        <div id="saved"></div>
+        <h2 style="margin-top:16px">New from team</h2>
+        <div id="teams"></div>
+      </div>
+      <div class="col">
+        <div class="row">
+          <input id="name" class="pl-input" placeholder="roster name" style="flex:1" />
+          <button class="pl-btn" id="save">Save</button>
+        </div>
+        <h2 id="teamName" style="margin-top:14px">—</h2>
+        <table><thead><tr><th>Positional</th><th>MA/ST/AG/AV</th><th class="num">Cost</th><th class="num">Max</th><th></th></tr></thead>
+          <tbody id="positionals"></tbody></table>
+        <h2 style="margin-top:16px">Sideline</h2>
+        <div id="sideline"></div>
+      </div>
+      <div class="col">
+        <h2>Draft</h2>
+        <div class="total" id="spent">—</div>
+        <div class="muted" id="treasury"></div>
+        <div id="counts" class="stat" style="margin-top:8px"></div>
+        <div id="problems" style="margin-top:12px"></div>
+        <h2 style="margin-top:16px">Use it</h2>
+        <div class="row"><button class="pl-btn" data-place="home">Place as home</button></div>
+        <div class="row"><button class="pl-btn" data-place="away">Place as away</button></div>
+        <div class="muted" id="placed"></div>
+      </div>
+    </div>
+    <script type="module">
+      const kit = await import(window.__base + "/_ds/plugin-kit.js");
+      kit.initPluginView();
+      const API = "/api/plugins/bloodbowl";
+      const $ = (id) => document.getElementById(id);
+      const gp = (n) => (n === undefined || n === null ? "" : n.toLocaleString() + " gp");
+      let opts = null, roster = null, teams = [];
+
+      const get = async (p) => (await kit.apiFetch(API + p)).json();
+
+      async function boot() {
+        const d = await get("/draft");
+        teams = d.teams || [];
+        $("teams").innerHTML = teams.map((t) => `<button class="item" data-team="${t.name}">${t.name}<span class="muted"> · ${t.tier ?? "?"}</span></button>`).join("");
+        $("saved").innerHTML = (d.rosters || []).length
+          ? d.rosters.map((r) => `<button class="item" data-open="${r.slug}">${r.name}
+              <span class="stat">· ${r.team} · ${r.players}p · ${(r.spent/1000)|0}k</span>
+              <span class="${r.legal ? "good" : "bad"}">${r.legal ? "✓" : "!"}</span></button>`).join("")
+          : `<div class="muted">none yet</div>`;
+        for (const b of document.querySelectorAll("[data-team]")) b.onclick = () => start(b.dataset.team);
+        for (const b of document.querySelectorAll("[data-open]")) b.onclick = () => open(b.dataset.open);
+      }
+
+      async function start(team) {
+        roster = { team, players: {}, rerolls: 0, coaches: 0, cheerleaders: 0, apothecary: false, fans: 1, budget: null };
+        $("name").value = "";
+        await loadOptions();
+      }
+      async function open(slug) {
+        const d = await get(`/draft/${slug}`);
+        roster = d.roster;
+        $("name").value = roster.name || slug;
+        await loadOptions();
+      }
+      async function loadOptions() {
+        opts = await get(`/draft/options/${encodeURIComponent(roster.team)}`);
+        if (roster.budget == null) roster.budget = opts.default_budget;
+        render();
+      }
+
+      function step(label, value, max, onChange, note = "") {
+        const wrap = document.createElement("div");
+        wrap.className = "row";
+        wrap.innerHTML = `<span>${label} <span class="muted">${note}</span></span>
+          <span class="stepper"><button class="pl-btn mini">−</button><b>${value}</b><button class="pl-btn mini">+</button></span>`;
+        const [minus, plus] = wrap.querySelectorAll("button");
+        minus.onclick = () => onChange(Math.max(0, value - 1));
+        plus.onclick = () => onChange(Math.min(max, value + 1));
+        return wrap;
+      }
+
+      function render() {
+        $("teamName").textContent = `${opts.team} — tier ${opts.tier ?? "?"}${opts.special_rules.length ? " · " + opts.special_rules.join(", ") : ""}`;
+        const body = $("positionals");
+        body.innerHTML = "";
+        for (const p of opts.positionals) {
+          const n = roster.players[p.position] || 0;
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${p.position}<div class="stat">${(p.skills || []).join(", ") || "—"}</div></td>
+            <td class="stat">${p.MA}/${p.ST}/${p.AG}/${p.AV}</td>
+            <td class="num">${gp(p.cost)}</td><td class="num">${p.max}</td><td></td>`;
+          tr.lastElementChild.appendChild(
+            step("", n, p.max, (v) => { roster.players[p.position] = v; render(); }),
+          );
+          body.appendChild(tr);
+        }
+
+        const side = $("sideline");
+        side.innerHTML = "";
+        side.append(
+          step("Team Re-rolls", roster.rerolls || 0, opts.limits.rerolls, (v) => { roster.rerolls = v; render(); }, gp(opts.reroll_cost) + " each"),
+          step("Assistant Coaches", roster.coaches || 0, opts.limits.coaches, (v) => { roster.coaches = v; render(); }, gp(opts.costs.coach) + " each"),
+          step("Cheerleaders", roster.cheerleaders || 0, opts.limits.cheerleaders, (v) => { roster.cheerleaders = v; render(); }, gp(opts.costs.cheerleader) + " each"),
+          step("Dedicated Fans", roster.fans || 1, opts.limits.fans[1], (v) => { roster.fans = Math.max(opts.limits.fans[0], v); render(); }, gp(opts.costs.dedicated_fan) + " per improvement"),
+        );
+        const apo = document.createElement("div");
+        apo.className = "row";
+        apo.innerHTML = `<span>Apothecary <span class="muted">${opts.apothecary_allowed ? gp(opts.costs.apothecary) : "not available to this team"}</span></span>`;
+        if (opts.apothecary_allowed) {
+          const b = document.createElement("button");
+          b.className = "pl-btn";
+          b.textContent = roster.apothecary ? "Hired" : "Hire";
+          b.onclick = () => { roster.apothecary = !roster.apothecary; render(); };
+          apo.appendChild(b);
+        }
+        side.appendChild(apo);
+        refresh();
+      }
+
+      // Costing and legality come from the SERVER — the same functions that decide whether
+      // a roster may be placed. A builder that scored itself would be a second rulebook.
+      let timer;
+      function refresh() {
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+          const res = await kit.apiFetch(`${API}/draft/${encodeURIComponent($("name").value || "__scratch")}`, {
+            method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(roster),
+          });
+          const d = await res.json();
+          if (!res.ok) return;
+          const n = Object.values(roster.players || {}).reduce((a, b) => a + (b || 0), 0);
+          $("spent").textContent = gp(d.price.total);
+          $("treasury").innerHTML = `budget ${gp(d.price.budget)} · treasury <span class="${d.price.treasury < 0 ? "bad" : ""}">${gp(d.price.treasury)}</span>`;
+          $("counts").textContent = `${n} players · ${roster.rerolls || 0} re-rolls · ${roster.coaches || 0} coaches · ${roster.cheerleaders || 0} cheerleaders · fans ${roster.fans || 1}`;
+          $("problems").innerHTML = d.problems.length
+            ? `<div class="bad">Not legal yet</div><ul class="problems">${d.problems.map((x) => `<li>${x}</li>`).join("")}</ul>`
+            : `<div class="good">Legal draft list</div>`;
+        }, 120);
+      }
+
+      $("save").onclick = async () => { await refresh(); await boot(); };
+      for (const b of document.querySelectorAll("[data-place]")) {
+        b.onclick = async () => {
+          const name = $("name").value || "__scratch";
+          const res = await kit.apiFetch(`${API}/draft/${encodeURIComponent(name)}/place?side=${b.dataset.place}`, { method: "POST" });
+          const d = await res.json();
+          $("placed").textContent = res.ok ? `Placed ${d.placed} on the ${d.side} side.` : (d.detail || "could not place");
+        };
+      }
+      boot();
+    </script>
+  </body>
+</html>
