@@ -1258,18 +1258,34 @@ def end_turn(match: Match, forced: bool = False, start_next: bool = True, dice=N
         if match.over:
             _end_of_game(match, dice_for(match))
         return {"ok": True, "clock": match.clock.to_dict(), "over": match.over}
-    if not match.over:
-        match.apply(
-            Event(
-                kind="turn_started",
-                detail={
-                    "side": match.clock.active,
-                    "half": match.clock.half,
-                    "turn": match.clock.turn,
-                },
-                text=f"Half {match.clock.half}, turn {match.clock.turn} — {match.clock.active} to act.",
-            )
+
+    if match.clock.half != before:
+        # A NEW HALF IS A NEW DRIVE, not merely the next turn. "At the start of the second
+        # half, the team that received the ball at the start of the first half will become
+        # the kicking team", and "the team that received the ball at the start of the half
+        # will have the first Turn" — so the second half sets up again and kicks off, with
+        # the sides reversed.
+        #
+        # This used to fall through to the plain `turn_started` below, so the second half
+        # opened on the first half's final board with nobody kicking: players wherever the
+        # last drive left them, the ball wherever it lay, and the wrong side to act. An
+        # agent playing it noticed within two turns — "the second half started without a
+        # kickoff reset" — and abandoned the match, which is the correct read of the
+        # position and the wrong tool to reach for.
+        start_drive(match, receiving=match.opponent(match.opening_receiver), dice=dice_for(match))
+        return {"ok": True, "clock": match.clock.to_dict(), "over": match.over}
+
+    match.apply(
+        Event(
+            kind="turn_started",
+            detail={
+                "side": match.clock.active,
+                "half": match.clock.half,
+                "turn": match.clock.turn,
+            },
+            text=f"Half {match.clock.half}, turn {match.clock.turn} — {match.clock.active} to act.",
         )
+    )
     return {"ok": True, "clock": match.clock.to_dict(), "over": match.over}
 
 
