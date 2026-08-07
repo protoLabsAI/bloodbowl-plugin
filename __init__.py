@@ -235,11 +235,17 @@ def register(registry) -> None:
                     "means for the position — you are playing a person, not narrating to yourself."
                 )
                 prompt = (
-                    f"Your turn in the Blood Bowl match: you play {d.get('side')}, and it is "
-                    f"half {d.get('half')}, turn {d.get('turn')}.\n\n"
+                    f"Your turn in the Blood Bowl match: you play {d.get('side')}, and it was "
+                    f"half {d.get('half')}, turn {d.get('turn')} when this was sent.\n\n"
                     "Read the board with bb_game_state, then PLAY THE WHOLE TURN — activate the "
                     "players you want and finish with bb_game_end_turn, which hands the board back. "
-                    "bb_game_legal and bb_game_odds are free, so check before you commit. " + closing
+                    "bb_game_legal and bb_game_odds are free, so check before you commit.\n\n"
+                    "THE BOARD IS THE TRUTH, not this message. Nudges queue, so the clock may have "
+                    "moved on since — if the board says it is the other coach's turn, or that a "
+                    "Kick-off question is pending for THEM, that is the game working and not a "
+                    "fault: say so in one line and stop. A pending question blocks everything, "
+                    "including the ball landing, until the coach it belongs to answers it. Never "
+                    "conclude a match is broken or orphaned from this message alone. " + closing
                 )
             # A match started from the BOARD has no chat behind it, so fall back to
             # the durable Activity thread rather than dropping the turn on the
@@ -1235,33 +1241,39 @@ def _tools(cfg: dict):
         )
 
     @tool
-    def bb_game_abandon(confirm: str = "") -> str:
+    def bb_game_abandon() -> str:
         """Discard the match in progress. The practice board is unaffected.
 
-        **REFUSED WHILE A COACH IS PLAYING IT.** A match with a controller is somebody
-        else's game as much as yours, and a seat that decides the position looks broken
-        must not be able to bin it: one did exactly that two turns into a second half —
-        correctly spotting that the half had not kicked off — and destroyed a 28-minute
-        game that was the only record of the bug. Report the problem and hand the turn
-        back; discarding is the operator's call, from the board.
+        **A MATCH SOMEBODY IS PLAYING CANNOT BE DISCARDED FROM HERE — there is no
+        override.** Abandoning a live game is the operator's call, from the board.
 
-        A practice board with no controllers is unclaimed, and clears as it always did.
-        `confirm="discard"` overrides, for the case where an operator asks you to.
+        This had an escape hatch (`confirm="discard"`) "for when an operator asks". It
+        was documented in this very docstring, so the agent read it as an available
+        option and used it the first time it wanted to — destroying a match in progress
+        forty seconds later. An escape hatch written into the tool the agent holds is not
+        a guard; the refusal message even named the magic word. The hatch is gone.
+
+        **A question pending for the OTHER coach is not a broken game.** It is the
+        handover working: the engine has stopped and is waiting on them, exactly as it
+        stops and waits on you. Both abandonments so far were a seat deciding a normal
+        position was broken. Say what you think is wrong and end your turn.
         """
         from .store import clear_match, load_match
 
         m = load_match()
-        if m is not None and m.controllers and str(confirm).strip().lower() != "discard":
+        if m is not None and m.controllers:
             owed = ", ".join(f"{side}={who}" for side, who in sorted(m.controllers.items()))
             return json.dumps(
                 {
                     "ok": False,
                     "error": (
-                        f"this match is being played ({owed}) — it is not yours to discard. "
-                        "Say what looks wrong and end your turn; an operator can abandon it "
-                        "from the board, or ask you to with confirm='discard'."
+                        f"this match is being played ({owed}) — it is not yours to discard, and "
+                        "there is no override. If the position looks wrong, say so and end your "
+                        "turn; an operator abandons it from the board. A Kick-off question "
+                        "pending for the other coach is normal — the engine is waiting on them."
                     ),
                     "clock": m.clock.to_dict(),
+                    "pending": dict(m.pending),
                 }
             )
         return json.dumps({"ok": True, "discarded": clear_match()})
