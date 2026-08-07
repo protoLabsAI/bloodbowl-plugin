@@ -179,7 +179,7 @@ clicks are never paced.
 
 **Playing** — `bb_game_new` · `bb_game_state` · `bb_game_legal` · `bb_game_odds` ·
 `bb_game_act` (`path=[[8,15],[8,16]]` walks a run; `drop_ball=True` for a Fumblerooski) ·
-`bb_game_end_turn` · `bb_game_kickoff` · `bb_game_log` · `bb_game_abandon` · `bb_pass_ranges`
+`bb_game_end_turn` · `bb_game_kickoff` · `bb_game_log` · `bb_game_abandon` (refused while a coach is playing) · `bb_pass_ranges`
 
 **A run is one call, not one per square.** A Move is still one square at a time and
 every square is adjudicated as a lone Move would be — `path` collapses the round trip,
