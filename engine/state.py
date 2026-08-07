@@ -294,6 +294,11 @@ class Match:
     # being the authority. Empty falls back to `session_id`, so the ordinary
     # one-conversation head-to-head is unchanged.
     session_ids: dict = field(default_factory=dict)
+    #: Which side received at the OPENING kick-off. Kept because the second half inverts
+    #: it: "At the start of the second half, the team that received the ball at the start
+    #: of the first half will become the kicking team." The clock cannot answer this — its
+    #: `active` has moved on by then — so the fact is folded from `match_started`.
+    opening_receiver: str = ""
     # Set-ups declared for the NEXT Drive, per side. "The kicking team must set up
     # first followed by the receiving team", so the order is recorded too.
     setups: dict = field(default_factory=dict)
@@ -375,6 +380,7 @@ class Match:
             self.controllers = {k: str(v) for k, v in (d.get("controllers") or {}).items()}
             self.session_id = str(d.get("session_id") or "")
             self.session_ids = {k: str(v) for k, v in (d.get("session_ids") or {}).items() if v}
+            self.opening_receiver = str(d.get("kicking_to") or "home")
 
         elif kind == "turn_started":
             self.clock.active = str(d.get("side") or self.clock.active)
@@ -817,6 +823,7 @@ class Match:
             "controllers": dict(self.controllers),
             "session_id": self.session_id,
             "session_ids": dict(self.session_ids),
+            "opening_receiver": self.opening_receiver,
             "setups": {k: [dict(r) for r in v] for k, v in self.setups.items()},
             "pending": dict(self.pending),
             "charge": dict(self.charge),

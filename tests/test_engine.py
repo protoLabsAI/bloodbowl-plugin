@@ -6924,3 +6924,52 @@ def test_a_player_row_carries_its_roster_keywords():
     m.players[0].player = troll
     row = next(p for p in m.to_dict()["players"] if p["id"] == "h00")
     assert "role" in row and "big guy" in row["role"].lower()
+
+
+def test_the_second_half_kicks_off_again_with_the_sides_reversed():
+    """S3: "At the start of the second half, the team that received the ball at the start
+    of the first half will become the kicking team", and "the team that received the ball
+    at the start of the half will have the first Turn."
+
+    The second half used to fall through to a plain `turn_started`: it opened on the first
+    half's final board with nobody kicking — players wherever the last drive left them, the
+    ball wherever it lay, and the wrong side to act. An agent playing a real match spotted
+    it in two turns and abandoned the game.
+    """
+    from bloodbowl.engine.game import end_turn, new_match
+    from bloodbowl.pitch import Player, Scenario
+
+    sc = Scenario(name="t", home_team="Orc", away_team="Skaven")
+    for side, x, y in (("home", 7, 13), ("home", 8, 13), ("away", 7, 14), ("away", 8, 14)):
+        sc.players.append(
+            Player(side=side, x=x, y=y, position="Orc Lineman", team="Orc", MA="6", ST="3", AG="3+", AV="9+")
+        )
+    # away receives the opening kick-off, so HOME must receive the second half.
+    m = new_match(sc, seed=5, kicking_to="away")
+    # Derived from the LOG, not from the new field — otherwise this fails on the unfixed
+    # engine with an AttributeError, which proves a field is new rather than that the
+    # behaviour was wrong. The point of the test is the second half, not the bookkeeping.
+    opened = next(e for e in m.events if e.kind == "match_started")
+    assert opened.detail["kicking_to"] == "away"
+    if m.pending:
+        from bloodbowl.engine.game import dice_for, resolve_choice
+
+        resolve_choice(m, {"decline": True}, dice_for(m))
+
+    kinds_before = len(m.events)
+    for _ in range(16):  # eight turns each ends the first half
+        if m.clock.half == 2:
+            break
+        end_turn(m, forced=True)
+
+    assert m.clock.half == 2, m.clock.to_dict()
+    tail = m.events[kinds_before:]
+    after_half = [e for e in tail if e.kind == "half_time"]
+    assert after_half, "half time should be recorded"
+    idx = tail.index(after_half[-1])
+    later = [e.kind for e in tail[idx:]]
+    assert "drive_started" in later or "ball_moved" in later, (
+        f"the second half must set up and KICK OFF, not just start a turn — got {later[:8]}"
+    )
+    # And the sides are reversed: away received the first half, so home receives now.
+    assert m.clock.active == "home", f"home should have the first Turn of the second half, not {m.clock.active}"
