@@ -2253,3 +2253,40 @@ def test_every_shipped_setup_fields_a_legal_eleven(client):
             assert d["ok"], (preset, side, d)
             assert d["placed"] == 11, f"{preset} on {side} fielded {d['placed']}"
             assert d["setup"]["problems"] == [], (preset, side, d["setup"]["problems"])
+
+
+def test_a_seat_cannot_abandon_a_match_it_is_playing(registry):
+    """A match with controllers is somebody else's game as much as the agent's. One seat
+    abandoned a live 28-minute match two turns into the second half — it had correctly
+    spotted that the half never kicked off, and then destroyed the only record of the bug.
+    Correct diagnosis, wrong tool: report it and hand the turn back."""
+    import bloodbowl
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+    tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home", "you": "home"})
+
+    refused = json.loads(tools["bb_game_abandon"].invoke({}))
+    assert refused["ok"] is False and "not yours to discard" in refused["error"]
+    assert bloodbowl.store.load_match() is not None, "the match must survive the refusal"
+
+    # An operator can still ask for it explicitly.
+    assert json.loads(tools["bb_game_abandon"].invoke({"confirm": "discard"}))["ok"] is True
+    assert bloodbowl.store.load_match() is None
+
+
+def test_an_unclaimed_practice_board_still_clears(registry):
+    """The restraint control: the gate is about a game somebody is PLAYING, not about
+    every match. A practice board owns no sides and clears as it always did."""
+    import bloodbowl
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+    tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home"})  # no `you` — unclaimed
+
+    assert json.loads(tools["bb_game_abandon"].invoke({}))["ok"] is True
+    assert bloodbowl.store.load_match() is None

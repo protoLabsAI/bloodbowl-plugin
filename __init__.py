@@ -1235,10 +1235,35 @@ def _tools(cfg: dict):
         )
 
     @tool
-    def bb_game_abandon() -> str:
-        """Discard the match in progress. The practice board is unaffected."""
-        from .store import clear_match
+    def bb_game_abandon(confirm: str = "") -> str:
+        """Discard the match in progress. The practice board is unaffected.
 
+        **REFUSED WHILE A COACH IS PLAYING IT.** A match with a controller is somebody
+        else's game as much as yours, and a seat that decides the position looks broken
+        must not be able to bin it: one did exactly that two turns into a second half —
+        correctly spotting that the half had not kicked off — and destroyed a 28-minute
+        game that was the only record of the bug. Report the problem and hand the turn
+        back; discarding is the operator's call, from the board.
+
+        A practice board with no controllers is unclaimed, and clears as it always did.
+        `confirm="discard"` overrides, for the case where an operator asks you to.
+        """
+        from .store import clear_match, load_match
+
+        m = load_match()
+        if m is not None and m.controllers and str(confirm).strip().lower() != "discard":
+            owed = ", ".join(f"{side}={who}" for side, who in sorted(m.controllers.items()))
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": (
+                        f"this match is being played ({owed}) — it is not yours to discard. "
+                        "Say what looks wrong and end your turn; an operator can abandon it "
+                        "from the board, or ask you to with confirm='discard'."
+                    ),
+                    "clock": m.clock.to_dict(),
+                }
+            )
         return json.dumps({"ok": True, "discarded": clear_match()})
 
     @tool
