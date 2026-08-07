@@ -2170,11 +2170,19 @@ def test_an_illegal_roster_saves_but_will_not_be_placed(client):
 def test_a_legal_roster_places_a_squad_on_the_board(client):
     client.put("/api/plugins/bloodbowl/draft/ogres", json=_ogre())
     d = client.post("/api/plugins/bloodbowl/draft/ogres/place?side=home").json()
-    assert d["ok"] and d["placed"] == 14 and d["refused"] == []
+    # ELEVEN, not the whole draft list. A Team Draft List may hold 16, but the board's own
+    # rule is "11 players on the pitch — the limit is 11"; the rest are the reserves box.
+    assert d["ok"] and d["placed"] == 11 and d["refused"] == []
     board = client.get("/api/plugins/bloodbowl/state").json()
     home = [p for p in (board.get("scenario") or board)["players"] if p["side"] == "home"]
-    assert len(home) == 14
-    assert {p["position"] for p in home} == {"Gnoblar Lineman", "Ogre Blocker"}
+    assert len(home) == 11
+    # A coach fields their best: all three 140,000gp Ogres make the eleven, and Gnoblars
+    # fill the rest. Taking the draft list as written fielded eleven Gnoblars and benched
+    # every Ogre, which is the wrong default even though it broke no rule.
+    import collections
+
+    counts = collections.Counter(p["position"] for p in home)
+    assert counts["Ogre Blocker"] == 3 and counts["Gnoblar Lineman"] == 8, counts
     # The squad replaces that side only — the opposition is left alone.
     assert client.post("/api/plugins/bloodbowl/draft/ogres/place?side=away").json()["side"] == "away"
 
@@ -2198,9 +2206,13 @@ def test_a_draft_places_into_a_named_shape_with_the_beef_on_the_line(client):
     client.put("/api/plugins/bloodbowl/draft/ogres", json=_ogre())
     d = client.post("/api/plugins/bloodbowl/draft/ogres/place?side=home&preset=Kick-off%20receive").json()
     assert d["ok"] and d["preset"] == "Kick-off receive", d
+    # That shape is only TEN squares; a full side is eleven, so it is topped up.
+    assert d["placed"] == 11, d
+    assert d["setup"]["problems"] == [], d["setup"]
 
     board = client.get("/api/plugins/bloodbowl/state").json()
     home = [p for p in board["players"] if p["side"] == "home"]
+    assert len(home) == 11
     los = [p for p in home if p["y"] == 13]
     assert los, "the shape has a Line of Scrimmage"
     # Ogre Blockers are ST5, Gnoblars ST1 — every Ogre drafted should be on the line
@@ -2224,3 +2236,20 @@ def test_the_assignment_is_pure_and_shortest_list_wins(client):
     pairs = assign(players, squares)
     assert len(pairs) == 2, "shortest list wins"
     assert assign([], squares) == [] and assign(players, []) == []
+
+
+def test_every_shipped_setup_fields_a_legal_eleven(client):
+    """A shape is not always eleven — "Kick-off receive" is ten squares and "Line of
+    Scrimmage only" is three — but you field ELEVEN if you have them. Topping up must not
+    break the limits it is filling around, and the Wide Zone cap is the one a naive fill
+    breaks first, so the board's OWN review is the judge rather than this test's opinion.
+    """
+    from bloodbowl.presets import all_presets
+
+    client.put("/api/plugins/bloodbowl/draft/ogres", json=_ogre())
+    for preset in (p.name for p in all_presets() if p.kind == "setup"):
+        for side in ("home", "away"):
+            d = client.post(f"/api/plugins/bloodbowl/draft/ogres/place?side={side}&preset={preset}").json()
+            assert d["ok"], (preset, side, d)
+            assert d["placed"] == 11, f"{preset} on {side} fielded {d['placed']}"
+            assert d["setup"]["problems"] == [], (preset, side, d["setup"]["problems"])
