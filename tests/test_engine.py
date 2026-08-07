@@ -4797,7 +4797,7 @@ def test_a_selected_player_hitting_the_floor_ends_the_charge_and_is_not_a_turnov
     # A Dodge away from a Tackle Zone, failed: the charger goes down.
     m = _charging(("home", 7, 13), ("away", 7, 14), ("away", 2, 20), limit=2)
     turn_before = m.clock.turn
-    out = game.act(m, "move", {"player": "a01", "x": 8, "y": 15}, _dice([1, 1, 1, 1, 1, 1, 1, 1]))
+    out = game.act(m, "move", {"player": "a01", "x": 8, "y": 15}, _dice([1] + [4] * 40))
     assert m.by_id("a01").down != "standing", "the scripted 1 should have put them down"
     assert not m.charge, "the Charge ends when a selected player goes down"
     assert out.get("turnover") is not True, "a Charge ending is not a Turnover"
@@ -5168,7 +5168,7 @@ def test_diving_tackle_turns_a_made_dodge_into_a_failed_one_and_costs_the_tackle
     And it is applied AFTER the roll — which is the whole point."""
     m = _match(("home", 7, 13, 6, "3+"), ("away", 7, 14, 6, "3+", ["Diving Tackle"]))
     # A 4 against a 3+ with -1 for the marker makes it exactly: -2 fails it.
-    out = _move(m, "h00", 7, 12, _dice([4, 4, 4, 4, 4, 4, 4, 4]))
+    out = _move(m, "h00", 7, 12, _dice([4] * 40))
     assert out.ok is False, "the Dodge should have been dragged down"
     diver = m.by_id("a01")
     assert diver.down == "prone", "the tackler ends up Prone"
@@ -5192,7 +5192,7 @@ def test_diving_tackle_is_not_spent_when_it_would_change_nothing():
     assert out_of_reach.by_id("a01").down == "standing", "not worth spending — the Dodge was made anyway"
 
     marginal = _match(*board)
-    assert not _move(marginal, "h00", 7, 12, _dice([4, 4, 4, 4, 4, 4, 4, 4])).ok
+    assert not _move(marginal, "h00", 7, 12, _dice([4] * 40)).ok
     assert marginal.by_id("a01").down == "prone", "…and on a roll it CAN reach, it is spent"
 
 
@@ -6973,3 +6973,60 @@ def test_the_second_half_kicks_off_again_with_the_sides_reversed():
     )
     # And the sides are reversed: away received the first half, so home receives now.
     assert m.clock.active == "home", f"home should have the first Turn of the second half, not {m.clock.active}"
+
+
+def _ko(match, pid):
+    """Put a player in the Knocked-out box the way the injury path does."""
+    from bloodbowl.engine.events import Event
+
+    match.apply(Event(kind="player_condition", actor=pid, detail={"outcome": "knocked_out"}, text="KO'd for the test"))
+    assert match.by_id(pid).place == "knocked_out"
+
+
+def test_a_knocked_out_player_rolls_to_recover_between_drives():
+    """S3 End of Drive, stage three: "Roll a D6 for each Knocked-out player. On a 4+ the
+    player recovers and is moved to the Reserves Box. On a 1-3, the player cannot be
+    roused and is still Knocked-out for the time being."
+
+    The engine used to hand every Knocked-out player back automatically — not merely a
+    missing roll but a systematic gift to whichever team was losing the attrition battle,
+    in a game about attrition.
+    """
+    from bloodbowl.engine.game import start_drive
+
+    m = _kicked()
+    _ko(m, "h00")
+    # A 4 recovers; the scripted stream feeds the recovery roll first.
+    start_drive(m, receiving="home", dice=_dice([4] * 40))
+    assert m.by_id("h00").place in ("reserves", "pitch"), m.by_id("h00").place
+    rolls = [r for e in m.events for r in e.rolls if r.kind.startswith("KO recovery")]
+    assert rolls and rolls[-1].target == 4, "the roll is recorded with its target"
+
+
+def test_a_failed_recovery_leaves_the_player_knocked_out_and_off_the_pitch():
+    """The half that matters. A failed roll is a real outcome — the player stays in the
+    box and misses another Drive — so they must not be set up."""
+    from bloodbowl.engine.game import start_drive
+
+    m = _kicked()
+    _ko(m, "h00")
+    start_drive(m, receiving="home", dice=_dice([1] + [4] * 40))
+    p = m.by_id("h00")
+    assert p.place == "knocked_out", f"a 1 cannot rouse them, got {p.place}"
+    assert p not in [q for q in m.players if q.place == "pitch"]
+    assert any(e.kind == "ko_recovery" and not e.detail.get("recovered") for e in m.events), (
+        "the failure is recorded, not silent"
+    )
+
+
+def test_a_casualty_never_rolls_to_recover():
+    """The restraint control: a Casualty misses the MATCH. Only the Knocked-out box rolls,
+    so a test that only checked "somebody rolled" would pass for the wrong reason."""
+    from bloodbowl.engine.events import Event
+    from bloodbowl.engine.game import start_drive
+
+    m = _kicked()
+    m.apply(Event(kind="player_condition", actor="h00", detail={"outcome": "casualty"}, text="cas"))
+    start_drive(m, receiving="home", dice=_dice([4] * 40))
+    assert m.by_id("h00").place == "casualty"
+    assert not [r for e in m.events for r in e.rolls if r.kind.startswith("KO recovery")]

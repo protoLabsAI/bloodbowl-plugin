@@ -8,7 +8,7 @@ plug into the same path rather than each re-deriving what a turnover does.
 from __future__ import annotations
 
 from . import actions, charge
-from .dice import SeededDice
+from .dice import SeededDice, roll_target
 from .events import Event
 from .rerolls import DEFAULT_REROLLS
 from .skills import NOTED, activation_gates, first_mentions, partly_modelled_on_pitch, unmodelled_on_pitch
@@ -159,6 +159,7 @@ def start_drive(match: Match, receiving: str, dice=None, aim=None) -> list[Event
     # the honest simplification while there is no setup PHASE to do it in — the
     # operator can always rearrange the board and start a fresh match.)
     _deal_with_secret_weapons(match, dice)
+    events_ko = _recover_knocked_out(match, dice)
     # A set-up DECLARED for this Drive wins over the captured opening one. The
     # captured one is the fallback documented below, not the rule.
     declared = [row for side in ("home", "away") for row in match.setups.get(side, ())]
@@ -167,14 +168,17 @@ def start_drive(match: Match, receiving: str, dice=None, aim=None) -> list[Event
         or match.setup
         or [{"id": p.id, "x": p.x, "y": p.y} for p in match.players if p.place in ("pitch", "reserves")]
     )
-    gone = ("casualty", "sent_off")
+    # Still Knocked-out after the roll = not available for this Drive, exactly like a
+    # Casualty for set-up purposes. They stay in the box and roll again next time.
+    gone = ("casualty", "sent_off", "knocked_out")
     setup = [row for row in setup if (match.by_id(str(row["id"])) or _gone()).place not in gone]
     events = [
+        *events_ko,
         Event(
             kind="drive_started",
             detail={"drive": match.drive + 1, "setup": setup, "receiving": receiving},
             text=f"Drive {match.drive + 1}: {receiving} receive.",
-        )
+        ),
     ]
     match.apply(events[0])
     events.extend(kick(match, dice, receiving=receiving))
@@ -184,6 +188,50 @@ def start_drive(match: Match, receiving: str, dice=None, aim=None) -> list[Event
     if not match.pending:
         events.extend(_open_the_turn(match, receiving))
     return events
+
+
+#: "On a 4+ the player recovers and is moved to the Reserves Box."
+KO_RECOVERY_TARGET = 4
+
+
+def _recover_knocked_out(match: Match, dice) -> list[Event]:
+    """End of Drive, stage three: try to rouse the Knocked-out.
+
+    "If either Coach has any Knocked-out players in the Knocked-out Box of their Dugout,
+    they may attempt to recover them for the next Drive. Roll a D6 for each Knocked-out
+    player. On a 4+ the player recovers and is moved to the Reserves Box of their team's
+    Dugout. On a 1-3, the player cannot be roused and is still Knocked-out for the time
+    being."
+
+    The engine used to hand every Knocked-out player back automatically at the next Drive.
+    That was a stated simplification, and a costly one: it is not merely a missing roll but
+    a systematic gift to whichever team is losing the attrition battle, since roughly half
+    of them should have stayed down. Blood Bowl is a game about attrition.
+    """
+    out: list[Event] = []
+    for p in match.players:
+        if p.place != "knocked_out":
+            continue
+        # `roll_target` like Secure the Ball: a flat target rather than an Agility Test.
+        # With no modifiers the natural-1/natural-6 rule is a no-op against a 4+, and this
+        # is the house function for a single die against a number.
+        roll = roll_target(dice, f"KO recovery ({p.name()})", KO_RECOVERY_TARGET)
+        out.append(
+            Event(
+                kind="ko_recovery",
+                actor=p.id,
+                detail={"recovered": bool(roll.passed), "side": p.side},
+                rolls=[roll],
+                text=(
+                    f"{p.name()} shakes it off and returns to the Reserves box."
+                    if roll.passed
+                    else f"{p.name()} cannot be roused and stays Knocked-out."
+                ),
+            )
+        )
+    for ev in out:
+        match.apply(ev)
+    return out
 
 
 def _open_the_turn(match: Match, receiving: str) -> list[Event]:

@@ -164,6 +164,9 @@ the board. Uploads live beside the match in the agent's own state — never comm
 a fresh install ships none. The meshes stay behind the gated `/api/` prefix, because a
 coach's files should not become unauthenticated content on the box.
 
+Knocked-out players **roll to recover** between Drives (D6, 4+ to Reserves) rather than
+all coming back — attrition is the game.
+
 **Full AI** — `bb_game_new(you="neither")`, or `POST /game/new {"you": "neither"}` from the
 board. Both seats are agent-played and the game runs itself to full time, each turn's end
 handing over to the next. **Each side gets its own conversation**: two seats out of one

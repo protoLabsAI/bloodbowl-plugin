@@ -721,11 +721,21 @@ class Match:
                 # "…stop being Rooted at the end of a Drive", and a Distracted
                 # player is set up afresh with everyone else.
                 p.rooted = p.distracted = False
-            # A Knocked-out player misses the drive; a Casualty misses the match;
-            # a Sent-off player is gone for good and must never be set up again.
-            for p in self.players:
-                if p.place == "knocked_out" and not any(r.get("id") == p.id for r in self.setup):
-                    p.place = "reserves"
+            # A Casualty misses the match and a Sent-off player is gone for good, both
+            # handled by the filter above. A Knocked-out player is NOT restored here: the
+            # End of Drive recovery roll decides whether they come back (`ko_recovery`,
+            # emitted by `start_drive` before this event). Restoring them unconditionally
+            # here was a documented simplification that quietly handed every beaten-up
+            # team its whole squad back for the next Drive.
+
+        elif kind == "ko_recovery":
+            # "On a 4+ the player recovers and is moved to the Reserves Box of their
+            # team's Dugout. On a 1-3, the player cannot be roused and is still
+            # Knocked-out for the time being." A failure is a real outcome, not a no-op:
+            # the player stays in the Knocked-out box and misses another Drive.
+            p = self.by_id(event.actor)
+            if p is not None and d.get("recovered"):
+                p.place, p.down = "reserves", "standing"
 
         elif kind == "clock_adjusted":
             delta = int(d.get("delta") or 0)
