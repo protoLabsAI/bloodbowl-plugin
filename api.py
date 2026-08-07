@@ -18,7 +18,7 @@ from pathlib import Path
 # route here annotates with builtins, which is why this only bit once.
 from fastapi import Request
 
-from .pitch import Player, Scenario, find_team, geometry, player_from_roster, team_names
+from .pitch import MAX_PLAYERS_ON_PITCH, Player, Scenario, find_team, geometry, player_from_roster, team_names
 
 # `store` is deliberately NOT imported here — the routers resolve it per request.
 # See build_game_router for why.
@@ -418,26 +418,45 @@ def build_game_router(cfg: dict | None = None, announce=None):
                 raise HTTPException(status_code=404, detail=f"no preset named {preset!r}")
             # `apply_to` owns the mirroring, so a home shape can be dropped into the away
             # half without this route re-implementing the geometry.
-            laid = apply_to(shape, side=side, mirror=(side == "away"), current=sc)
-            squares = [{"x": p.x, "y": p.y, "label": p.label or ""} for p in laid.players]
+            #
+            # MIRROR FIRST, THEN TAKE THE TARGET SIDE. `side=` filters on the preset's OWN
+            # stored side, and every shipped shape stores home rows — so asking it for
+            # "away" matched nothing, the shape came back empty, and the top-up quietly
+            # fielded eleven players with NOBODY on the Line of Scrimmage. Legal-looking
+            # right up until the board reviewed it.
+            laid = apply_to(shape, side="", mirror=(side == "away"), current=sc)
+            squares = [{"x": p.x, "y": p.y, "label": p.label or ""} for p in laid.players if p.side == side]
             drafted = []
-            for position in _d.squad(roster)[: _d.MAX_PLAYERS]:
+            for position in _d.squad(roster)[:MAX_PLAYERS_ON_PITCH]:
                 player, why = player_from_roster(side, 1, 1, roster.get("team") or "", position)
                 if player is None:
                     return {"ok": False, "error": why}
                 drafted.append({"player": player, "MA": player.MA, "ST": player.ST, "AV": player.AV})
+            # A shape is not always eleven — top it up so a full side takes the field.
+            if len(squares) < len(drafted):
+                taken = [(int(q["x"]), int(q["y"])) for q in squares]
+                squares += [
+                    {"x": x, "y": y, "label": "fill"}
+                    for x, y in _d.fill_squares(side, taken, len(drafted) - len(squares))
+                ]
             for row, square in _d.assign(drafted, squares):
                 player = row["player"]
                 player.x, player.y = int(square["x"]), int(square["y"])
                 sc.players.append(player)
             _store().save(sc)
+            # Report the board's own verdict rather than claiming legality.
+            verdict = sc.review(side)
             return {
                 "ok": True,
                 "placed": len(sc.players) - len([p for p in sc.players if p.side != side]),
                 "side": side,
                 "team": roster.get("team"),
                 "preset": shape.name,
-                "benched": max(0, len(drafted) - len(squares)),
+                # Against the whole draft list, not the fielded eleven — a 14-player squad
+                # in an 11-square side has 3 in reserve, which is the number a coach wants.
+                "benched": max(0, len(_d.squad(roster)) - MAX_PLAYERS_ON_PITCH),
+                # The board's own verdict, not a claim of legality made here.
+                "setup": verdict,
                 "refused": [],
             }
 
@@ -447,7 +466,9 @@ def build_game_router(cfg: dict | None = None, announce=None):
         rows = [13, 12, 11] if side == "home" else [14, 15, 16]
         order = [8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
         placed, refused = 0, []
-        for i, position in enumerate(_d.squad(roster)[: _d.MAX_PLAYERS]):
+        # ELEVEN, not sixteen. A Team Draft List may hold up to 16, but "11 players on the
+        # pitch — the limit is 11" is the board's own rule; the rest are the reserves box.
+        for i, position in enumerate(_d.squad(roster)[:MAX_PLAYERS_ON_PITCH]):
             player, why = player_from_roster(
                 side, order[i % len(order)], rows[i // len(order)], roster.get("team") or "", position
             )

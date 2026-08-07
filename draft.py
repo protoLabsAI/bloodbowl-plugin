@@ -254,11 +254,22 @@ def saved() -> list[dict]:
 
 
 def squad(roster: dict) -> list[str]:
-    """The draft list flattened to one position name per player, for placing on a board."""
+    """The draft list flattened to one position name per player, for placing on a board.
+
+    Ordered by HIRING FEE, dearest first — a stated default, like `assign`. A draft list
+    may hold 16 and only 11 take the field, so the order decides who is benched: taking
+    them as written meant dict order, which fielded eleven 15,000gp Gnoblars and left all
+    three 140,000gp Ogres in the reserves box. A coach fields their best.
+
+    Which eleven is ultimately a coaching decision; this only decides the default, and any
+    player can be swapped on the board afterwards.
+    """
+    opts = team_options(str(roster.get("team") or "")) or {"positionals": []}
+    fee = {p["position"]: p["cost"] for p in opts["positionals"]}
     out: list[str] = []
     for position, n in (roster.get("players") or {}).items():
         out.extend([position] * int(n or 0))
-    return out
+    return sorted(out, key=lambda position: -fee.get(position, 0))
 
 
 #: Which tactical slot a preset square is, normalised. Shipped presets label squares by
@@ -310,4 +321,51 @@ def assign(players: list[dict], slots: list[dict]) -> list[tuple[dict, dict]]:
         if not left:
             break
         out.append((left.pop(0), square))
+    return out
+
+
+def fill_squares(side: str, taken: list[tuple[int, int]], want: int) -> list[tuple[int, int]]:
+    """Free, legal squares to top a setup up to a full side.
+
+    A shape is not always eleven — the shipped "Kick-off receive" is ten squares and
+    "Line of Scrimmage only" is three. You still field ELEVEN if you have them, so the
+    rest go in behind the shape rather than staying in the reserves box.
+
+    The limits are the BOARD's, imported not restated: `MAX_PER_WIDE_ZONE` caps each flank
+    and `half_of` keeps everyone their own side of halfway. Centre Field first, then the
+    flanks while there is room — the Wide Zone cap is the one a naive fill breaks.
+    """
+    from .pitch import LENGTH, MAX_PER_WIDE_ZONE, WIDTH, half_of, zone_of
+
+    used = set(taken)
+    wide = {"wide_left": 0, "wide_right": 0}
+    for x, _ in taken:
+        z = zone_of(x)
+        if z in wide:
+            wide[z] += 1
+
+    # BEHIND the line, never on it. The shape owns the front row — it is the one row a
+    # setup is really about — and topping up onto a spare Line of Scrimmage square puts
+    # whoever is left over, typically the cheapest player on the list, exactly where the
+    # hitting happens. Legal (the board's review passes it) and bad coaching.
+    los = LENGTH // 2
+    rows = range(los - 1, 0, -1) if side == "home" else range(los + 2, LENGTH + 1)
+    centre_first = sorted(range(1, WIDTH + 1), key=lambda x: (zone_of(x) != "centre", abs(x - (WIDTH + 1) / 2)))
+
+    out: list[tuple[int, int]] = []
+    for y in rows:
+        if half_of(y) != side:
+            continue
+        for x in centre_first:
+            if len(out) >= want:
+                return out
+            if (x, y) in used:
+                continue
+            z = zone_of(x)
+            if z in wide and wide[z] >= MAX_PER_WIDE_ZONE:
+                continue
+            used.add((x, y))
+            if z in wide:
+                wide[z] += 1
+            out.append((x, y))
     return out

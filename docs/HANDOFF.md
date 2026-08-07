@@ -446,6 +446,33 @@ Ogres behind him, which is worse than having an opinion. The line takes the
 highest Strength (AV breaks a tie), deep squares the highest MA, the rest fill in
 order. Anyone can be moved afterwards; this only decides where they start.
 
+**ELEVEN TAKE THE FIELD, NOT THE DRAFT LIST.** A Team Draft List holds up to 16;
+the board's own rule is "11 players on the pitch — the limit is 11". Placing was
+capped at `MAX_PLAYERS` (16) and happily put an illegal side out. Both placement
+paths now cap at `pitch.MAX_PLAYERS_ON_PITCH`, and the reply carries the board's
+own `review()` verdict rather than claiming legality here.
+
+**`squad()` is ordered by HIRING FEE, dearest first** — another stated default.
+Taking the draft list as written meant dict order, which fielded eleven 15,000gp
+Gnoblars and left all three 140,000gp Ogres in the reserves box: legal, and the
+wrong eleven. A coach fields their best.
+
+**A shape is topped up to eleven, BEHIND the line.** "Kick-off receive" is ten
+squares and "Line of Scrimmage only" is three. `draft.fill_squares` imports the
+board's limits rather than restating them (`MAX_PER_WIDE_ZONE`, `half_of`) and
+fills Centre Field first. It never fills ON the Line of Scrimmage: the shape owns
+the front row, and topping up there puts whoever is left over — typically the
+cheapest player on the list — exactly where the hitting happens. Legal, bad
+coaching.
+
+**⚠️ MIRROR FIRST, THEN TAKE THE TARGET SIDE.** `presets.apply_to(side=…)` filters
+on the preset's OWN stored side, and every shipped shape stores HOME rows — so
+asking it for "away" matched nothing, the shape came back empty, and the top-up
+quietly fielded eleven players with NOBODY on the Line of Scrimmage. It looked
+fine until the board reviewed it. Pass `side=""` with `mirror=(side == "away")`
+and filter the RESULT. Found by a sweep over every shipped setup × both sides —
+the single-case test passed throughout.
+
 **The view scores nothing itself.** Cost and legality come back from the server on
 every change, from the same functions that gate placement — a builder that scored
 itself would be a second rulebook, which is the failure this plugin exists to
