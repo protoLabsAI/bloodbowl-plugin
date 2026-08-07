@@ -143,6 +143,19 @@ Catcher) and the bulk off its ST, so a Troll and a Snotling differ before any as
 exists. Team colour is derived from the side and the team's name — the side owns the
 jersey, because telling two teams apart at a glance beats cosmetic fidelity.
 
+**Rosters** — a roster builder at `/plugins/bloodbowl/draft`, plus `bb_roster_options` ·
+`bb_roster_save` · `bb_roster_list` · `bb_roster_get`. Draft a Team Draft List against the
+S3 rules — every positional's Hiring Fee and quantity limit from the shipped roster, and
+the rulebook's own caps: **1,000,000 gp** budget by default, **11-16** players, **8** Team
+Re-rolls, **6** Assistant Coaches, **6** Cheerleaders, Dedicated Fans improvable to **3**
+at 5,000 each, one Apothecary (if the team may hire one). Save it, and place it on the
+board for scenario work.
+
+An illegal list still SAVES, with its problems listed — a team is over budget and short of
+players for most of the time it is being drafted. Placing one is the step that refuses.
+Costing and legality are decided server-side by the same functions that gate placement, so
+the builder cannot become a second rulebook.
+
 **Models** — a third view, `/plugins/bloodbowl/models`. Upload one mesh (`.glb`/`.gltf`)
 per positional, organised by team, and the 3D board uses it for every player of that
 position. **A missing model is the normal case**: the board falls back to its primitive

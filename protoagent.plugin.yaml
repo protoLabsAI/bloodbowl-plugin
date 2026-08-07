@@ -30,6 +30,10 @@ views:
   # real route like the others; the meshes themselves stay GATED under /api/, because a
   # coach's uploads are their files and should not become unauthenticated content.
   - { id: models, label: "Models", icon: Boxes, path: /plugins/bloodbowl/models }
+  # The roster builder — draft a Team Draft List against the S3 rules, save it, and place
+  # it on the board for scenario work. Costing and legality are decided SERVER-side by the
+  # same functions that gate placement, so the builder cannot be a second rulebook.
+  - { id: draft, label: "Rosters", icon: ClipboardList, path: /plugins/bloodbowl/draft }
 
 # The host auto-exempts a DECLARED VIEW's own path from the auth gate, because the
 # console iframes it with a plain navigation that cannot carry a bearer. It does

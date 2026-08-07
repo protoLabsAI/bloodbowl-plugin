@@ -424,6 +424,82 @@ def _tools(cfg: dict):
     # narration comes from `bb_game_log`, which holds the rolls as they happened.
 
     @tool
+    def bb_roster_options(team: str) -> str:
+        """What a team may hire, with the limits and costs that apply to drafting it.
+
+        Every positional with its Hiring Fee and how many the roster allows, the cost of a
+        Team Re-roll, whether an Apothecary is available, and the rulebook's own caps —
+        11-16 players, 8 Team Re-rolls, 6 Assistant Coaches, 6 Cheerleaders, Dedicated
+        Fans improvable to 3 at 5,000 each. Ask this before drafting rather than working
+        from memory: the costs and quantities differ per team and are printed, not derived.
+        """
+        from .draft import team_options
+
+        o = team_options(team)
+        return json.dumps(o if o else {"ok": False, "error": f"unknown team {team!r}"})
+
+    @tool
+    def bb_roster_save(
+        name: str,
+        team: str,
+        players: dict,
+        rerolls: int = 0,
+        coaches: int = 0,
+        cheerleaders: int = 0,
+        apothecary: bool = False,
+        fans: int = 1,
+        budget: int = 0,
+    ) -> str:
+        """Save a Team Draft List, and say what (if anything) is wrong with it.
+
+        ``players`` maps a positional name to how many you are hiring —
+        ``{"Gnoblar Lineman": 10, "Ogre Blocker": 5}``. Everything is costed and checked
+        server-side against the shipped roster: over budget, over a positional's limit,
+        fewer than 11 or more than 16, an Apothecary a team may not hire.
+
+        An ILLEGAL list still saves, with its problems reported. A team is over budget and
+        short of players for most of the time it is being drafted, and refusing to record
+        work in progress would make the tool useless. Placing one on the board is the step
+        that refuses.
+        """
+        from .draft import DEFAULT_BUDGET, price, problems, save
+
+        roster = {
+            "team": team,
+            "players": {k: int(v) for k, v in (players or {}).items()},
+            "rerolls": int(rerolls),
+            "coaches": int(coaches),
+            "cheerleaders": int(cheerleaders),
+            "apothecary": bool(apothecary),
+            "fans": int(fans),
+            "budget": int(budget) or DEFAULT_BUDGET,
+        }
+        try:
+            saved_roster = save(name, roster)
+        except ValueError as exc:
+            return json.dumps({"ok": False, "error": str(exc)})
+        return json.dumps(
+            {"ok": True, "roster": saved_roster, "price": price(saved_roster), "problems": problems(saved_roster)}
+        )
+
+    @tool
+    def bb_roster_list() -> str:
+        """Every saved Team Draft List: team, squad size, what it cost, and whether it is legal."""
+        from .draft import saved
+
+        return json.dumps({"ok": True, "rosters": saved()})
+
+    @tool
+    def bb_roster_get(name: str) -> str:
+        """One saved Team Draft List, itemised, with its remaining Treasury and any problems."""
+        from .draft import load, price, problems
+
+        d = load(name)
+        if d is None:
+            return json.dumps({"ok": False, "error": f"no roster named {name!r}"})
+        return json.dumps({"ok": True, "roster": d, "price": price(d), "problems": problems(d)})
+
+    @tool
     def bb_game_new(
         seed: int = 0,
         kicking_to: str = "",
@@ -1282,6 +1358,10 @@ def _tools(cfg: dict):
         return json.dumps(load().review(side if side in ("home", "away") else "home"))
 
     return [
+        bb_roster_options,
+        bb_roster_save,
+        bb_roster_list,
+        bb_roster_get,
         bb_list_teams,
         bb_get_roster,
         bb_team_costs,
