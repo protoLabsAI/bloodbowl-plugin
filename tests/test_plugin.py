@@ -2305,9 +2305,9 @@ def test_the_turn_nudge_defers_to_the_board(registry):
     The prompt now says the board is authoritative and names the pending-question case as
     normal, because that is the state that got two matches destroyed.
     """
-    import bloodbowl
-
     import re
+
+    import bloodbowl
 
     src = (ROOT / "__init__.py").read_text()
     i = src.index("Your turn in the Blood Bowl match")
