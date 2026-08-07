@@ -2272,9 +2272,13 @@ def test_a_seat_cannot_abandon_a_match_it_is_playing(registry):
     assert refused["ok"] is False and "not yours to discard" in refused["error"]
     assert bloodbowl.store.load_match() is not None, "the match must survive the refusal"
 
-    # An operator can still ask for it explicitly.
-    assert json.loads(tools["bb_game_abandon"].invoke({"confirm": "discard"}))["ok"] is True
-    assert bloodbowl.store.load_match() is None
+    # AND THERE IS NO OVERRIDE. The first version of this guard had a `confirm="discard"`
+    # escape hatch "for when an operator asks" — documented in the tool's own docstring,
+    # which is where the agent read it and used it forty seconds later to destroy a live
+    # match. A hatch written into the tool the agent holds is not a guard.
+    refused_again = json.loads(tools["bb_game_abandon"].invoke({}))
+    assert refused_again["ok"] is False
+    assert bloodbowl.store.load_match() is not None
 
 
 def test_an_unclaimed_practice_board_still_clears(registry):
@@ -2290,3 +2294,29 @@ def test_an_unclaimed_practice_board_still_clears(registry):
 
     assert json.loads(tools["bb_game_abandon"].invoke({}))["ok"] is True
     assert bloodbowl.store.load_match() is None
+
+
+def test_the_turn_nudge_defers_to_the_board(registry):
+    """Nudges QUEUE. A scheduler backlog delivered turn-4 prompts while the clock was at
+    half 2, and a seat reading the message rather than the board concluded the match was
+    "orphaned" — then that a normal pending question for the OTHER coach meant it was
+    broken, and discarded a live game.
+
+    The prompt now says the board is authoritative and names the pending-question case as
+    normal, because that is the state that got two matches destroyed.
+    """
+    import bloodbowl
+
+    import re
+
+    src = (ROOT / "__init__.py").read_text()
+    i = src.index("Your turn in the Blood Bowl match")
+    # Join adjacent string literals — the prompt is written across several, so a phrase
+    # that spans a join is not contiguous in the SOURCE even though it is in the prompt.
+    # Asserting on raw source would silently miss it, which it did.
+    prompt = re.sub(r'"\s*\n\s*"', "", src[i : i + 1600])
+    assert "THE BOARD IS THE TRUTH" in prompt
+    assert "when this was sent" in prompt, "the clock in the message is historical, not current"
+    assert "never conclude a match is broken" in prompt.lower()
+    assert "pending question" in prompt.lower() or "Kick-off question" in prompt
+    assert bloodbowl is not None
