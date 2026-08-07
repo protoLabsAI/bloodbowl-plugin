@@ -35,6 +35,8 @@ KINDS = (
     "armour_roll",
     "injury_roll",
     "player_condition",
+    # End of Drive: "Roll a D6 for each Knocked-out player. On a 4+ the player recovers."
+    "ko_recovery",
     "player_left_pitch",
     "ball_moved",
     "ball_picked_up",
