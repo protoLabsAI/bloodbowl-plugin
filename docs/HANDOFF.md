@@ -431,6 +431,21 @@ rather than the first — a coach mid-draft is usually breaking several, and fix
 them one refusal at a time is miserable. The board is shared state, so placement
 is where the line is drawn.
 
+**Placing into a named SHAPE is where a draft becomes a scenario.** The shipped
+presets are legal setups by construction (`tests/test_presets.py` checks each
+against the board's own `review()`), so placing exactly their squares inherits
+that instead of re-deriving it, and `presets.apply_to` owns the mirroring so the
+route does not re-implement the geometry.
+
+**`draft.assign` is a STATED DEFAULT, not a recommendation.** Preset squares are
+labelled by role in the SHAPE ("LOS", "screen", "back", "safety") rather than by
+Blood Bowl position, because a shape has to transfer between teams — so filling
+one is a coaching decision, and the engine does not make those. But filling it in
+DRAFT ORDER would stand a ST1 Gnoblar on the Line of Scrimmage with three idle
+Ogres behind him, which is worse than having an opinion. The line takes the
+highest Strength (AV breaks a tie), deep squares the highest MA, the rest fill in
+order. Anyone can be moved afterwards; this only decides where they start.
+
 **The view scores nothing itself.** Cost and legality come back from the server on
 every change, from the same functions that gate placement — a builder that scored
 itself would be a second rulebook, which is the failure this plugin exists to

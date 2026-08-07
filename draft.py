@@ -259,3 +259,55 @@ def squad(roster: dict) -> list[str]:
     for position, n in (roster.get("players") or {}).items():
         out.extend([position] * int(n or 0))
     return out
+
+
+#: Which tactical slot a preset square is, normalised. Shipped presets label squares by
+#: ROLE IN THE SHAPE ("LOS", "screen", "back", "safety", "corner") rather than by Blood
+#: Bowl position, because a shape has to transfer between teams.
+_FRONT = ("los", "line", "corner")
+_DEEP = ("safety", "back", "deep")
+
+
+def assign(players: list[dict], slots: list[dict]) -> list[tuple[dict, dict]]:
+    """Pair drafted players with the squares of a preset shape.
+
+    **This is a stated DEFAULT, not a recommendation.** Which player stands where is a
+    coaching decision and the engine does not make those — but filling a shape in draft
+    order would put a ST1 Gnoblar on the Line of Scrimmage next to three idle Ogres, which
+    is worse than having an opinion. So:
+
+      * the LINE takes the highest Strength (Armour Value breaks a tie) — the front row
+        exists to be hit;
+      * DEEP squares take the highest Move Allowance — a safety has to cover ground;
+      * everything else fills in the order drafted.
+
+    Any player can be moved afterwards with the board or `bb_pitch_place`; this only
+    decides where they start. Returns ``(player, square)`` pairs, shortest-list wins — a
+    preset has at most 11 squares and a squad may have 16, and the rest are simply not on
+    the pitch, which is what a reserves box is.
+    """
+
+    def num(v, default=0):
+        try:
+            return int(str(v).strip().rstrip("+") or default)
+        except ValueError:
+            return default
+
+    left = list(players)
+    out: list[tuple[dict, dict]] = []
+    front = [s for s in slots if str(s.get("label", "")).lower() in _FRONT]
+    deep = [s for s in slots if str(s.get("label", "")).lower() in _DEEP]
+    rest = [s for s in slots if s not in front and s not in deep]
+
+    for group, key in ((front, lambda p: (num(p.get("ST")), num(p.get("AV")))), (deep, lambda p: num(p.get("MA")))):
+        for square in group:
+            if not left:
+                return out
+            pick = max(left, key=key)
+            left.remove(pick)
+            out.append((pick, square))
+    for square in rest:
+        if not left:
+            break
+        out.append((left.pop(0), square))
+    return out

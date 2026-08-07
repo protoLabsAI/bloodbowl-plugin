@@ -59,6 +59,11 @@
         <div id="counts" class="stat" style="margin-top:8px"></div>
         <div id="problems" style="margin-top:12px"></div>
         <h2 style="margin-top:16px">Use it</h2>
+        <div class="row"><select id="shape" class="pl-input" style="flex:1"></select></div>
+        <div class="muted" style="font-size:12px;margin:2px 0 8px">
+          A shape fills itself: the line takes the highest Strength, deep squares the
+          highest Move Allowance. A starting point — move anyone from the board.
+        </div>
         <div class="row"><button class="pl-btn" data-place="home">Place as home</button></div>
         <div class="row"><button class="pl-btn" data-place="away">Place as away</button></div>
         <div class="muted" id="placed"></div>
@@ -75,6 +80,13 @@
       const get = async (p) => (await kit.apiFetch(API + p)).json();
 
       async function boot() {
+        const shapes = await get("/presets").catch(() => ({ presets: [] }));
+        // Only SETUP shapes: a Cage straddles the Line of Scrimmage on purpose and is not
+        // a legal set-up, which the preset library already distinguishes with `kind`.
+        $("shape").innerHTML =
+          `<option value="">plain rows (no shape)</option>` +
+          (shapes.presets || []).filter((x) => (x.kind || "setup") === "setup")
+            .map((x) => `<option>${x.name}</option>`).join("");
         const d = await get("/draft");
         teams = d.teams || [];
         $("teams").innerHTML = teams.map((t) => `<button class="item" data-team="${t.name}">${t.name}<span class="muted"> · ${t.tier ?? "?"}</span></button>`).join("");
@@ -178,9 +190,13 @@
       for (const b of document.querySelectorAll("[data-place]")) {
         b.onclick = async () => {
           const name = $("name").value || "__scratch";
-          const res = await kit.apiFetch(`${API}/draft/${encodeURIComponent(name)}/place?side=${b.dataset.place}`, { method: "POST" });
+          const shape = $("shape").value;
+          const url = `${API}/draft/${encodeURIComponent(name)}/place?side=${b.dataset.place}` + (shape ? `&preset=${encodeURIComponent(shape)}` : "");
+          const res = await kit.apiFetch(url, { method: "POST" });
           const d = await res.json();
-          $("placed").textContent = res.ok ? `Placed ${d.placed} on the ${d.side} side.` : (d.detail || "could not place");
+          $("placed").textContent = res.ok
+            ? `Placed ${d.placed} on the ${d.side} side${d.preset ? ` in "${d.preset}"` : ""}${d.benched ? `, ${d.benched} in reserve` : ""}.`
+            : (d.detail || "could not place");
         };
       }
       boot();

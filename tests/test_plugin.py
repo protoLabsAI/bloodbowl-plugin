@@ -2188,3 +2188,39 @@ def test_saved_rosters_live_in_the_state_dir(client):
     assert ROOT not in draft.rosters_dir().parents
     assert any(r["name"] == "keepme" for r in client.get("/api/plugins/bloodbowl/draft").json()["rosters"])
     assert client.delete("/api/plugins/bloodbowl/draft/keepme").json()["ok"] is True
+
+
+def test_a_draft_places_into_a_named_shape_with_the_beef_on_the_line(client):
+    """Filling a shape in DRAFT ORDER would stand a ST1 Gnoblar on the Line of Scrimmage
+    with three idle Ogres behind him. The assignment is a stated default — line takes the
+    highest Strength, deep squares the highest Move Allowance — and a coach can move
+    anyone afterwards. It is not a recommendation, but it beats having no opinion."""
+    client.put("/api/plugins/bloodbowl/draft/ogres", json=_ogre())
+    d = client.post("/api/plugins/bloodbowl/draft/ogres/place?side=home&preset=Kick-off%20receive").json()
+    assert d["ok"] and d["preset"] == "Kick-off receive", d
+
+    board = client.get("/api/plugins/bloodbowl/state").json()
+    home = [p for p in board["players"] if p["side"] == "home"]
+    los = [p for p in home if p["y"] == 13]
+    assert los, "the shape has a Line of Scrimmage"
+    # Ogre Blockers are ST5, Gnoblars ST1 — every Ogre drafted should be on the line
+    # before any Gnoblar is, and there are 3 of them against 3 LoS squares.
+    assert all(p["position"] == "Ogre Blocker" for p in los), [p["position"] for p in los]
+
+
+def test_placing_into_an_unknown_shape_is_refused(client):
+    client.put("/api/plugins/bloodbowl/draft/ogres", json=_ogre())
+    r = client.post("/api/plugins/bloodbowl/draft/ogres/place?side=home&preset=Nonesuch")
+    assert r.status_code == 404 and "Nonesuch" in r.json()["detail"]
+
+
+def test_the_assignment_is_pure_and_shortest_list_wins(client):
+    """A preset has at most 11 squares and a squad may have 16 — the rest are simply not
+    on the pitch, which is what a reserves box is."""
+    from bloodbowl.draft import assign
+
+    players = [{"n": i, "MA": 6, "ST": 3, "AV": "9+"} for i in range(16)]
+    squares = [{"x": 8, "y": 13, "label": "LOS"}, {"x": 8, "y": 7, "label": "safety"}]
+    pairs = assign(players, squares)
+    assert len(pairs) == 2, "shortest list wins"
+    assert assign([], squares) == [] and assign(players, []) == []
