@@ -386,7 +386,7 @@ def build_game_router(cfg: dict | None = None, announce=None):
         return {"ok": _d.delete(name)}
 
     @r.post("/draft/{name}/place")
-    async def _draft_place(name: str, side: str = "home") -> dict:
+    async def _draft_place(name: str, side: str = "home", preset: str = "") -> dict:
         """Put a saved squad on the practice board — the scenario-testing path.
 
         Refuses an ILLEGAL roster here, unlike saving: a half-drafted team on the board is
@@ -406,6 +406,41 @@ def build_game_router(cfg: dict | None = None, announce=None):
         sc = _store().load()
         sc.players = [p for p in sc.players if p.side != side]
         setattr(sc, f"{side}_team", roster.get("team") or "")
+
+        if preset:
+            # Into a NAMED SHAPE. The shipped presets are legal setups by construction
+            # (tests/test_presets.py checks every one against the board's own review), so
+            # placing exactly their squares inherits that rather than re-deriving it.
+            from .presets import apply_to, find
+
+            shape = find(preset)
+            if shape is None:
+                raise HTTPException(status_code=404, detail=f"no preset named {preset!r}")
+            # `apply_to` owns the mirroring, so a home shape can be dropped into the away
+            # half without this route re-implementing the geometry.
+            laid = apply_to(shape, side=side, mirror=(side == "away"), current=sc)
+            squares = [{"x": p.x, "y": p.y, "label": p.label or ""} for p in laid.players]
+            drafted = []
+            for position in _d.squad(roster)[: _d.MAX_PLAYERS]:
+                player, why = player_from_roster(side, 1, 1, roster.get("team") or "", position)
+                if player is None:
+                    return {"ok": False, "error": why}
+                drafted.append({"player": player, "MA": player.MA, "ST": player.ST, "AV": player.AV})
+            for row, square in _d.assign(drafted, squares):
+                player = row["player"]
+                player.x, player.y = int(square["x"]), int(square["y"])
+                sc.players.append(player)
+            _store().save(sc)
+            return {
+                "ok": True,
+                "placed": len(sc.players) - len([p for p in sc.players if p.side != side]),
+                "side": side,
+                "team": roster.get("team"),
+                "preset": shape.name,
+                "benched": max(0, len(drafted) - len(squares)),
+                "refused": [],
+            }
+
         # Rows behind the Line of Scrimmage, filled outward from the centre — a legal-ish
         # starting shape rather than a formation. `bb_pitch_setup` and the presets are
         # where a coach picks the actual set-up; this just gets the squad onto the pitch.
