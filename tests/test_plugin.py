@@ -2397,7 +2397,6 @@ def test_a_full_ai_seat_gets_a_fresh_conversation_each_turn(registry):
     A turn is self-contained — the board is the truth — so each one starts clean and the
     context is bounded by construction.
     """
-    import re
 
     src = (ROOT / "__init__.py").read_text()
     i = src.index("A FULL-AI SEAT GETS A FRESH CONVERSATION PER TURN")
