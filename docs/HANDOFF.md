@@ -255,6 +255,22 @@ almost nothing new, because `handover.owed` never cared which side it was
 answering about: it reports whoever is owed and who controls them, so two agent
 seats alternate through the same nudge that always existed.
 
+**⚠️ AND THE OWNERSHIP CHECK WAS A NO-OP FOR IT.** `refuse_if_not_yours` compared
+CONTROLLER KINDS — and in a full-AI match both sides are "agent", so `mine == by`
+was true for EITHER seat. Each was free to move the other's team, and one did: the
+home seat played a Skaven turn, moved their Gutter Runner onto the ball, ended the
+turn, and then spent the rest of the game insisting it was not its move.
+
+A seat now names its SIDE, not its kind. `_seat_of(match, state)` resolves it from
+the session the tool is running in, matched against `Match.session_ids` — the only
+thing that distinguishes two seats that are otherwise identical. It falls back to
+"agent", which is correct for a head-to-head where there is one agent seat and the
+kind identifies it fine.
+
+The test states the defect rather than only the fix: two assertions show that
+`by="agent"` is admitted on BOTH teams' turns, which is what the tools used to
+pass. They pass on the unfixed engine — that IS the bug.
+
 **The one thing it did need is a conversation PER SEAT** (`Match.session_ids`,
 `session_for(side)`). One `session_id` is right while the only agent seat is the
 opponent's; it collapses the moment both seats are agents, because they would

@@ -7061,3 +7061,45 @@ def test_a_ball_that_bounces_out_is_thrown_back_in():
     assert any(r.kind.endswith("Throw-in") for e in m.events for r in e.rolls), (
         "and the crowd's throw-in must actually be rolled"
     )
+
+
+def test_one_ai_seat_cannot_move_the_other_seats_team():
+    """Full-AI seats both have the controller kind "agent", so comparing controller kinds
+    cannot tell them apart — `mine == by` was true for EITHER seat, and each was allowed
+    to move the other's team. One did: the home seat played a Skaven turn, moved their
+    Gutter Runner onto the ball and ended the turn, then spent the rest of the game
+    insisting it was not its move.
+
+    A seat names its SIDE, not its kind.
+    """
+    from bloodbowl.engine.game import refuse_if_not_yours
+
+    on_home = _ai_match(("home", 7, 13), ("away", 7, 14), active="home")
+    on_away = _ai_match(("home", 7, 13), ("away", 7, 14), active="away")
+
+    # THE DEFECT, stated: the controller KIND is "agent" on both sides, so one caller
+    # saying "agent" is admitted on BOTH teams' turns. That is what the tools used to
+    # pass, and it is why a seat could play the opposition's turn.
+    assert refuse_if_not_yours(on_home, "agent") is None
+    assert refuse_if_not_yours(on_away, "agent") is None, (
+        "the kind alone cannot distinguish two agent seats — this is the bug, not the fix"
+    )
+
+    # THE FIX: a seat names its SIDE, and that is decidable.
+    assert refuse_if_not_yours(on_home, "home") is None, "the home seat may act on home's turn"
+    refused = refuse_if_not_yours(on_home, "away")
+    assert refused is not None, "the AWAY seat must not act on home's turn"
+    assert "not your move" in refused["error"]
+    assert refuse_if_not_yours(on_away, "away") is None
+
+
+def test_a_seat_may_act_again_once_the_turn_comes_round():
+    """The restraint control — the gate is whose TURN it is, not a permanent ban."""
+    from bloodbowl.engine.game import end_turn, refuse_if_not_yours
+
+    m = _ai_match(("home", 7, 13), ("away", 7, 14), active="home")
+    assert refuse_if_not_yours(m, "away") is not None
+    end_turn(m, forced=True)
+    assert m.clock.active == "away"
+    assert refuse_if_not_yours(m, "away") is None
+    assert refuse_if_not_yours(m, "home") is not None

@@ -579,6 +579,21 @@ def refuse_if_not_yours(match: Match, by: str) -> dict | None:
     """
     if not by or not match.controllers:
         return None
+
+    # A SEAT names its own SIDE ("home"/"away") rather than its controller kind.
+    #
+    # Comparing controller kinds cannot tell two agent seats apart: in a full-AI match
+    # both sides are "agent", so `mine == by` was true for EITHER seat and this function
+    # allowed each of them to move the other's team. One did — the home seat played a
+    # Skaven turn, moved their Gutter Runner onto the ball and ended the turn, then spent
+    # the rest of the game insisting it was not its move. The check has to be about WHICH
+    # SIDE you are, not what kind of thing you are.
+    if by in ("home", "away"):
+        if by == match.clock.active:
+            return None
+        why = f"you are the {by} coach and it is {match.clock.active}'s turn — this is not your move to make"
+        return {"ok": False, "error": why, "text": why, "controllers": dict(match.controllers)}
+
     mine = whose_turn(match)
     if not mine or mine == by:
         return None
