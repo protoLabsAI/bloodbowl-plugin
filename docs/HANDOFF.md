@@ -241,6 +241,28 @@ decides. Neither surface polices itself, because neither can: an agent that
 respected a rule only in its own tool code would stop respecting it the moment
 somebody called the route.
 
+**⚠️ THE NUDGE JOB ID IS UNIQUE PER ATTEMPT, AND THAT MATTERS TWICE OVER.**
+`sdk.run_in_session` is idempotent-REPLACE: re-using an id cancels whatever that id
+has pending — INCLUDING A TURN THAT IS CURRENTLY RUNNING.
+
+* A CONSTANT id was the first version of this bug: a nudge for turn 3 cancelled
+  turn 2 and the game stopped dead with nobody to act.
+* Per-HANDOVER fixed that and introduced a subtler one. Re-nudging the same
+  handover is exactly what `bb_game_nudge` / `POST /game/nudge` are FOR, and what
+  any watchdog does when a board looks stuck — and it killed the turn it was trying
+  to rescue. A seat mid-blitz reported "my previous turn was interrupted
+  mid-action" three times over, and the abandoned A2A stream produced an
+  `httpx.ReadTimeout` that the scheduler logged as a failed fire and RETRIED,
+  starting the same turn again.
+
+Per-ATTEMPT now. A re-nudge queues instead of cancelling, and a duplicate turn is
+safe because the seat check refuses anything that is not that side's move.
+
+**OPERATIONAL COROLLARY: do not re-nudge on a timer.** At 11-a-side a turn takes
+2-5 minutes; a watchdog firing every 5 minutes will land on a live turn. Three
+watchers running at once (one left behind per deploy) produced three nudges in 16
+seconds and froze the board for half an hour. Report a stall; let a person decide.
+
 **The nudge.** `engine/handover.py` works out who the match is waiting on and
 whether that CHANGED; `__init__.announce` publishes `bloodbowl.turn_ready`; and
 `register()` subscribes and calls `sdk.run_in_session` to run an agent turn from it.
