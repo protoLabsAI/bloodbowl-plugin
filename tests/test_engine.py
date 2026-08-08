@@ -3950,7 +3950,10 @@ def test_a_crash_landing_flattens_whoever_was_standing_there():
     m.by_id("h00").player.PA = "3+"
     # A natural 1 fumbles them onto the thrower's square, then a Scatter of 2 —
     # direction (0,-1) — drops them straight onto the Skaven standing at (7,7).
-    out = _throw(m, _dice([1, 2, 2, 2, 5, 2, 2]), x=7, y=12)
+    # The tail is padded: a bounce that leaves the pitch now triggers the crowd's
+    # throw-in, which rolls dice this script never budgeted for. The assertions below are
+    # unchanged — only the dice supply is.
+    out = _throw(m, _dice([1, 2, 2, 2, 5, 2, 2] + [2] * 12), x=7, y=12)
     assert any("crash-lands" in (e.text or "") for e in out.events), [e.text for e in out.events]
     assert m.by_id("a02").down != "standing", "the player landed on should be flattened"
     assert m.by_id("h01").down != "standing", "and the thrown player Falls Over"
@@ -7030,3 +7033,31 @@ def test_a_casualty_never_rolls_to_recover():
     start_drive(m, receiving="home", dice=_dice([4] * 40))
     assert m.by_id("h00").place == "casualty"
     assert not [r for e in m.events for r in e.rolls if r.kind.startswith("KO recovery")]
+
+
+def test_a_ball_that_bounces_out_is_thrown_back_in():
+    """It said "thrown back by the crowd" and then returned without throwing it back.
+
+    A ball that bounced off the pitch stayed off it — `in_play`, unreachable, for the rest
+    of the match — and produced a state no renderer expects: the 2D board crashed on it,
+    because a square off the pitch has no cell to draw into.
+
+    `throw_in` was written, unit-tested, and wired into exactly ONE of its two call sites
+    (the pass path). The bounce never called it. A function that exists and is tested
+    reads as working.
+    """
+    from bloodbowl.engine.ball import bounce
+    from bloodbowl.engine.events import Event
+    from bloodbowl.pitch import in_bounds
+
+    m = _match(("home", 1, 13))
+    # Put the ball on the west sideline and bounce it west, off the pitch.
+    m.apply(Event(kind="ball_moved", detail={"x": 1, "y": 13, "carrier": ""}, text="loose"))
+    bounce(m, _dice([4] + [3] * 20))  # direction 4 = west on the scatter template
+
+    assert in_bounds(m.ball.x, m.ball.y), f"the ball must come back onto the pitch, not sit at ({m.ball.x},{m.ball.y})"
+    kinds = [e.kind for e in m.events]
+    assert "ball_out_of_bounds" in kinds, "it should still record that it went out"
+    assert any(r.kind.endswith("Throw-in") for e in m.events for r in e.rolls), (
+        "and the crowd's throw-in must actually be rolled"
+    )

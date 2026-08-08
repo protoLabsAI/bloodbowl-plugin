@@ -12,7 +12,13 @@ export let GEO = null;
 export let CELLS = [];
 
 /* Pitch y (1..length) is the grid COLUMN; pitch x (1..width) is the grid ROW. */
+// A square that is not on the pitch has no cell, and the caller gets `undefined`.
+// Callers MUST check: the engine can legitimately report an off-pitch position — a ball
+// mid-throw-in sits out of bounds for exactly as long as it takes the crowd to hurl it
+// back — and a renderer that assumes otherwise throws and takes the whole board with it.
+// That happened: "undefined is not an object (evaluating 'at(m.ball.x, m.ball.y)…')".
 export const at = (x, y) => CELLS[(x - 1) * GEO.length + (y - 1)];
+export const onPitch = (x, y) => x >= 1 && x <= GEO.width && y >= 1 && y <= GEO.length;
 export const key = (x, y) => `${x}:${y}`;
 
 let hotX = 0;
