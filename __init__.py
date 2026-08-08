@@ -71,6 +71,21 @@ _HINT_AFTER = 2
 _HINT_MIN_LEFT = 2
 
 
+def _seat_sessions() -> tuple:
+    """The session ids of a full-AI match's two seats, or () when there is no such match.
+
+    Read from the board rather than recomputed, so it stays true to whatever the match
+    actually recorded — including matches started before per-match tokens existed.
+    """
+    try:
+        from .store import load_match
+
+        m = load_match()
+    except Exception:  # noqa: BLE001 — a nudge must never die on a bad read
+        return ()
+    return tuple((getattr(m, "session_ids", None) or {}).values()) if m is not None else ()
+
+
 def _seat_of(match, state) -> str:
     """Which SIDE this call is coming from, or "agent" when it cannot be told.
 
@@ -284,6 +299,27 @@ def register(registry) -> None:
             # the durable Activity thread rather than dropping the turn on the
             # floor. `bb_game_here` is how a person moves it into their own chat.
             session = str(d.get("session_id") or "") or "system:activity"
+            # A FULL-AI SEAT GETS A FRESH CONVERSATION PER TURN.
+            #
+            # A seat's context grows by roughly 40k tokens a turn — one `bb_game_state` is
+            # ~2.6k, `bb_game_legal` is asked per player, and every `bb_game_act` returns
+            # its events. Measured on a live match: an away seat rebuilt 165,000 tokens in
+            # FOUR turns after being purged. It then degraded exactly as you would expect —
+            # burning a whole 600s fire timeout on three model calls without moving anyone,
+            # and eventually not responding to a nudge at all. Purging bought one turn.
+            #
+            # A turn is self-contained: the BOARD is the truth and the engine is
+            # authoritative, which is the invariant this whole plugin is built on. A coach
+            # who needs to know what happened has `bb_game_log`. So each turn starts clean
+            # and the context is bounded by construction rather than by hoping a match ends
+            # before the window does.
+            #
+            # HEAD-TO-HEAD IS UNTOUCHED: there the session is the PERSON's chat, and
+            # fragmenting it per turn would scatter their game across sixteen threads.
+            # Only the seats minted by `_ai_sessions` are split, and they are already
+            # machine-side conversations nobody reads live.
+            if session in (_seat_sessions() or ()):
+                session = f"{session}:h{d.get('half')}t{d.get('turn')}"
             # A job id PER HANDOVER, not one shared id. `run_in_session` is
             # idempotent-REPLACE: a second call with the same id CANCELS the
             # pending one. That is right for a chatty rule that only needs its
