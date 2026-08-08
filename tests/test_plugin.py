@@ -2320,3 +2320,17 @@ def test_the_turn_nudge_defers_to_the_board(registry):
     assert "never conclude a match is broken" in prompt.lower()
     assert "pending question" in prompt.lower() or "Kick-off question" in prompt
     assert bloodbowl is not None
+
+
+def test_the_board_never_indexes_a_square_off_the_pitch(client):
+    """`at()` is a bare array index — an off-pitch square yields `undefined`, and calling
+    `.appendChild` on it throws and takes the whole board down. It did:
+    "undefined is not an object (evaluating 'at(m.ball.x, m.ball.y).appendChild')", with
+    the ball parked at (0,13) between leaving the pitch and the crowd throwing it back.
+
+    A renderer must tolerate ANY state the engine can produce."""
+    import re
+
+    src = (ROOT / "web" / "js" / "game.js").read_text()
+    for call in re.findall(r"at\([^)]*\)\.appendChild", src):
+        raise AssertionError(f"unguarded board index: {call} — check the cell exists first")

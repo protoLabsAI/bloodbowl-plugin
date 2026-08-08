@@ -103,14 +103,25 @@ def bounce(match, dice, depth: int = 0) -> list[Event]:
     """
     events = scatter(match, dice, 1)
     if not in_bounds(match.ball.x, match.ball.y):
+        lx, ly = match.ball.x, match.ball.y
         events.append(
             Event(
                 kind="ball_out_of_bounds",
-                detail={"x": match.ball.x, "y": match.ball.y},
+                detail={"x": lx, "y": ly},
                 text="The ball leaves the pitch and is thrown back by the crowd.",
             )
         )
         match.apply(events[-1])
+        # AND THEN ACTUALLY THROW IT BACK. This said "thrown back by the crowd" and
+        # returned — so a ball that bounced out stayed out, off the pitch, `in_play` and
+        # unreachable, for the rest of the match. `throw_in` was written, unit-tested, and
+        # wired into exactly ONE of its two call sites (the pass path in actions/throw.py);
+        # the bounce never called it. A function that exists and is tested reads as
+        # working, which is what let this sit.
+        #
+        # It also produced a state no renderer expects — the ball at x=0 with `in_play`
+        # true — and the 2D board threw on it, because a square off the pitch has no cell.
+        events.extend(throw_in(match, dice, lx, ly))
         return events
 
     landed = match.at(match.ball.x, match.ball.y)
