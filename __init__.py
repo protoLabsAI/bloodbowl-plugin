@@ -70,6 +70,26 @@ _HINT_AFTER = 2
 _HINT_MIN_LEFT = 2
 
 
+def _seat_of(match, state) -> str:
+    """Which SIDE this call is coming from, or "agent" when it cannot be told.
+
+    A full-AI match seats one agent per side in its own conversation, and the engine has
+    to be able to tell them apart — both are "agent", so the controller kind cannot. The
+    session the tool is running in is the only thing that distinguishes them, and
+    `match.session_ids` already records it.
+
+    Falls back to "agent", which is right for a head-to-head: there is only one agent seat
+    and the controller kind identifies it perfectly well.
+    """
+    session = _session_of(state)
+    if not session:
+        return "agent"
+    for side, sid in (getattr(match, "session_ids", None) or {}).items():
+        if sid == session:
+            return side
+    return "agent"
+
+
 def _ai_sessions(base: str) -> dict:
     """A chat per seat for a full-AI match.
 
@@ -724,6 +744,7 @@ def _tools(cfg: dict):
         stand_firm: bool | None = None,
         trickster_to: list | None = None,
         juggernaut: bool | None = None,
+        state: _Injected = None,
     ) -> str:
         """Take an action.
 
@@ -906,9 +927,9 @@ def _tools(cfg: dict):
                 save_match(m)
                 pace.wait()
 
-            report = walk(m, player, path, cmd=cmd, by="agent", after_step=after_step)
+            report = walk(m, player, path, cmd=cmd, by=_seat_of(m, state), after_step=after_step)
         else:
-            report = act(m, action, cmd, by="agent")
+            report = act(m, action, cmd, by=_seat_of(m, state))
         save_match(m)
         # The agent's own move can hand the game back — a Turnover does exactly
         # that — so this side announces too. `changed` is what stops it firing on
@@ -947,7 +968,7 @@ def _tools(cfg: dict):
         return json.dumps({"ok": legal.ok, "reason": legal.reason, **legal.detail})
 
     @tool
-    def bb_game_end_turn() -> str:
+    def bb_game_end_turn(state: _Injected = None) -> str:
         """End the active team's turn and hand over.
 
         In a head-to-head this is how you give the board back — end your turn when
@@ -961,7 +982,7 @@ def _tools(cfg: dict):
         if m is None:
             return json.dumps({"ok": False, "error": "no match in progress"})
         was = handover.owed(m)
-        out = end_turn(m, by="agent")
+        out = end_turn(m, by=_seat_of(m, state))
         if out.get("ok"):
             save_match(m)
         announce(was, handover.owed(m))
@@ -987,6 +1008,7 @@ def _tools(cfg: dict):
         moves: list | None = None,
         players: list | None = None,
         result: int = 0,
+        state: _Injected = None,
     ) -> str:
         """Answer whatever the engine stopped to ask.
 
@@ -1030,7 +1052,7 @@ def _tools(cfg: dict):
                 "result": int(result or 0),
             },
             dice_for(m),
-            by="agent",
+            by=_seat_of(m, state),
         )
         if out.get("ok"):
             save_match(m)
