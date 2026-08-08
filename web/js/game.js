@@ -135,7 +135,9 @@ export function render() {
         clearPath();
       },
     });
-    at(p.x, p.y).appendChild(node);
+    const cell = at(p.x, p.y);
+    if (!cell) continue; // off the pitch — nothing to draw into
+    cell.appendChild(node);
     state.nodes.set(k, node);
   }
 
@@ -149,7 +151,11 @@ export function render() {
     // several calls, and drawn solid it reads as landed.
     b.className = m.ball.in_air ? "ball air" : "ball";
     b.title = m.ball.in_air ? "still in the air — the Kick-off Event is not resolved yet" : "";
-    at(m.ball.x, m.ball.y).appendChild(b);
+    // The ball can legitimately be OFF the pitch: it sits out of bounds between leaving
+    // the field and the crowd throwing it back. Skip it rather than crash — a renderer
+    // must tolerate any state the engine can produce.
+    const cell = at(m.ball.x, m.ball.y);
+    if (cell) cell.appendChild(b);
   }
 
   const c = m.clock || {};
