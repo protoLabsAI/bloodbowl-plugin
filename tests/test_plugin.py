@@ -2365,3 +2365,24 @@ def test_every_full_ai_match_gets_a_fresh_pair_of_seats(registry):
     for pair in seats:
         assert pair["home"] != pair["away"]
         assert all(s.startswith("bloodbowl") for s in pair.values()), pair
+
+
+def test_a_re_nudge_queues_rather_than_cancelling_the_running_turn():
+    """`run_in_session` is idempotent-REPLACE, so re-using a job id cancels whatever that
+    id has pending — including a turn that is currently RUNNING.
+
+    A constant id was the first version of this bug (a nudge for turn 3 cancelled turn 2).
+    Per-handover fixed that and introduced a subtler one: re-nudging the SAME handover —
+    which is what `bb_game_nudge` exists for, and what any watchdog does when a board looks
+    stuck — killed the turn it was trying to rescue. A seat mid-blitz reported "my previous
+    turn was interrupted mid-action" three times over.
+    """
+
+    src = (ROOT / "__init__.py").read_text()
+    i = src.index('job = (\n                f"bloodbowl-turn')
+    job = src[i : i + 260]
+    assert "uuid.uuid4()" in job, "the job id must be unique per ATTEMPT, not per handover"
+    # And it must still carry the handover, so a human reading the log can tell which turn
+    # a job belongs to.
+    for part in ("half", "turn", "side", "why"):
+        assert f"d.get('{part}')" in job, f"the id should still name the {part}"

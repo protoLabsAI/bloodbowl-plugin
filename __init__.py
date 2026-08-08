@@ -291,7 +291,25 @@ def register(registry) -> None:
             # turn that must actually run. With a constant id, a nudge for turn 3
             # silently cancelled turn 2 and the game stopped dead with nobody to
             # act. Observed live: five nudges, three turns.
-            job = f"bloodbowl-turn-h{d.get('half')}t{d.get('turn')}-{d.get('side')}-{d.get('why')}"
+            # A UNIQUE id PER ATTEMPT, not per handover.
+            #
+            # `run_in_session` is idempotent-REPLACE, so re-using an id CANCELS whatever
+            # that id already has pending — including a turn that is CURRENTLY RUNNING.
+            # A constant id was the first version of this bug (a nudge for turn 3
+            # cancelled turn 2); per-handover fixed that and introduced a subtler one:
+            # re-nudging the SAME handover — which is exactly what `bb_game_nudge` and
+            # `POST /game/nudge` are for, and what any watchdog does when a board looks
+            # stuck — killed the turn it was trying to rescue. Observed: a seat mid-blitz
+            # reporting "my previous turn was interrupted mid-action", three times over,
+            # and an httpx.ReadTimeout on the abandoned A2A stream that the scheduler then
+            # logged as a failed fire and retried.
+            #
+            # With a per-attempt id a re-nudge QUEUES instead. A duplicate turn is safe
+            # now: the seat check refuses anything that is not that side's move, so a
+            # late arrival finds the handover gone and stops.
+            job = (
+                f"bloodbowl-turn-h{d.get('half')}t{d.get('turn')}-{d.get('side')}-{d.get('why')}-{uuid.uuid4().hex[:6]}"
+            )
             out = sdk.run_in_session(session, prompt, job_id=job)
             log.info("[bloodbowl] nudged %s (%s): %s", session, job, out.get("message"))
 
