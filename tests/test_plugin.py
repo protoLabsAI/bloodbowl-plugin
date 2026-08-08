@@ -2334,3 +2334,34 @@ def test_the_board_never_indexes_a_square_off_the_pitch(client):
     src = (ROOT / "web" / "js" / "game.js").read_text()
     for call in re.findall(r"at\([^)]*\)\.appendChild", src):
         raise AssertionError(f"unguarded board index: {call} — check the cell exists first")
+
+
+def test_every_full_ai_match_gets_a_fresh_pair_of_seats(registry):
+    """The seat ids used to be fixed strings, so every full-AI match ever played reused
+    `bloodbowl:home` and `bloodbowl:away`. A seat inherited every earlier match's
+    transcript — and after two games were abandoned it held three consecutive turns
+    concluding "No match in progress — game already concluded", then repeated that for a
+    LIVE match without calling bb_game_state at all. The board sat frozen for nine minutes
+    while the nudges fired into it.
+
+    A model trusts its own recent output over its instructions. The fix is not to argue in
+    the prompt but to stop handing it somebody else's conversation.
+    """
+    import bloodbowl
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+
+    seats = []
+    for seed in (1, 2):
+        tools["bb_game_new"].invoke({"seed": seed, "kicking_to": "home", "you": "neither"})
+        seats.append(dict(bloodbowl.store.load_match().session_ids))
+
+    assert seats[0]["home"] != seats[1]["home"], f"two matches reused a seat: {seats}"
+    assert seats[0]["away"] != seats[1]["away"]
+    # Still one per SIDE within a match, and still findable by prefix.
+    for pair in seats:
+        assert pair["home"] != pair["away"]
+        assert all(s.startswith("bloodbowl") for s in pair.values()), pair

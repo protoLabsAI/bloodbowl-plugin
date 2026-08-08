@@ -271,6 +271,21 @@ The test states the defect rather than only the fix: two assertions show that
 `by="agent"` is admitted on BOTH teams' turns, which is what the tools used to
 pass. They pass on the unfixed engine — that IS the bug.
 
+**⚠️ AND THAT CONVERSATION MUST BE FRESH PER MATCH.** The seat ids were fixed
+strings, so every full-AI match ever played reused `bloodbowl:home` and
+`bloodbowl:away`. A seat therefore inherited every earlier match's transcript —
+and after two games were abandoned it held three consecutive turns concluding
+"No match in progress — game already concluded". It then repeated that for a LIVE
+match **without calling `bb_game_state` at all**, and the board sat frozen for
+nine minutes while nudges fired into it. Purging the two sessions unstuck it
+instantly.
+
+A model trusts its own recent output over its instructions — the same force that
+made it ignore `path` while its transcript was full of single-square calls. The
+fix is not to argue with it in the prompt (#82 already tried: "THE BOARD IS THE
+TRUTH") but to stop handing it somebody else's conversation. `_ai_sessions` now
+mints a token per match.
+
 **The one thing it did need is a conversation PER SEAT** (`Match.session_ids`,
 `session_for(side)`). One `session_id` is right while the only agent seat is the
 opponent's; it collapses the moment both seats are agents, because they would

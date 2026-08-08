@@ -12,6 +12,7 @@ built to route around.
 from __future__ import annotations
 
 import json
+import uuid
 import logging
 
 from langchain_core.tools import tool
@@ -91,16 +92,28 @@ def _seat_of(match, state) -> str:
 
 
 def _ai_sessions(base: str) -> dict:
-    """A chat per seat for a full-AI match.
+    """A chat per seat for a full-AI match — a FRESH pair for every match.
 
-    Derived from the conversation the game was started in rather than minted at
-    random, so both are findable afterwards (the whole match is readable as two
-    transcripts) and stable across a reload. A match started from the BOARD has no
-    conversation behind it, so the seats hang off a fixed prefix instead of the
-    Activity thread — which one seat could otherwise flood.
+    Derived from the conversation the game was started in, so both are findable
+    afterwards (the whole match is readable as two transcripts) and stable across a
+    reload; the ids are recorded in `match_started` and folded like everything else. A
+    match started from the BOARD has no conversation behind it, so the seats hang off a
+    fixed prefix rather than the Activity thread, which one seat could otherwise flood.
+
+    **THE TOKEN IS THE POINT.** These used to be fixed strings, so every full-AI match
+    ever played reused `bloodbowl:home` and `bloodbowl:away`. A seat therefore inherited
+    every earlier match's transcript — including, after two games were abandoned, three
+    consecutive turns concluding "No match in progress — game already concluded". It then
+    repeated that conclusion for a live match WITHOUT CALLING bb_game_state at all, and
+    the game sat frozen for nine minutes while the nudges fired into it.
+
+    A model trusts its own recent output over its instructions; the fix is not to argue
+    with it in the prompt but to stop handing it somebody else's conversation. A fresh
+    pair per match cannot inherit a previous game's conclusions.
     """
     root = (base or "bloodbowl").strip() or "bloodbowl"
-    return {"home": f"{root}:home", "away": f"{root}:away"}
+    token = uuid.uuid4().hex[:6]
+    return {"home": f"{root}:{token}:home", "away": f"{root}:{token}:away"}
 
 
 def _step_hint(match, player: str, used_path: bool) -> str:
