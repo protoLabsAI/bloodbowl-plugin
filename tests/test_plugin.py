@@ -2386,3 +2386,40 @@ def test_a_re_nudge_queues_rather_than_cancelling_the_running_turn():
     # a job belongs to.
     for part in ("half", "turn", "side", "why"):
         assert f"d.get('{part}')" in job, f"the id should still name the {part}"
+
+
+def test_a_full_ai_seat_gets_a_fresh_conversation_each_turn(registry):
+    """A seat's context grows ~40k tokens a turn — one `bb_game_state` is ~2.6k,
+    `bb_game_legal` is asked per player, and every `bb_game_act` returns its events.
+    Measured live: an away seat rebuilt 165,000 tokens in FOUR turns after a purge, then
+    burned a whole 600s fire timeout on three model calls without moving anyone.
+
+    A turn is self-contained — the board is the truth — so each one starts clean and the
+    context is bounded by construction.
+    """
+    import re
+
+    src = (ROOT / "__init__.py").read_text()
+    i = src.index("A FULL-AI SEAT GETS A FRESH CONVERSATION PER TURN")
+    block = src[i : i + 2000]
+    assert "f\"{session}:h{d.get('half')}t{d.get('turn')}\"" in block, "the turn must key the session"
+    assert "_seat_sessions()" in block, "and only SEAT sessions may be split"
+
+
+def test_a_head_to_head_chat_is_never_split(registry):
+    """The restraint control. In a head-to-head the session is the PERSON's chat, and
+    fragmenting it per turn would scatter their game across sixteen threads. Only the
+    machine-side seats are split."""
+    import bloodbowl
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": "Orc Lineman", "x": 7, "y": 13})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 3, "y": 20})
+
+    tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home", "you": "home"})
+    assert bloodbowl._seat_sessions() == (), "a head-to-head has no AI seats to split"
+
+    tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home", "you": "neither"})
+    seats = bloodbowl._seat_sessions()
+    assert len(seats) == 2 and all(seats), seats

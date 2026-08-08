@@ -241,6 +241,32 @@ decides. Neither surface polices itself, because neither can: an agent that
 respected a rule only in its own tool code would stop respecting it the moment
 somebody called the route.
 
+**⚠️ A FULL-AI SEAT GETS A FRESH CONVERSATION PER TURN, AND IT HAS TO.**
+A seat's context grows by roughly 40k tokens per turn: one `bb_game_state` is
+~2.6k, `bb_game_legal` is asked per player, and every `bb_game_act` returns its
+events. MEASURED on a live match — an away seat rebuilt **165,000 tokens in FOUR
+turns** after being purged (63 messages, 659,977 chars).
+
+It degraded exactly as that predicts: burning a whole 600s fire timeout on three
+model calls without moving a single player, then not responding to a nudge at all.
+Purging bought precisely one turn before it recurred. The earlier per-MATCH token
+(#85) does nothing for this — it stops a new match inheriting an old one, not a
+single match drowning itself over sixteen turns.
+
+A turn is SELF-CONTAINED: the board is the truth and the engine is authoritative,
+which is the invariant the whole plugin rests on. A coach who needs the history has
+`bb_game_log`. So the nudge keys the session on half/turn and the context is
+bounded by construction rather than by hoping the match ends before the window
+does.
+
+**HEAD-TO-HEAD IS DELIBERATELY UNTOUCHED** — there the session is the PERSON's
+chat, and splitting it per turn would scatter their game across sixteen threads.
+Only the seats minted by `_ai_sessions` are split. There is a restraint test.
+
+**STILL OPEN:** the board payload itself is ~10.5k chars for 22 players, most of it
+once-per-turn flags sitting at `false`. Omitting defaults would cut it hard, but it
+touches both views and the suite, so it was NOT bundled into this fix.
+
 **⚠️ THE NUDGE JOB ID IS UNIQUE PER ATTEMPT, AND THAT MATTERS TWICE OVER.**
 `sdk.run_in_session` is idempotent-REPLACE: re-using an id cancels whatever that id
 has pending — INCLUDING A TURN THAT IS CURRENTLY RUNNING.
