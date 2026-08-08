@@ -318,7 +318,7 @@ def register(registry) -> None:
             # fragmenting it per turn would scatter their game across sixteen threads.
             # Only the seats minted by `_ai_sessions` are split, and they are already
             # machine-side conversations nobody reads live.
-            if session in ((match_seats := _seat_sessions()) or ()):
+            if session in (_seat_sessions() or ()):
                 session = f"{session}:h{d.get('half')}t{d.get('turn')}"
             # A job id PER HANDOVER, not one shared id. `run_in_session` is
             # idempotent-REPLACE: a second call with the same id CANCELS the
