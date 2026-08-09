@@ -163,6 +163,30 @@ def test_a_saved_match_round_trips_through_its_log():
     assert (back.by_id("h00").x, back.by_id("h00").y) == (7, 14)
 
 
+def test_a_player_at_its_defaults_sends_no_flags():
+    """The wire drops default-valued fields, and a reader must supply them.
+
+    The board is re-read many times a turn and each copy stays in the coach's
+    context, so 22 players' worth of `false` was the biggest thing on the wire.
+    A flag only appears once it has something to say.
+    """
+    from bloodbowl.engine.state import WIRE_DEFAULTS, Match
+
+    m = _match(("home", 7, 13))
+    fresh = m.to_dict()["players"][0]
+    assert not (set(WIRE_DEFAULTS) & set(fresh)), "a default must not reach the wire"
+    # …and the fields a view actually renders are always sent.
+    assert {"id", "x", "y", "side", "down", "place"} <= set(fresh)
+
+    _move(m, "h00", 7, 14, _dice([]))
+    moved = m.to_dict()["players"][0]
+    assert moved["ma_used"] == 1, "a flag with something to say IS sent"
+
+    # `False == 0` in Python, so an equality-only filter would confuse a real 0
+    # with a flag defaulting to False. The wire compares type as well.
+    assert Match.from_dict(m.to_dict()).by_id("h00").ma_used == 1
+
+
 def test_the_same_seed_and_commands_produce_the_same_match():
     from bloodbowl.engine.dice import SeededDice
 

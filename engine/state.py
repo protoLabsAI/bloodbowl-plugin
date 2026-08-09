@@ -32,6 +32,46 @@ ONCE_PER_TURN_FLAGS = ("dodge_reroll_used", "break_tackle_used", "rush_reroll_us
 # lifetime: cleared by `activation_ended` rather than by `turn_started`.
 ONCE_PER_ACTIVATION_FLAGS = ("pro_used",)
 
+# What a wire field looks like when it has nothing to say. A field sitting at its
+# default carries no information — a reader supplying the same value by omission
+# lands in the same place — so `to_dict` drops it.
+#
+# This is a payload-size fix, not tidiness. The board is re-read many times per
+# turn and every copy of it stays in the agent's context for the rest of that turn,
+# so 22 players' worth of `"pro_used": false` is the largest single thing on the
+# wire. Dropping defaults takes a full board from ~11.8k to ~6.9k chars (-42%),
+# which is context the coach gets to spend on the game instead.
+#
+# Consumers MUST therefore read these with a default — `p.get("acted", False)`,
+# never `p["acted"]`. Fields absent from this map are always sent.
+WIRE_DEFAULTS = {
+    "acted": False,
+    "done": False,
+    "action": "",
+    "ma_used": 0,
+    "dodge_reroll_used": False,
+    "break_tackle_used": False,
+    "rush_reroll_used": False,
+    "pro_used": False,
+    "distracted": False,
+    "rooted": False,
+    "chomped_by": "",
+    "skills": [],
+}
+
+
+def _is_wire_default(key: str, value: object) -> bool:
+    """True when `value` is the documented default for `key`.
+
+    Compares by type as well as equality: Python makes `False == 0` true, so a
+    plain `==` against this map would drop a genuine `0` for a flag defaulting to
+    `False` (and vice versa) if the two ever met in the same key.
+    """
+    if key not in WIRE_DEFAULTS:
+        return False
+    default = WIRE_DEFAULTS[key]
+    return type(value) is type(default) and value == default
+
 
 @dataclass
 class PlayerState:
@@ -164,7 +204,7 @@ class PlayerState:
                 "skills": list(self.player.skills or []),
             }
         )
-        return d
+        return {k: v for k, v in d.items() if not _is_wire_default(k, v)}
 
 
 @dataclass
