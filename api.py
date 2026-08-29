@@ -711,7 +711,19 @@ def build_game_router(cfg: dict | None = None, announce=None):
         return {
             "ok": True,
             "log": [
-                {"kind": e.kind, "actor": e.actor, "text": describe(e), "rolls": [x.describe() for x in e.rolls]}
+                {
+                    "kind": e.kind,
+                    "actor": e.actor,
+                    "text": describe(e),
+                    # `rolls` stays the coach's own sentence, unchanged. `dice` is the
+                    # same rolls structured, so the view can PAINT a face without
+                    # parsing English back out of a line written to be read.
+                    # Both, not one: the sentence is what the agent quotes and what a
+                    # copy-paste of the log has to survive, and re-deriving it in JS
+                    # would be a second describe() to drift from this one.
+                    "rolls": [x.describe() for x in e.rolls],
+                    "dice": [x.to_dict() for x in e.rolls],
+                }
                 for e in m.events[-n:]
             ],
         }

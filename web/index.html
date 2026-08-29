@@ -83,8 +83,14 @@
   <div class="board-outer">
     <div class="board" id="board"></div>
     <svg class="overlay" id="ov" preserveAspectRatio="none"></svg>
-    <div class="ezlab" style="left:2px">HOME END ZONE</div>
-    <div class="ezlab" style="right:2px">AWAY END ZONE</div>
+    <!-- Labelled by WHO SCORES THERE, not by whose End Zone it is. Both readings
+         are true, but you score in the OPPOSITION's End Zone, so the possessive
+         one answers the wrong question — a home carrier standing in row 1 under a
+         "HOME" sign reads as an unscored touchdown, and it cost a live false bug
+         report. The engine was right all along (`touchdown_row("home") == 26`).
+         The 3D board was fixed at the time; this is the sign it left behind. -->
+    <div class="ezlab" style="left:2px">AWAY SCORES HERE</div>
+    <div class="ezlab" style="right:2px">HOME SCORES HERE</div>
   </div>
 </div>
 

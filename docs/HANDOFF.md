@@ -148,7 +148,7 @@ engine/
   skills.py     skills as named hooks
   game.py       the orchestrator: act(), end_turn(), start_drive(), legal_moves()
   actions/      one module per action: validate() + resolve()
-web/            index.html + style.css + six ES modules (no bundler)
+web/            index.html + style.css + seven ES modules (no bundler)
 harness.py      drives the view in real Chromium
 ```
 
@@ -411,6 +411,44 @@ Two things about it worth keeping:
 The view keeps its own client-side walk (`web/js/game.js:walkPath`) because it has
 to render between steps; the halt conditions are deliberately the same list.
 
+### Die faces in the log (`web/js/dice.js`)
+
+`/game/log` sends every roll TWICE — `rolls` is the sentence the engine wrote
+("Dodge: needed 3+, rolled 2 — FAILED") and `dice` is the same roll structured.
+That is not redundancy. The sentence is what the agent quotes and what survives a
+copy-paste into an argument; the structure is what a view can paint. Deriving
+either from the other means a second `describe()` to drift from the real one, and
+the drift would land in the exact place a coach looks to see WHY.
+
+**The view still reaches no verdict.** `passed` arrives from the engine with the
+Skills that modify it already applied, so the face renders it rather than
+recomputing `total >= target` — which would disagree the moment a Skill mattered.
+A test greps `dice.js` for exactly that comparison. For the same reason a Block
+face is NOT coloured by whether it is "good": which face a coach wants depends on
+who chooses and on their Skills, and that is a ruling.
+
+**The glyphs are drawn, not imported, and that is a licence decision as much as a
+design one.** The FFB/FUMBBL artwork the obvious clients use cannot be
+redistributed without christerk's explicit permission (jervis-ffb has it and says
+so in its LICENSE; we do not). Drawing them also keeps them on `currentColor`, so
+they follow the console theme — a raster die would sit in a dark panel as one
+fixed bright square, which is the same class of bug as the odds tag that rendered
+`--pl-color-fg` on `--pl-color-fg` and vanished.
+
+**They are shaped to be TOLD APART at 16px, not to be self-explanatory** — the
+line above already names the faces in words. The first cut drew little figures
+lying down and they resolved into identical grey smudges, so direction carries it
+instead: DOWN (a chevron) means somebody hits the floor, ALONG (an arrow) means
+somebody is moved. Both Down doubles the chevron, Stumble gives the arrow a
+dotted tail. Three harness checks pin it: that faces reach the screen at all, that
+a Block die carries a glyph rather than being an empty box, and that its ink
+differs from its own background.
+
+> `const` after first use is a temporal dead zone, and in a module that means the
+> BOARD DOES NOT RENDER — `BLOCK`'s initialiser calls the glyph builders, so the
+> shared stroke string has to be declared above it. The suite stayed green (it
+> reads the file as text); the harness caught it as `.cell` never appearing.
+
 ### The 3D board (`web3d/` → `web/3d/`)
 
 A SECOND declared view, React + React Three Fiber, built with Vite. The 2D board is
@@ -645,7 +683,9 @@ the contract: the library can only ever upgrade the board, never break it.
 ZONE", which is true and answers the wrong question — you score in the OPPOSITION's
 End Zone. It cost a live false bug report: a home carrier standing in row 1 under a
 "HOME" sign reads as an unscored touchdown, and the engine was right all along
-(`touchdown_row("home") == 26`). The 2D board still has the old wording.
+(`touchdown_row("home") == 26`). Both boards now say SCORES HERE, and a test asserts they agree — the 3D one was
+fixed at the time and the 2D one kept the old sign for a release, which is how
+the two ends of the same fact drift apart.
 
 **SHIPPING `path` DID NOT MAKE THE AGENT USE IT, AND THAT IS THE REAL LESSON.** The
 first live turn after deploying it crashed exactly as before: 25 model calls, one
