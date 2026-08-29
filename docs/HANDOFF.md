@@ -263,9 +263,10 @@ does.
 chat, and splitting it per turn would scatter their game across sixteen threads.
 Only the seats minted by `_ai_sessions` are split. There is a restraint test.
 
-**STILL OPEN:** the board payload itself is ~10.5k chars for 22 players, most of it
-once-per-turn flags sitting at `false`. Omitting defaults would cut it hard, but it
-touches both views and the suite, so it was NOT bundled into this fix.
+~~**STILL OPEN:** the board payload itself is ~10.5k chars for 22 players.~~ Done —
+the wire drops player fields sitting at their default, which is most of a
+once-per-turn flag set. It touched both views and the suite, which is why it was
+its own change rather than a rider on the context fix.
 
 **⚠️ THE NUDGE JOB ID IS UNIQUE PER ATTEMPT, AND THAT MATTERS TWICE OVER.**
 `sdk.run_in_session` is idempotent-REPLACE: re-using an id cancels whatever that id
@@ -726,9 +727,9 @@ different clause, so the test would have passed without exercising the guard at 
 ## 4. Working on it
 
 ```bash
-.venv/bin/python -m pytest tests/ -q      # 235 tests
+.venv/bin/python -m pytest tests/ -q      # 648 tests
 .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check .
-.venv/bin/python harness.py --check       # 44 browser checks + screenshots
+.venv/bin/python harness.py --check       # 131 browser checks + screenshots
 ```
 
 - **Use `.venv/bin/python`.** The system `python3` is 3.9 and produces ~11 bogus
@@ -886,9 +887,10 @@ clauses of which one is applied would report as modelled and quietly do half its
 job — which *sounds settled*, and is worse than saying nothing. So
 `skill_hook(..., partial="what is left out")` records the gap, `describe_skill`
 returns it, and `skills.partly_modelled_on_pitch` is the standing companion to
-`unmodelled_on_pitch`. Both ride with `bb_game_state`. Three entries today:
-Juggernaut (only the suppression clause), Stand Firm and Sidestep (the engine
-takes a stated policy where the rules give a coach a choice).
+`unmodelled_on_pitch`. Both ride with `bb_game_state`, and both are empty today —
+Juggernaut, Stand Firm and Sidestep were the last three and each was closed by
+giving the coach a field to make the choice with. The MECHANISM stays: a fork
+adding a Skill it only half-applies should say so rather than report it modelled.
 
 **Two hooks carry every roll-modifying Skill**, and adding a third would be a
 smell. `roll_modifier` changes the number, `reroll` grants a second go, and the
@@ -1061,13 +1063,11 @@ says so); Argue the Call does too. Ask when the choice can change the outcome.
 
 ### Next, roughly in order
 
-1. ~~The remaining skills.~~ **All 108 are modelled.** What is left is the 18
-   `partial=` clauses, and each names its own missing half — start with
-   `bb_list_skills(partly=True)` or grep `partial=` in `engine/skills.py`. The two
-   most worth closing, because both are DATA rather than design:
-   - **Team keywords** would finish Hatred and Animosity. The source tables do not
-     print a keyword column, so it would need a second scrape or a hand-built map.
-   - **A Thrall Lineman on the roster** would finish Bloodlust's bite.
+1. ~~The remaining skills.~~ ~~The 18 `partial=` clauses.~~ **All 108 are
+   modelled and none is half-applied** — `grep partial= engine/skills.py` returns
+   nothing and `bb_list_skills(partly=True)` returns nobody. Team keywords and the
+   Thrall Lineman, the two that were called out here as the data-shaped ones, both
+   turned out to be in `data/rosters.json` under `role` already.
 2. ~~A match started from a preset has statless players.~~ Fixed — `state.flesh_out`
    gives every statless token the team's LINEMAN (cheapest positional, the only
    0-16 on every roster) at match start and says in the log that it did. The label
@@ -1103,4 +1103,5 @@ says so); Argue the Call does too. Ask when the choice can change the outcome.
   a Team Value and a Draft List — none of which an exhibition match has.
 - The Throw-in direction is thrown straight back in from the edge crossed; the real
   Throw-in Template is a diagram.
-- The version is `0.5.0` and the plugin has never been released or tagged.
+- The version is `0.6.0`, tagged `v0.6.0`. It ships `enabled: false` and has had
+  no release beyond the tag.
