@@ -197,3 +197,23 @@ def test_saving_is_opt_in(registry):
 
     tools["bb_roster_import_fumbbl"].invoke({"team_json": j.dumps(team("norse")), "save": True})
     assert [s["name"] for s in saved()], "save=True must store it"
+
+
+def test_a_team_whose_name_cannot_be_a_filename_still_saves(registry):
+    """`draft.save` slugs the name and refuses an empty one, so a FUMBBL team
+    called "!!!" — or named entirely in symbols — turned `save=True` into an
+    unhandled ValueError, which is a 500 from the route. The roster name is
+    always a real team name, so it is the fallback."""
+    import json as j
+
+    from bloodbowl.draft import saved
+
+    payload = team("norse")
+    payload["name"] = "!!!"
+    r = fumbbl.import_team(payload)
+    assert r["roster"]["name"] == "Norse", r["roster"]["name"]
+
+    tools = _tools(registry)
+    out = j.loads(tools["bb_roster_import_fumbbl"].invoke({"team_json": j.dumps(payload), "save": True}))
+    assert out["ok"] and out.get("saved"), out
+    assert [s["name"] for s in saved()] == ["Norse"]

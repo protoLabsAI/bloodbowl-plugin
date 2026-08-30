@@ -228,7 +228,12 @@ def import_team(payload: dict, name: str = "") -> dict:
         players[ours] = players.get(ours, 0) + n
 
     roster = {
-        "name": str(name or payload.get("name") or fumbbl_roster),
+        # A FUMBBL team may be called "!!!" or be named entirely in symbols, and
+        # `draft.save` slugs the name and REFUSES an empty one — so taking the
+        # team's own name on trust turned `save=True` into an unhandled
+        # ValueError (a 500 from the route). Fall back to the roster, which is
+        # always a real team name.
+        "name": _name_for(name, payload, fumbbl_roster),
         "team": team,
         "players": players,
         # Every one of these is already an INPUT this engine takes and states a
@@ -282,6 +287,17 @@ def import_team(payload: dict, name: str = "") -> dict:
         "problems": draft.problems(roster),
         "price": draft.price(roster),
     }
+
+
+def _name_for(given: str, payload: dict, fumbbl_roster: str) -> str:
+    """The first candidate that survives being slugged into a filename."""
+    from .draft import slug
+
+    for candidate in (given, payload.get("name"), fumbbl_roster):
+        text = str(candidate or "").strip()
+        if text and slug(text):
+            return text
+    return "imported team"
 
 
 def _int(value, default: int = 0) -> int:
