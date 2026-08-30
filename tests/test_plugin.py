@@ -2514,3 +2514,22 @@ def test_both_boards_label_the_end_zones_by_who_scores_there():
     pitch3d = (ROOT / "web3d" / "src" / "Pitch.jsx").read_text()
     for label in ("AWAY SCORES HERE", "HOME SCORES HERE"):
         assert label in pitch3d, f"the 3D board no longer agrees with the 2D one about {label}"
+
+
+def test_every_view_survives_the_console_kit_being_absent():
+    """`_ds/plugin-kit.js` is served by the CONSOLE, so it does not exist in this
+    plugin's own harness or on a host without `_ds`.
+
+    A bare top-level `await import` of it does not degrade — it throws, and a
+    top-level await that throws means THE MODULE NEVER RUNS. Not a missing
+    feature: no handlers bound, no data fetched, a page that renders its static
+    markup and does nothing, with no clue why. The roster builder and the model
+    library both shipped like that, which is also why neither had any browser
+    coverage — the harness could not drive a page that never woke up.
+    """
+    for page in sorted((ROOT / "web").glob("*.html")):
+        body = page.read_text()
+        if "/_ds/plugin-kit.js" not in body:
+            continue
+        assert "catch" in body, f"{page.name} imports the kit with no fallback"
+        assert "apiFetch:" in body, f"{page.name} has no plain-fetch fallback for apiFetch"

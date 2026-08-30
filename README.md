@@ -166,6 +166,10 @@ The two catalogues disagree about names in both directions at once — FUMBBL's
 the identified team, reports *how* each position matched, and **names anything it cannot
 match rather than guessing**. A wrong positional would mean wrong stats, silently, in the
 one place you are trusting a table over your memory.
+
+The roster builder has a paste box for it, which shows the mapping, the notes, and the
+players that did not map — that last in its own block, because a coach who misses it
+plays a squad that is quietly short.
 Costing and legality are decided server-side by the same functions that gate placement, so
 the builder cannot become a second rulebook.
 

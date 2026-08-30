@@ -323,6 +323,7 @@ def drive(base: str, *, do_checks: bool, live: bool) -> int:
             _drag(browser, url, w=1400, h=950)
             _choices(browser, url, w=1400, h=950)
             _versus(browser, url, w=1400, h=950)
+            _fumbbl_import(browser, url, w=1400, h=950)
 
         # …and the live path, which only LOOKS. It sits out here rather than in an
         # `else` because the block above is already gated on `not live` — an else
@@ -1395,6 +1396,102 @@ def main() -> int:
         return drive(base, do_checks=args.check, live=False)
     finally:
         server.should_exit = True
+
+
+def _fumbbl_import(browser, url: str, w: int, h: int) -> None:
+    """Importing a FUMBBL team, through the roster builder's own paste box.
+
+    The suite proves the mapping. What it cannot say is whether a coach ever SEES
+    the half of the answer they have to act on: an import that quietly comes back
+    three players short, with the reason rendered somewhere off-screen or in ink
+    the colour of the panel, is worse than one that refused outright. So the
+    checks here are about the UNMATCHED block being on screen and legible.
+
+    The fixture is the Dwarf team, chosen because it exercises every branch at
+    once — two positions matched by dropping our prefix, one by the loosest pass,
+    one exact, three players skipped for status, and an invented Star Player that
+    cannot map at all.
+    """
+    import json as j
+
+    fixture = j.loads((ROOT / "tests" / "fixtures" / "team_dwarf.json").read_text())
+    fixture["players"].append({"number": 99, "status": 0, "position": "Star Player Nobody"})
+
+    page = browser.new_page(viewport={"width": w, "height": h})
+    problems: list[str] = []
+    page.on("pageerror", lambda e: problems.append(str(e)))
+    page.goto(url.replace("/view", "/draft"), wait_until="networkidle")
+    theme = ROOT / "harness_theme.css"
+    if theme.exists():
+        page.add_style_tag(content=theme.read_text())
+    print("  -- fumbbl import --")
+
+    check("the roster builder offers an import", page.locator("#importOpen").is_visible())
+
+    # The panel is `hidden`, and in THIS file that is not enough on its own — every
+    # display rule here beats the user-agent sheet, which is exactly how the pitch
+    # view once left its whole setup toolbar on screen in play mode.
+    check("the panel starts hidden", not page.locator("#import").is_visible())
+    page.locator("#importOpen").click()
+    check("and opens when asked", page.locator("#import").is_visible())
+
+    page.locator("#importJson").fill(j.dumps(fixture))
+    page.locator("#importGo").click()
+    page.wait_for_timeout(700)
+
+    result = page.locator("#importResult").inner_text()
+    check("the mapping is reported per position", "Dwarf Blitzer" in result, result[:90].replace("\n", " / "))
+    check(
+        "and says HOW each one matched, not just that it did",
+        "team name differs" in result and "partial" in result,
+        result[:120].replace("\n", " / "),
+    )
+    check(
+        "the player that cannot map is named",
+        "Star Player Nobody" in result,
+        result[:150].replace("\n", " / "),
+    )
+
+    # The point of the whole feature: a coach must be able to SEE that the squad
+    # is short. Present-in-the-DOM is not the same as visible, and the odds tag
+    # that rendered fg-on-fg proves a passing count check can miss it entirely.
+    box = page.locator(".unmatched")
+    check("the shortfall is on screen, not buried", box.is_visible())
+    paint = page.evaluate(
+        """() => {
+          const el = document.querySelector('.unmatched');
+          if (!el) return null;
+          const cs = getComputedStyle(el);
+          const r = el.getBoundingClientRect();
+          return {ink: cs.color, bg: cs.backgroundColor, w: r.width, h: r.height, top: r.top};
+        }"""
+    )
+    check(
+        "and legible against its own background",
+        bool(paint) and paint["ink"] != paint["bg"] and paint["w"] > 80 and paint["h"] > 20,
+        str(paint),
+    )
+
+    # An import is a starting point a coach edits, so it has to land IN the builder.
+    # Case-insensitive: the heading is `text-transform: uppercase`, and inner_text
+    # returns what is RENDERED. Asserting the casing would pin a stylesheet.
+    check(
+        "the imported squad loads into the builder",
+        "dwarf" in page.locator("#teamName").inner_text().lower(),
+        page.locator("#teamName").inner_text()[:70],
+    )
+    page.wait_for_timeout(400)
+    counts = page.locator("#counts").inner_text()
+    check(
+        "and the sideline came across with it",
+        "3 re-rolls" in counts,
+        counts[:90],
+    )
+
+    check("no page errors", not problems, "; ".join(problems[:2]))
+    page.screenshot(path=str(SHOTS / "fumbbl-import.png"), full_page=True)
+    print(f"  shot: {(SHOTS / 'fumbbl-import.png').relative_to(ROOT)}")
+    page.close()
 
 
 if __name__ == "__main__":

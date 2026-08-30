@@ -710,6 +710,24 @@ S3, and players are matched by NAME with S3 stats and costs applied.
 The fixtures are four real teams reduced to the fields the importer reads; coach
 and player names are other people's and a naming rule needs none of them.
 
+**The paste box is in the roster builder** (`/plugins/bloodbowl/draft`), and it
+shows the mapping table with a `how` per row, the notes, and — in its own bordered
+block, in the error colour — the players that did not map. That block is the
+POINT of the feature rather than a footnote: a coach who misses it plays a squad
+that is quietly short. There is a harness check that it is on screen and that its
+ink differs from its own background, because present-in-the-DOM is not visible.
+
+> **⚠️ AND ADDING THAT COVERAGE FOUND A DEAD VIEW.** `draft.html` and
+> `models.html` both opened with a bare top-level `await import` of
+> `_ds/plugin-kit.js`. The kit is served by the CONSOLE, so it is absent in this
+> plugin's own harness and on any host without `_ds` — and **a top-level await
+> that throws means the module NEVER RUNS**. Not a degraded page: no handlers
+> bound, no teams listed, static markup and nothing else, with no clue why. It is
+> also why neither view had a single browser check — the harness cannot drive a
+> page that never wakes up, so the gap hid the bug that caused it. Both now fall
+> back to a plain same-origin fetch like `web/js/api.js` and the 3D board always
+> did, and a test asserts every view that imports the kit has a fallback.
+
 ### The model library (`models.py`, view `/plugins/bloodbowl/models`)
 
 One mesh per positional, organised by team; the 3D board loads it and **falls back to
