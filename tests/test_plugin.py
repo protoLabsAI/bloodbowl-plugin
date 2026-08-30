@@ -2533,3 +2533,32 @@ def test_every_view_survives_the_console_kit_being_absent():
             continue
         assert "catch" in body, f"{page.name} imports the kit with no fallback"
         assert "apiFetch:" in body, f"{page.name} has no plain-fetch fallback for apiFetch"
+
+
+def test_the_view_says_how_long_it_may_be_cached(client):
+    """SENDING NOTHING IS NOT "NO CACHING", IT IS THE WORST CACHING.
+
+    With neither Cache-Control nor Expires a browser falls back to a heuristic —
+    about a tenth of the document's age. These files deploy by rsync, which
+    preserves mtimes, so a plugin untouched for three weeks was served with a
+    three-week-old Last-Modified and cached as fresh for two days. The server was
+    serving new bytes and the board did not change, because the browser never
+    asked. Reported from a real desktop agent, not imagined.
+    """
+    base = "/plugins/bloodbowl/static"
+    for path in ("js/main.js", "style.css", "js/sprites.js"):
+        r = client.get(f"{base}/{path}")
+        assert r.status_code == 200, path
+        # `no-cache` means REVALIDATE, not "do not store" — and the ETag beside it
+        # is what makes that a 304 rather than a re-download.
+        assert r.headers.get("cache-control") == "no-cache", (path, r.headers.get("cache-control"))
+        assert r.headers.get("etag"), f"{path} has nothing to revalidate against"
+
+    # The icons are a different trade: 150-odd on a board, and they only change
+    # when somebody swaps the art.
+    from bloodbowl import sprites
+
+    icon = sprites.field() or "orc_lineman.png"
+    r = client.get(f"{base}/sprites/{icon}")
+    assert r.status_code == 200
+    assert "max-age" in (r.headers.get("cache-control") or ""), r.headers.get("cache-control")

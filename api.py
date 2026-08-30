@@ -40,6 +40,32 @@ _MEDIA = {
 }
 
 
+def _cache_headers(suffix: str) -> dict:
+    """How long a browser may hold one of these WITHOUT ASKING.
+
+    ⚠️ SENDING NOTHING IS NOT "NO CACHING", IT IS THE WORST CACHING. With neither
+    Cache-Control nor Expires, a browser falls back to a HEURISTIC — roughly a
+    tenth of the document's age (RFC 9111 §4.2.2). These files are deployed by
+    rsync, which preserves mtimes, so a plugin that had not been touched for
+    three weeks was served with a three-week-old Last-Modified and cached as
+    fresh for two days. The plugin was updated, the server was serving the new
+    bytes, `curl` agreed — and the board in the app did not change, because the
+    browser never asked.
+
+    So the code and markup say `no-cache`, which does NOT mean "do not store": it
+    means revalidate every time. With the ETag already being sent that is a 304
+    and a few bytes, and it makes a plugin reload visible on the next refresh
+    rather than in two days.
+
+    The icons get a short max-age instead. There are 150-odd of them on a board,
+    revalidating every one on every load is real traffic, and unlike the code
+    they only change when somebody swaps the art.
+    """
+    if suffix in (".png", ".svg"):
+        return {"Cache-Control": "public, max-age=300, must-revalidate"}
+    return {"Cache-Control": "no-cache"}
+
+
 def build_view_router(cfg: dict | None = None):
     from fastapi import APIRouter, HTTPException
     from fastapi.responses import FileResponse, HTMLResponse
@@ -97,7 +123,7 @@ def build_view_router(cfg: dict | None = None):
             found = _sprites.locate(path[len("sprites/") :])
             if found is None or found.suffix.lower() != ".png":
                 raise HTTPException(status_code=404, detail="not found")
-            return FileResponse(found, media_type="image/png")
+            return FileResponse(found, media_type="image/png", headers=_cache_headers(".png"))
 
         target = (WEB / path).resolve()
         if not target.is_file() or WEB not in target.parents:
@@ -105,7 +131,7 @@ def build_view_router(cfg: dict | None = None):
         media = _MEDIA.get(target.suffix.lower())
         if media is None:
             raise HTTPException(status_code=404, detail="not found")
-        return FileResponse(target, media_type=media)
+        return FileResponse(target, media_type=media, headers=_cache_headers(target.suffix.lower()))
 
     return r
 
