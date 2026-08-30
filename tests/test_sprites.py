@@ -147,6 +147,11 @@ def test_no_request_can_walk_out_of_the_pack(pack):
     for bad in ("../store.py", "..%2Fstore.py", "sub/dir.png", ".hidden.png", "", "a\\b.png"):
         assert sprites.locate(bad) is None, bad
 
+    # A pack's own config file is not art, and must not be resolvable by name even
+    # though it sits in the same directory as the icons.
+    (pack / "sprites.json").write_text("{}")
+    assert sprites.locate("sprites.json") is None
+
 
 def test_the_icons_are_served_and_the_catalogue_rides_meta(client):
     base = "/api/plugins/bloodbowl"

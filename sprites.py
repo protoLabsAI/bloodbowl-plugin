@@ -58,8 +58,16 @@ def packs() -> list[Path]:
 
 
 def locate(filename: str) -> Path | None:
-    """The actual file behind a catalogue entry — custom pack wins."""
+    """The actual file behind a catalogue entry — custom pack wins.
+
+    A bare PNG filename or nothing. This resolves a name straight off a PUBLIC
+    route, so it enforces the type here rather than trusting the caller to — the
+    route checks too, and both checks are cheap. Without it a pack's own
+    `sprites.json` would be resolvable by name.
+    """
     if not filename or "/" in filename or "\\" in filename or filename.startswith("."):
+        return None
+    if not filename.lower().endswith(".png"):
         return None
     for d in packs():
         candidate = d / filename
