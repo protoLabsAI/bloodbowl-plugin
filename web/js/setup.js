@@ -12,6 +12,7 @@
  */
 
 import { $, $$, api, esc, fail, json, ok } from "./api.js";
+import * as sprites from "./sprites.js";
 import { at, clearMarks, key } from "./board.js";
 import { hideCard, posCard, showCard } from "./card.js";
 
@@ -67,6 +68,7 @@ export function render() {
     if (node) node.remove();
     node = document.createElement("div");
     node.className = `pc ${p.side === "home" ? "home" : "away"}`;
+    sprites.paint(node, window.BASE || "", p.side === "home" ? sc.home_team : sc.away_team, p);
     node.dataset.sig = sig;
     node.draggable = true;
     node.textContent = p.badge || "?";

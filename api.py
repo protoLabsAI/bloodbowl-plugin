@@ -33,6 +33,10 @@ _MEDIA = {
     ".css": "text/css; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
     ".svg": "image/svg+xml",
+    # The player icons. An image is safe to serve publicly for the same reason the
+    # stylesheet is — it is decoration, and the board it decorates is already a
+    # declared public view. Everything that reads or writes the BOARD stays gated.
+    ".png": "image/png",
 }
 
 
@@ -82,6 +86,19 @@ def build_view_router(cfg: dict | None = None):
         stylesheet the browser cannot fetch leaves an unreadable board. Everything
         that reads or writes the BOARD still goes through the gated prefix.
         """
+        # The icons resolve through the sprite PACKS, so an operator's own
+        # directory — which is deliberately outside this tree — is reachable at
+        # the same URL as the shipped one. It is a separate branch rather than a
+        # second root on the check below, because that check ("is it under WEB")
+        # is the thing standing between a public route and the plugin's source.
+        if path.startswith("sprites/"):
+            from . import sprites as _sprites
+
+            found = _sprites.locate(path[len("sprites/") :])
+            if found is None or found.suffix.lower() != ".png":
+                raise HTTPException(status_code=404, detail="not found")
+            return FileResponse(found, media_type="image/png")
+
         target = (WEB / path).resolve()
         if not target.is_file() or WEB not in target.parents:
             raise HTTPException(status_code=404, detail="not found")
@@ -110,7 +127,17 @@ def build_data_router(cfg: dict | None = None):
 
     @r.get("/meta")
     async def _meta() -> dict:
-        return {"geometry": geometry(), "teams": team_names(), "scenario": _store().load().to_dict()}
+        from . import sprites as _sprites
+
+        return {
+            "geometry": geometry(),
+            "teams": team_names(),
+            "scenario": _store().load().to_dict(),
+            # Rides /meta rather than taking a route of its own: a NEW route needs a
+            # process restart on a live host (FastAPI cannot swap a mounted router),
+            # and the view already fetches this at boot. It is ~12kB, once.
+            "sprites": _sprites.catalogue(),
+        }
 
     @r.get("/state")
     async def _state() -> dict:

@@ -16,6 +16,15 @@ config_section: bloodbowl
 config:
   # Where the current board is persisted. Empty = the plugin's own state/ dir.
   state_dir: ""
+  # Your own player icons. Empty = the ones that ship with the plugin.
+  #
+  # A pack only needs to hold what it REPLACES — resolution falls through per
+  # positional, so one redrawn Troll leaves the other 152 alone. Name a file
+  # `<team>__<position>.png` in our own words (`orc__orc-lineman.png`) and it is
+  # picked up with no table and no code change. `sprites.json` in the same folder
+  # is the explicit form, and takes `columns` for art that does not follow the
+  # shipped four-column (two red, two blue) convention.
+  sprite_dir: ""
 
 views:
   - { id: pitch, label: "Pitch", icon: LayoutGrid, path: /plugins/bloodbowl/view }

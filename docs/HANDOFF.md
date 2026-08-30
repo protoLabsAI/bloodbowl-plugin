@@ -557,6 +557,62 @@ every change, from the same functions that gate placement — a builder that sco
 itself would be a second rulebook, which is the failure this plugin exists to
 avoid.
 
+### Player icons (`sprites.py`, `web/js/sprites.js`, `web/sprites/`)
+
+The board drew coloured tiles with initials. It now draws the FFB icons — the
+ones the FUMBBL client uses, vendored with christerk's permission (Credits, in
+the README). 154 sheets, 1.5 MB, 157 of the 159 positionals covered.
+
+**THE POINT IS THAT THEY ARE REPLACEABLE.** These are a good default, not the
+destination — the plan is our own art — so the whole module is built around
+swapping them out without a code change. Resolution, first hit wins:
+
+1. **`sprites.json` in a pack** says so outright: `{"Orc": {"Orc Lineman":
+   {"file": "...", "columns": 1}}}`.
+2. **A file named in OUR words** — `orc__orc-lineman.png`. No table, no code.
+   Custom art should not have to learn FFB's naming to replace it.
+3. **The FFB-derived match** (below), which is what the shipped pack uses.
+4. **Nothing**, and nothing is fine — the tile draws.
+
+`bloodbowl.sprite_dir` points at an operator's own pack, searched before the
+shipped one. **It only needs to hold what it replaces**: resolution falls through
+per positional, so redrawing one Troll does not mean redrawing the other 152.
+The static route resolves `/static/sprites/<file>` through the packs, so a
+directory outside the repo serves at the same URL.
+
+**A MISSING ICON IS ORDINARY, AND THAT IS THE WHOLE DIFFERENCE FROM
+`fumbbl.py`.** Importing a team wrong gives a coach the wrong STATS, so that
+module refuses to guess and names what it could not map. An icon is decoration:
+the worst case is the tile that was already there, so this one is allowed to be
+generous — near matches are taken and two positionals may share a sheet. Same
+contract as the 3D mesh library: it can only ever upgrade the board.
+
+**How the FFB match works, and why the middle pass is the good one.** Names
+first. Then the ROLE — FFB names many files after the job (`highelf_thrower`) and
+`data/rosters.json` already records the job in `role` ("Thrower, Elf"), so
+Phoenix Warrior resolves *because our own data says it is a Thrower*, not because
+somebody remembered which S3 name replaced which BB2020 one. That was the
+alternative, and it is exactly the confident recall this plugin exists to route
+around. Then a short alias table for genuine renames, every entry carrying its
+reason. Two Bretonnian positionals have no FFB icon at all and keep their tile.
+
+> **⚠️ THE CELL IS NOT 28px.** It is `width / columns`, and it runs 20 to 42
+> across the shipped sheets because a Troll is drawn bigger than a Skink.
+> Assuming the commonest (28, in 54 of 154) slices every Big Guy in half. Four
+> columns — 0-1 red kit, 2-3 blue — and `height / cell` variant rows, so eleven
+> Linemen are not eleven identical figures. All of it derived per file and sent
+> with the catalogue, so **the view measures nothing**; custom art declaring
+> `"columns": 1` is a single flat image and no code changes.
+
+> **⚠️ `lineman` is not a substring of `linemen`** — the vowel moves — so an
+> irregular plural silently cost three Bretonnian positionals their icon. The
+> role pass yields both forms now.
+
+The catalogue rides `/meta` rather than taking a route of its own, because a NEW
+ROUTE needs a process restart on a live host and `/meta` is already fetched at
+boot. Adding `.png` to the static route's suffix allowlist is a behaviour change
+and reloads fine.
+
 ### The model library (`models.py`, view `/plugins/bloodbowl/models`)
 
 One mesh per positional, organised by team; the 3D board loads it and **falls back to
