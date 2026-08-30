@@ -279,3 +279,34 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/jso
 A **new route** needs a process restart — FastAPI cannot swap a mounted router in
 place, so the first mount wins and the reload's `restart_recommended: false` is
 misleading here. See [docs/HANDOFF.md](docs/HANDOFF.md) §4.
+
+## Credits and licensing
+
+The **source code** in this repository is MIT — see [LICENSE](./LICENSE). Everything
+below has its own terms, because artwork and rules text are not code and were not ours
+to relicense.
+
+**Blood Bowl is a trademark of Games Workshop Limited.** This project is unofficial, is
+not endorsed by or affiliated with Games Workshop, and is used without intent to infringe
+their copyright. It is free, non-commercial and made by people who like the game.
+
+| What | Where it came from | Terms |
+|---|---|---|
+| Player and pitch artwork | The [FFB project](https://github.com/christerk/ffb), the client FUMBBL runs on | Used **with the permission** of [christerk](https://github.com/christerk). Rights remain with [their respective authors](https://fumbbl.com/p/attribution) |
+| Third Season Edition roster, skill and rules data | Community transcription from [bloodbowlbase.ru](https://bloodbowlbase.ru/bb2025/) | Community text, not Games Workshop's own. The printed rulebook settles disputes |
+| Die faces, action and board icons | Drawn for this project | MIT, with the code |
+
+We found the FFB assets through [jervis-ffb](https://github.com/cmelchior/jervis-ffb),
+whose own licence is careful to say they cannot be redistributed without asking. We
+asked. If you are reading this because you are wondering whether you can take them from
+*here*, the answer is the same one: ask christerk, not us.
+
+### Asking us to remove something
+
+**If you are the author of any artwork, sound or text in this repository and you would
+rather it were not used here, email <mabry1985@gmail.com> and it will be removed.**
+
+No explanation needed and no argument will be made — a request is enough, and "I changed
+my mind" is a complete reason. This applies whether or not permission was given before,
+and it applies to anything in the repository, not only the assets listed above. If you
+would rather open an issue than email, that works too.

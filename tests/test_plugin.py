@@ -2422,3 +2422,23 @@ def test_a_head_to_head_chat_is_never_split(registry):
     tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home", "you": "neither"})
     seats = bloodbowl._seat_sessions()
     assert len(seats) == 2 and all(seats), seats
+
+
+def test_the_licence_and_the_removal_promise_are_actually_in_the_repo():
+    """This is a promise made to people who are not in the room.
+
+    The artwork here is used with its authors' permission, and the README says
+    that anyone who wants theirs taken out can ask and it goes. That commitment is
+    worth exactly as much as its being findable, and a tidy-up that quietly
+    dropped the contact would break it silently — nobody who needed it would ever
+    file a bug. So it is pinned like a rule.
+    """
+    licence = (ROOT / "LICENSE").read_text()
+    assert "MIT License" in licence
+    assert "SOURCE CODE" in licence, "the licence must say it does not cover the artwork"
+
+    readme = (ROOT / "README.md").read_text()
+    assert "mabry1985@gmail.com" in readme, "the removal contact is missing"
+    assert "will be removed" in readme
+    assert "Games Workshop" in readme and "unofficial" in readme, "the GW disclaimer is missing"
+    assert "christerk" in readme, "the FFB artwork must be credited to whoever permitted it"
