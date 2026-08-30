@@ -137,6 +137,7 @@ def build_data_router(cfg: dict | None = None):
             # process restart on a live host (FastAPI cannot swap a mounted router),
             # and the view already fetches this at boot. It is ~12kB, once.
             "sprites": _sprites.catalogue(),
+            "pitch": _sprites.field_geometry(),
         }
 
     @r.get("/state")

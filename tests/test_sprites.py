@@ -96,7 +96,8 @@ def test_every_shipped_sheet_is_four_columns_of_square_cells():
     """THE GEOMETRY IS DERIVED, NOT ASSUMED — `cell = width / 4`, and it ranges
     from 20 to 42 across the sheets because a Troll is drawn bigger than a Skink.
     Hardcoding the commonest (28) slices every Big Guy in half."""
-    files = sorted(sprites.SHIPPED.glob("*.png"))
+    # The playing surface shares the folder and is not a sprite sheet.
+    files = [f for f in sorted(sprites.SHIPPED.glob("*.png")) if f.name not in sprites.PITCH_NAMES]
     assert len(files) > 100, f"only {len(files)} icons shipped"
     for f in files:
         w, h = sprites.dimensions(f)
@@ -165,3 +166,34 @@ def test_the_icons_are_served_and_the_catalogue_rides_meta(client):
 
     assert client.get("/plugins/bloodbowl/static/sprites/../../store.py").status_code == 404
     assert client.get("/plugins/bloodbowl/static/sprites/nope.png").status_code == 404
+
+
+# --- the playing surface --------------------------------------------------
+
+
+def test_the_pitch_is_a_true_playing_surface_not_a_picture_of_one():
+    """It is stretched across the grid, so its painted lines only land on our
+    squares if it was drawn for the same 26x15 board. 782x452 is ~30.1px a square
+    either way; a pitch drawn for something else would show up here as a ratio
+    that does not match the board's."""
+    from bloodbowl.pitch import geometry
+
+    field = sprites.field_geometry()
+    assert field and field["file"], "no pitch ships"
+    geo = geometry()
+    board_ratio = geo["length"] / geo["width"]
+    assert abs(field["w"] / field["h"] - board_ratio) < 0.02, (field, board_ratio)
+
+
+def test_your_own_pitch_replaces_the_shipped_one(pack):
+    """Same story as the players: drop `pitch.png` in a pack and it wins."""
+    png(pack / "pitch.png", width=520, height=300)
+    assert sprites.field() == "pitch.png"
+    assert sprites.field_geometry()["w"] == 520
+
+
+def test_the_pitch_is_not_mistaken_for_a_player_sheet():
+    """It lives in the same folder and its name splits on `_`, so a careless
+    scan invents a team called "pitch" with a positional called "intro"."""
+    assert "pitch" not in sprites.available()
+    assert "Pitch" not in sprites.catalogue()
