@@ -1218,5 +1218,8 @@ says so); Argue the Call does too. Ask when the choice can change the outcome.
   a Team Value and a Draft List — none of which an exhibition match has.
 - The Throw-in direction is thrown straight back in from the edge crossed; the real
   Throw-in Template is a diagram.
-- The version is `0.6.0`, tagged `v0.6.0`. It ships `enabled: false` and has had
-  no release beyond the tag.
+- The version is `0.7.0`, tagged `v0.7.0`. It ships `enabled: false` and has had
+  no release beyond the tag. **Bump it with the work, not after** — six feature
+  PRs landed on 0.6.0 and the plugin deployed to a live agent reported the same
+  version as the one it replaced, which makes "is this agent current?"
+  unanswerable from the outside.
