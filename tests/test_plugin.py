@@ -2442,3 +2442,75 @@ def test_the_licence_and_the_removal_promise_are_actually_in_the_repo():
     assert "will be removed" in readme
     assert "Games Workshop" in readme and "unofficial" in readme, "the GW disclaimer is missing"
     assert "christerk" in readme, "the FFB artwork must be credited to whoever permitted it"
+
+
+# --- die faces in the log -------------------------------------------------
+
+
+def test_the_log_carries_the_dice_structured_as_well_as_written(client):
+    """The view paints a face; the agent quotes a sentence. Both come from the
+    SAME recorded roll, which is why the route sends both rather than letting one
+    of them be re-derived from the other. Parsing "needed 3+, rolled 2" back out
+    of English in JS would be a second describe() to drift from the real one."""
+    base = "/api/plugins/bloodbowl"
+    client.post(f"{base}/place", json={"side": "home", "team": "Orc", "position": "Big Un Blocker", "x": 7, "y": 13})
+    client.post(f"{base}/place", json={"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 7, "y": 14})
+    assert client.post(f"{base}/game/new", json={"seed": 4}).status_code == 200
+    legal = client.get(f"{base}/game/legal", params={"player": "h00"}).json()
+    client.post(f"{base}/game/act", json={"action": "block", "player": "h00", "target": legal["blocks"][0]["target"]})
+
+    log = client.get(f"{base}/game/log", params={"last": 40}).json()
+    assert log["ok"]
+    for entry in log["log"]:
+        # The written form STAYS a list of strings. The fallback in the view
+        # leans on it when a reloaded plugin serves an old payload, and two
+        # engine tests read it as text.
+        assert all(isinstance(line, str) for line in entry["rolls"])
+        assert len(entry["dice"]) == len(entry["rolls"]), entry
+
+    block = next(r for e in log["log"] for r in e["dice"] if r["kind"].startswith("Block"))
+    # A Block die's faces are the ENGINE's own names, so the view can key its
+    # glyphs on them instead of inventing a second vocabulary to drift from.
+    from bloodbowl.engine.dice import BLOCK_FACES
+
+    assert block["dice"] and all(f in BLOCK_FACES for f in block["dice"]), block
+
+    numeric = next(r for e in log["log"] for r in e["dice"] if all(isinstance(d, int) for d in r["dice"]) and r["dice"])
+    assert numeric["dice"], numeric
+
+
+def test_the_die_face_reaches_no_verdict_of_its_own():
+    """THE VIEW COMPUTES NO RULES, and a pass/fail is a rule. `passed` is applied
+    by the engine with the Skills that modify it already folded in; a face that
+    re-derived `total >= target` would disagree the moment a Skill mattered — and
+    it would disagree in the one place a coach is looking to see WHY."""
+    # Decommented, because the module EXPLAINS the verdict it refuses to reach
+    # and a naive scan trips over the comment describing the bug it checks for.
+    js = _decomment(_web("js/dice.js"))
+    assert "r.passed" in js, "the verdict must come from the engine"
+    for forbidden in (">= r.target", "> r.target", "total >= ", "passed =", "target +"):
+        assert forbidden not in js, f"dice.js works out its own verdict: {forbidden}"
+
+
+def test_the_log_falls_back_to_the_written_roll_when_the_dice_are_missing():
+    """A plugin RELOAD can leave a new router serving an old payload (HANDOFF §4),
+    and the failure mode that matters is a log that goes BLANK — which reads as a
+    broken match rather than as a stale server."""
+    js = _web("js/game.js")
+    assert "e.dice && e.dice.length" in js
+    assert "e.rolls && e.rolls.length" in js, "the written roll is still the fallback"
+
+
+def test_both_boards_label_the_end_zones_by_who_scores_there():
+    """You score in the OPPOSITION's End Zone, so a possessive label answers the
+    wrong question — a home carrier in row 1 under a "HOME" sign reads as an
+    unscored touchdown, and it cost a live false bug report once already. The 3D
+    board was fixed at the time and the 2D one kept the old sign; this is what
+    stops them drifting apart again."""
+    page = (ROOT / "web" / "index.html").read_text()
+    assert "AWAY SCORES HERE" in page and "HOME SCORES HERE" in page
+    assert "HOME END ZONE" not in page and "AWAY END ZONE" not in page
+
+    pitch3d = (ROOT / "web3d" / "src" / "Pitch.jsx").read_text()
+    for label in ("AWAY SCORES HERE", "HOME SCORES HERE"):
+        assert label in pitch3d, f"the 3D board no longer agrees with the 2D one about {label}"

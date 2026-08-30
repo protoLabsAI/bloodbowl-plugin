@@ -289,6 +289,45 @@ button.primary { background: var(--pl-color-accent); color: var(--pl-color-fg-on
 .log div:last-child { border-bottom: none; }
 .log .roll { font-family: var(--pl-font-mono, ui-monospace, monospace); color: var(--pl-color-fg-muted); font-size: 11px; }
 .log .turnover { color: var(--pl-color-status-error); font-weight: 600; }
+
+/* ---- die faces in the log ---------------------------------------------- */
+/* The roll the engine recorded, painted. Everything here is a token so it
+   follows the console's theme — the reason the faces are DRAWN rather than
+   imported as art: a raster die is one fixed colour and would sit in a dark
+   panel as a bright white square, which is the same class of bug as the odds
+   tag that rendered --pl-color-fg on --pl-color-fg and vanished. */
+.rollline {
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+  padding: 2px 0 1px; font-size: 11px; color: var(--pl-color-fg-muted);
+}
+.rollline .rname {
+  font-family: var(--pl-font-mono, ui-monospace, monospace);
+  color: var(--pl-color-fg-subtle);
+}
+.rollline .dice { display: inline-flex; gap: 3px; }
+.die {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; border-radius: 4px; flex: none;
+  border: 1px solid var(--pl-color-border-strong);
+  background: var(--pl-color-bg-inset); color: var(--pl-color-fg);
+  font-family: var(--pl-font-mono, ui-monospace, monospace);
+  font-size: 11px; font-weight: 600; line-height: 1;
+}
+/* A Block die is a different die and should not be mistaken for a D6 at a
+   glance, so it is squarer and carries the accent edge. */
+/* Wider than a numeral face and with a bigger glyph: a Block die carries a
+   SHAPE rather than a digit, and at the numeral's 13px the shapes were mush. */
+.die-block { width: 21px; border-color: var(--pl-color-accent); }
+.die-block svg { width: 17px; height: 17px; display: block; }
+.rollline .rneed { font-family: var(--pl-font-mono, ui-monospace, monospace); }
+.rollline .rmod {
+  font-family: var(--pl-font-mono, ui-monospace, monospace);
+  color: var(--pl-color-fg);
+}
+.rollline .rverdict { font-weight: 600; letter-spacing: .02em; }
+.rollline .rverdict.is-pass { color: var(--pl-color-status-success); }
+.rollline .rverdict.is-fail { color: var(--pl-color-status-error); }
+.rollline .rnote { color: var(--pl-color-fg-subtle); font-style: italic; }
 .moves { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-top: 6px; max-width: 240px; }
 .moves div { text-align: center; border-radius: 4px; padding: 3px 0; font-size: 11px; background: var(--pl-color-bg-subtle); }
 .moves div.no { opacity: .35; }

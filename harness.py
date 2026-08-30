@@ -590,6 +590,39 @@ def _play(browser, url: str, w: int, h: int) -> None:
             after[:110].replace("\n", " / "),
         )
 
+        # And SHOWS it. A server test proves the payload carries the faces; only
+        # a browser can say whether they arrived on screen as something a coach
+        # can tell apart. Both halves are checked because they fail differently:
+        # a die that renders with no glyph is an empty box, and a die whose ink
+        # matches its own background is present in the DOM and invisible on the
+        # panel — which is exactly how the odds tag was white-on-white for weeks.
+        faces = page.evaluate("""() => {
+          const dice = [...document.querySelectorAll('#log .die')];
+          const blocks = [...document.querySelectorAll('#log .die-block')];
+          const paint = (el) => {
+            const cs = getComputedStyle(el);
+            const box = el.getBoundingClientRect();
+            return {ink: cs.color, bg: cs.backgroundColor, w: box.width, h: box.height};
+          };
+          return {
+            dice: dice.length,
+            blocks: blocks.length,
+            drawn: blocks.filter((b) => b.querySelector('svg')).length,
+            paints: dice.slice(0, 6).map(paint),
+          };
+        }""")
+        check("the log DRAWS the dice it was sent", faces["dice"] > 0, f"{faces['dice']} die faces on screen")
+        check(
+            "a block die is drawn as a face, not an empty box",
+            faces["blocks"] > 0 and faces["drawn"] == faces["blocks"],
+            f"{faces['drawn']} of {faces['blocks']} block dice carry a glyph",
+        )
+        check(
+            "the faces are visible against their own background",
+            all(f["ink"] != f["bg"] and f["w"] >= 12 and f["h"] >= 12 for f in faces["paints"]),
+            str(faces["paints"][:2]),
+        )
+
     # The Blitz. Two things a server test cannot judge: whether a coach can SEE
     # that an opponent four squares away is reachable at all, and whether the
     # board says so differently from a Block — because a Blitz spends the team's

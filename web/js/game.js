@@ -13,6 +13,7 @@
 
 import { $, api, apiOrNull, esc, fail, json, ok } from "./api.js";
 import { at, clearMarks, key } from "./board.js";
+import * as dice from "./dice.js";
 import * as sprites from "./sprites.js";
 import { hideCard, posCard, showCard } from "./card.js";
 import * as choice from "./choice.js";
@@ -821,7 +822,16 @@ export async function renderLog() {
     .map(
       (e) =>
         `<div><span class="${e.kind === "turnover" ? "turnover" : ""}">${esc(e.text)}</span>` +
-        (e.rolls && e.rolls.length ? `<div class="roll">${e.rolls.map(esc).join(" · ")}</div>` : "") +
+        // `dice` is the structured roll and paints faces; `rolls` is the same
+        // roll as the sentence the engine wrote. Falling back to the sentence
+        // matters more than it looks: a plugin RELOAD can leave a new router
+        // serving an old payload (see docs/HANDOFF.md §4), and a log that goes
+        // blank reads as a broken match rather than as a stale server.
+        (e.dice && e.dice.length
+          ? dice.rolls(e.dice)
+          : e.rolls && e.rolls.length
+            ? `<div class="roll">${e.rolls.map(esc).join(" · ")}</div>`
+            : "") +
         `</div>`,
     )
     .join("");

@@ -148,7 +148,7 @@ engine/
   skills.py     skills as named hooks
   game.py       the orchestrator: act(), end_turn(), start_drive(), legal_moves()
   actions/      one module per action: validate() + resolve()
-web/            index.html + style.css + six ES modules (no bundler)
+web/            index.html + style.css + seven ES modules (no bundler)
 harness.py      drives the view in real Chromium
 ```
 
@@ -263,9 +263,10 @@ does.
 chat, and splitting it per turn would scatter their game across sixteen threads.
 Only the seats minted by `_ai_sessions` are split. There is a restraint test.
 
-**STILL OPEN:** the board payload itself is ~10.5k chars for 22 players, most of it
-once-per-turn flags sitting at `false`. Omitting defaults would cut it hard, but it
-touches both views and the suite, so it was NOT bundled into this fix.
+~~**STILL OPEN:** the board payload itself is ~10.5k chars for 22 players.~~ Done —
+the wire drops player fields sitting at their default, which is most of a
+once-per-turn flag set. It touched both views and the suite, which is why it was
+its own change rather than a rider on the context fix.
 
 **⚠️ THE NUDGE JOB ID IS UNIQUE PER ATTEMPT, AND THAT MATTERS TWICE OVER.**
 `sdk.run_in_session` is idempotent-REPLACE: re-using an id cancels whatever that id
@@ -410,6 +411,44 @@ Two things about it worth keeping:
 
 The view keeps its own client-side walk (`web/js/game.js:walkPath`) because it has
 to render between steps; the halt conditions are deliberately the same list.
+
+### Die faces in the log (`web/js/dice.js`)
+
+`/game/log` sends every roll TWICE — `rolls` is the sentence the engine wrote
+("Dodge: needed 3+, rolled 2 — FAILED") and `dice` is the same roll structured.
+That is not redundancy. The sentence is what the agent quotes and what survives a
+copy-paste into an argument; the structure is what a view can paint. Deriving
+either from the other means a second `describe()` to drift from the real one, and
+the drift would land in the exact place a coach looks to see WHY.
+
+**The view still reaches no verdict.** `passed` arrives from the engine with the
+Skills that modify it already applied, so the face renders it rather than
+recomputing `total >= target` — which would disagree the moment a Skill mattered.
+A test greps `dice.js` for exactly that comparison. For the same reason a Block
+face is NOT coloured by whether it is "good": which face a coach wants depends on
+who chooses and on their Skills, and that is a ruling.
+
+**The glyphs are drawn, not imported, and that is a licence decision as much as a
+design one.** The FFB/FUMBBL artwork the obvious clients use cannot be
+redistributed without christerk's explicit permission (jervis-ffb has it and says
+so in its LICENSE; we do not). Drawing them also keeps them on `currentColor`, so
+they follow the console theme — a raster die would sit in a dark panel as one
+fixed bright square, which is the same class of bug as the odds tag that rendered
+`--pl-color-fg` on `--pl-color-fg` and vanished.
+
+**They are shaped to be TOLD APART at 16px, not to be self-explanatory** — the
+line above already names the faces in words. The first cut drew little figures
+lying down and they resolved into identical grey smudges, so direction carries it
+instead: DOWN (a chevron) means somebody hits the floor, ALONG (an arrow) means
+somebody is moved. Both Down doubles the chevron, Stumble gives the arrow a
+dotted tail. Three harness checks pin it: that faces reach the screen at all, that
+a Block die carries a glyph rather than being an empty box, and that its ink
+differs from its own background.
+
+> `const` after first use is a temporal dead zone, and in a module that means the
+> BOARD DOES NOT RENDER — `BLOCK`'s initialiser calls the glyph builders, so the
+> shared stroke string has to be declared above it. The suite stayed green (it
+> reads the file as text); the harness caught it as `.cell` never appearing.
 
 ### The 3D board (`web3d/` → `web/3d/`)
 
@@ -645,7 +684,9 @@ the contract: the library can only ever upgrade the board, never break it.
 ZONE", which is true and answers the wrong question — you score in the OPPOSITION's
 End Zone. It cost a live false bug report: a home carrier standing in row 1 under a
 "HOME" sign reads as an unscored touchdown, and the engine was right all along
-(`touchdown_row("home") == 26`). The 2D board still has the old wording.
+(`touchdown_row("home") == 26`). Both boards now say SCORES HERE, and a test asserts they agree — the 3D one was
+fixed at the time and the 2D one kept the old sign for a release, which is how
+the two ends of the same fact drift apart.
 
 **SHIPPING `path` DID NOT MAKE THE AGENT USE IT, AND THAT IS THE REAL LESSON.** The
 first live turn after deploying it crashed exactly as before: 25 model calls, one
@@ -686,9 +727,9 @@ different clause, so the test would have passed without exercising the guard at 
 ## 4. Working on it
 
 ```bash
-.venv/bin/python -m pytest tests/ -q      # 235 tests
+.venv/bin/python -m pytest tests/ -q      # 648 tests
 .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check .
-.venv/bin/python harness.py --check       # 44 browser checks + screenshots
+.venv/bin/python harness.py --check       # 131 browser checks + screenshots
 ```
 
 - **Use `.venv/bin/python`.** The system `python3` is 3.9 and produces ~11 bogus
@@ -846,9 +887,10 @@ clauses of which one is applied would report as modelled and quietly do half its
 job — which *sounds settled*, and is worse than saying nothing. So
 `skill_hook(..., partial="what is left out")` records the gap, `describe_skill`
 returns it, and `skills.partly_modelled_on_pitch` is the standing companion to
-`unmodelled_on_pitch`. Both ride with `bb_game_state`. Three entries today:
-Juggernaut (only the suppression clause), Stand Firm and Sidestep (the engine
-takes a stated policy where the rules give a coach a choice).
+`unmodelled_on_pitch`. Both ride with `bb_game_state`, and both are empty today —
+Juggernaut, Stand Firm and Sidestep were the last three and each was closed by
+giving the coach a field to make the choice with. The MECHANISM stays: a fork
+adding a Skill it only half-applies should say so rather than report it modelled.
 
 **Two hooks carry every roll-modifying Skill**, and adding a third would be a
 smell. `roll_modifier` changes the number, `reroll` grants a second go, and the
@@ -1021,13 +1063,11 @@ says so); Argue the Call does too. Ask when the choice can change the outcome.
 
 ### Next, roughly in order
 
-1. ~~The remaining skills.~~ **All 108 are modelled.** What is left is the 18
-   `partial=` clauses, and each names its own missing half — start with
-   `bb_list_skills(partly=True)` or grep `partial=` in `engine/skills.py`. The two
-   most worth closing, because both are DATA rather than design:
-   - **Team keywords** would finish Hatred and Animosity. The source tables do not
-     print a keyword column, so it would need a second scrape or a hand-built map.
-   - **A Thrall Lineman on the roster** would finish Bloodlust's bite.
+1. ~~The remaining skills.~~ ~~The 18 `partial=` clauses.~~ **All 108 are
+   modelled and none is half-applied** — `grep partial= engine/skills.py` returns
+   nothing and `bb_list_skills(partly=True)` returns nobody. Team keywords and the
+   Thrall Lineman, the two that were called out here as the data-shaped ones, both
+   turned out to be in `data/rosters.json` under `role` already.
 2. ~~A match started from a preset has statless players.~~ Fixed — `state.flesh_out`
    gives every statless token the team's LINEMAN (cheapest positional, the only
    0-16 on every roster) at match start and says in the log that it did. The label
@@ -1063,4 +1103,5 @@ says so); Argue the Call does too. Ask when the choice can change the outcome.
   a Team Value and a Draft List — none of which an exhibition match has.
 - The Throw-in direction is thrown straight back in from the edge crossed; the real
   Throw-in Template is a diagram.
-- The version is `0.5.0` and the plugin has never been released or tagged.
+- The version is `0.6.0`, tagged `v0.6.0`. It ships `enabled: false` and has had
+  no release beyond the tag.
