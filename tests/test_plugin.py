@@ -2562,3 +2562,14 @@ def test_the_view_says_how_long_it_may_be_cached(client):
     r = client.get(f"{base}/sprites/{icon}")
     assert r.status_code == 200
     assert "max-age" in (r.headers.get("cache-control") or ""), r.headers.get("cache-control")
+
+
+def test_every_view_page_says_not_to_hold_on_to_it(client):
+    """The PAGES are the bootstrap, and they had it worse than the files: read from
+    disk and returned as a string, so no ETag and no Last-Modified either — nothing
+    to revalidate against and nothing saying not to keep them. A stale page pins
+    every module and stylesheet it names, so this is the one that has to be right."""
+    for path in ("/plugins/bloodbowl/view", "/plugins/bloodbowl/draft", "/plugins/bloodbowl/models"):
+        r = client.get(path)
+        assert r.status_code == 200, path
+        assert r.headers.get("cache-control") == "no-cache", (path, r.headers.get("cache-control"))
