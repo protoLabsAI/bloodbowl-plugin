@@ -803,9 +803,9 @@ different clause, so the test would have passed without exercising the guard at 
 ## 4. Working on it
 
 ```bash
-.venv/bin/python -m pytest tests/ -q      # 648 tests
+.venv/bin/python -m pytest tests/ -q      # 683 tests
 .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check .
-.venv/bin/python harness.py --check       # 131 browser checks + screenshots
+.venv/bin/python harness.py --check       # 146 browser checks + screenshots
 ```
 
 - **Use `.venv/bin/python`.** The system `python3` is 3.9 and produces ~11 bogus
