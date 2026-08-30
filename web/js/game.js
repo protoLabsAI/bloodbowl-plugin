@@ -13,6 +13,7 @@
 
 import { $, api, apiOrNull, esc, fail, json, ok } from "./api.js";
 import { at, clearMarks, key } from "./board.js";
+import * as sprites from "./sprites.js";
 import { hideCard, posCard, showCard } from "./card.js";
 import * as choice from "./choice.js";
 import * as drag from "./drag.js";
@@ -89,6 +90,10 @@ export function render() {
     node.dataset.sig = sig;
     node.dataset.id = p.id;
     node.textContent = p.badge || "?";
+    // The icon, when we have one for this positional. `paint` returns false and
+    // changes nothing when we do not, leaving the tile — two of the 159
+    // positionals have no icon at all and a fork may add teams with none.
+    sprites.paint(node, window.BASE || "", p.side === "home" ? state.match.home_team : state.match.away_team, p);
     node.title = `${p.position || "player"} — ${p.down}${p.acted ? ", has acted" : ""}`;
     node.addEventListener("mouseenter", (ev) => showCard(ev, p));
     node.addEventListener("mousemove", posCard);

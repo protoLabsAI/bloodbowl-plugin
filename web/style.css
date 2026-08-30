@@ -144,6 +144,36 @@ button.primary { background: var(--pl-color-accent); color: var(--pl-color-fg-on
 }
 .pc.home { background: var(--pl-color-accent); color: var(--pl-color-fg-on-accent); }
 .pc.away { background: var(--pl-color-fg); color: var(--pl-color-bg); }
+/* A player drawn as their icon rather than a coloured tile.
+   The tile's fill and shadow go — the figure has its own outline and its own
+   red/blue kit — but the badge stays, moved to a corner, because "which of my
+   four Blitzers is that" is a question the art does not answer. */
+.pc.sprited {
+  background-color: transparent;
+  background-repeat: no-repeat;
+  box-shadow: none;
+  /* The art is pixel art at 20-42px being drawn into a cell of whatever size the
+     board happens to be. Smoothing turns it to mush; this keeps the pixels. */
+  image-rendering: pixelated;
+  align-items: flex-end;
+  justify-content: flex-end;
+  /* A FLOOR, not a ratio. The badge is smaller here than on a tile because it
+     now sits on top of the figure — but the board also renders into a rail panel
+     ~27px per cell, where a bare ratio put it at 8.2px and the harness's
+     legibility check caught it. Proportional above, never below readable. */
+  font-size: max(10px, calc(var(--cell, 26px) * 0.30));
+  /* The badge sits ON the figure, so it needs its own contrast rather than the
+     tile's. A ring of shadow reads on both the red kit and the blue one — the
+     board is dark, and a light halo on a dark figure is the pair that works. */
+  text-shadow:
+    0 0 2px var(--pl-color-bg),
+    0 0 3px var(--pl-color-bg),
+    0 1px 2px var(--pl-color-bg);
+  color: var(--pl-color-fg);
+  padding: 0 1px;
+}
+/* Inset was 6% to leave a gap between tiles; a figure should fill its square. */
+.pc.sprited { inset: 0; }
 .pc.sel { outline: 2px solid var(--pl-color-focus); outline-offset: 2px; }
 .pc:active { cursor: grabbing; }
 

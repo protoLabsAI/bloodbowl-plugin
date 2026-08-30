@@ -292,7 +292,7 @@ their copyright. It is free, non-commercial and made by people who like the game
 
 | What | Where it came from | Terms |
 |---|---|---|
-| Player and pitch artwork | The [FFB project](https://github.com/christerk/ffb), the client FUMBBL runs on | Used **with the permission** of [christerk](https://github.com/christerk). Rights remain with [their respective authors](https://fumbbl.com/p/attribution) |
+| Player icons (`web/sprites/`) | The [FFB project](https://github.com/christerk/ffb), the client FUMBBL runs on | Used **with the permission** of [christerk](https://github.com/christerk). Rights remain with [their respective authors](https://fumbbl.com/p/attribution) |
 | Third Season Edition roster, skill and rules data | Community transcription from [bloodbowlbase.ru](https://bloodbowlbase.ru/bb2025/) | Community text, not Games Workshop's own. The printed rulebook settles disputes |
 | Die faces, action and board icons | Drawn for this project | MIT, with the code |
 
@@ -300,6 +300,22 @@ We found the FFB assets through [jervis-ffb](https://github.com/cmelchior/jervis
 whose own licence is careful to say they cannot be redistributed without asking. We
 asked. If you are reading this because you are wondering whether you can take them from
 *here*, the answer is the same one: ask christerk, not us.
+
+### Using your own player icons
+
+The shipped icons are a good default, not the destination. Set `bloodbowl.sprite_dir`
+to a folder of your own and it is searched first — **it only needs to hold what it
+replaces**, so redrawing one Troll leaves the other 152 alone. Name a file in our own
+words, `orc__orc-lineman.png`, and it is picked up with no table and no code change.
+For anything the naming cannot express, drop a `sprites.json` beside it:
+
+```json
+{ "Orc": { "Orc Lineman": { "file": "my-lineman.png", "columns": 1 } } }
+```
+
+`columns` is only needed when your art does not follow the shipped four-column
+convention (two red frames, two blue); `columns: 1` means a single flat image. Cell
+size and variant rows are read from the file itself, so any size works.
 
 ### Asking us to remove something
 

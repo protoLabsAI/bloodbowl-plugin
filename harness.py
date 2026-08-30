@@ -448,6 +448,56 @@ def _play(browser, url: str, w: int, h: int) -> None:
     page.wait_for_timeout(900)
     log = page.locator("#log").inner_text()
     check("the move lands in the log", "moves to" in log or "Falls Over" in log, log[:90].replace("\n", " / "))
+
+    # THE ICONS. A server test proves the catalogue is served and the files are
+    # on disk; only a browser says whether they arrived on the board. Both halves
+    # matter and fail differently — a chip with no `sprited` class never asked for
+    # one, and a chip that asked for a URL the server does not serve is a broken
+    # image, which renders as nothing at all and looks exactly like the tile it
+    # replaced. So the URL is fetched back.
+    art = page.evaluate(
+        """async () => {
+          const chips = [...document.querySelectorAll('.pc')];
+          const sprited = chips.filter((c) => c.classList.contains('sprited'));
+          const urls = [...new Set(sprited.map((c) => {
+            const m = /url\\("?([^")]+)"?\\)/.exec(getComputedStyle(c).backgroundImage || '');
+            return m ? m[1] : null;
+          }).filter(Boolean))];
+          const codes = await Promise.all(urls.slice(0, 4).map(async (u) => {
+            try { return (await fetch(u)).status; } catch { return 0; }
+          }));
+          const one = sprited[0] && getComputedStyle(sprited[0]);
+          return {
+            chips: chips.length,
+            sprited: sprited.length,
+            urls: urls.length,
+            codes,
+            size: one ? one.backgroundSize : null,
+            badge: one ? one.fontSize : null,
+          };
+        }"""
+    )
+    check(
+        "players are drawn as their icons, not coloured tiles",
+        art["chips"] > 0 and art["sprited"] == art["chips"],
+        f"{art['sprited']} of {art['chips']} chips sprited",
+    )
+    check(
+        "and every icon the board asked for actually serves",
+        bool(art["codes"]) and all(c == 200 for c in art["codes"]),
+        f"{art['urls']} distinct sheets, statuses {art['codes']}",
+    )
+    check(
+        "the sheet is sliced to a frame rather than squashed whole into the square",
+        bool(art["size"]) and "%" in art["size"] and art["size"] != "100% 100%",
+        f"background-size {art['size']}",
+    )
+    # The badge sits ON the figure now, so its own legibility floor still applies.
+    check(
+        "the badge stays readable on top of the art",
+        bool(art["badge"]) and float(str(art["badge"]).replace("px", "")) >= 9,
+        f"badge {art['badge']}",
+    )
     check("the log quotes the dice", "rolled" in log or "moves to" in log, log[:90].replace("\n", " / "))
 
     # Blocking, which is the half a server test cannot judge: a coach has to see

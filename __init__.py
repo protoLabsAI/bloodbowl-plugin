@@ -209,6 +209,12 @@ def register(registry) -> None:
         # How fast the agent may play. See engine/pace.py — a turn taken at model
         # speed arrives as a diff rather than as something you can watch.
         _configure_pace(cfg)
+        # Where the player icons come from. An operator's own pack wins over the
+        # shipped one FILE BY FILE, so replacing a single Troll does not mean
+        # redrawing the other 152.
+        from .sprites import use_pack as _use_pack
+
+        _use_pack(cfg.get("sprite_dir"))
     except Exception:  # noqa: BLE001
         log.exception("[bloodbowl] range-ruler config failed")
 
