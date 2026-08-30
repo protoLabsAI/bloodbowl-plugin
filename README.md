@@ -309,9 +309,14 @@ their copyright. It is free, non-commercial and made by people who like the game
 
 | What | Where it came from | Terms |
 |---|---|---|
-| Player icons (`web/sprites/`) | The [FFB project](https://github.com/christerk/ffb), the client FUMBBL runs on | Used **with the permission** of [christerk](https://github.com/christerk). Rights remain with [their respective authors](https://fumbbl.com/p/attribution) |
+| Player icons and the pitch (`web/sprites/`) | The [FFB project](https://github.com/christerk/ffb), the client FUMBBL runs on | Used **with the permission** of [christerk](https://github.com/christerk). Rights remain with [their respective authors](https://fumbbl.com/p/attribution) |
 | Third Season Edition roster, skill and rules data | Community transcription from [bloodbowlbase.ru](https://bloodbowlbase.ru/bb2025/) | Community text, not Games Workshop's own. The printed rulebook settles disputes |
 | Die faces, action and board icons | Drawn for this project | MIT, with the code |
+
+**We ship one pitch, and only one, deliberately.** FFB fetches a team's actual playing
+surface from fumbbl.com per team and per weather — those are **FUMBBL users' own
+uploads**, not christerk's to license and not ours to vendor. The pitch here is the one
+bundled in the FFB repository itself, covered by the same permission as the player icons.
 
 We found the FFB assets through [jervis-ffb](https://github.com/cmelchior/jervis-ffb),
 whose own licence is careful to say they cannot be redistributed without asking. We
@@ -333,6 +338,10 @@ For anything the naming cannot express, drop a `sprites.json` beside it:
 `columns` is only needed when your art does not follow the shipped four-column
 convention (two red frames, two blue); `columns: 1` means a single flat image. Cell
 size and variant rows are read from the file itself, so any size works.
+
+**The pitch too:** drop a `pitch.png` in your pack and it replaces the playing surface.
+It is stretched across the grid, so draw it for the same 26×15 board and its painted
+lines will land on the squares — the shipped one is 782×452, about 30px a square.
 
 ### Asking us to remove something
 

@@ -25,6 +25,22 @@ let hotX = 0;
 let hotY = 0;
 let onHover = null;
 
+/* The playing surface, when one ships. Absent is fine — the board keeps the
+ * green it draws itself, which is what an older host will send. */
+export function setPitch(pitch, base) {
+  const board = $("#board");
+  if (!board) return false;
+  if (!pitch || !pitch.file) return false;
+  board.style.backgroundImage = `url("${base}/plugins/bloodbowl/static/sprites/${pitch.file}")`;
+  // Stretched across the grid rather than tiled. The shipped pitch is a true
+  // 26x15 surface at ~30px a square, so its painted lines land on our squares —
+  // and any pitch drawn for the same board will too, whatever its resolution.
+  board.style.backgroundSize = "100% 100%";
+  // Everything painted ON the grid that the ART already carries stands down.
+  board.classList.add("has-pitch");
+  return true;
+}
+
 export function setGeometry(geo) {
   GEO = geo;
   // Published so the stylesheet can express every grid in terms of the real
@@ -75,12 +91,21 @@ export function buildBoard(handlers = {}) {
 
   const ov = $("#ov");
   ov.setAttribute("viewBox", `0 0 ${GEO.length} ${GEO.width}`);
+  // The wide-zone and End Zone lines are on the pitch art when there is any, so
+  // drawing ours over them doubles every line. The LOS stays either way: it is
+  // the one line a coach reads mid-turn, and the accent is what makes it
+  // findable on a photograph of grass.
+  const painted = $("#board").classList.contains("has-pitch");
   ov.innerHTML = [
     line(los, 0, los, GEO.width, "var(--pl-color-accent)", 0.1),
-    line(0, wz, GEO.length, wz, "currentColor", 0.05, 0.5),
-    line(0, GEO.width - wz, GEO.length, GEO.width - wz, "currentColor", 0.05, 0.5),
-    line(ez, 0, ez, GEO.width, "currentColor", 0.05, 0.5),
-    line(GEO.length - ez, 0, GEO.length - ez, GEO.width, "currentColor", 0.05, 0.5),
+    ...(painted
+      ? []
+      : [
+          line(0, wz, GEO.length, wz, "currentColor", 0.05, 0.5),
+          line(0, GEO.width - wz, GEO.length, GEO.width - wz, "currentColor", 0.05, 0.5),
+          line(ez, 0, ez, GEO.width, "currentColor", 0.05, 0.5),
+          line(GEO.length - ez, 0, GEO.length - ez, GEO.width, "currentColor", 0.05, 0.5),
+        ]),
   ].join("");
 
   // Publish cell size so type scales with the BOARD, not the viewport. Scaling

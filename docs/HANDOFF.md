@@ -652,6 +652,45 @@ ROUTE needs a process restart on a live host and `/meta` is already fetched at
 boot. Adding `.png` to the static route's suffix allowlist is a behaviour change
 and reloads fine.
 
+### The playing surface (`sprites.field`, `web/sprites/pitch_intro.png`)
+
+The board drew its own green. It now lays FFB's pitch under the grid — grass, mud,
+the square dots, the wide-zone and End Zone lines. It is stretched to the grid
+rather than tiled: the image is 782x452 for a 26x15 board, ~30.1px a square either
+way, so it is a TRUE playing surface and its painted lines land on our squares.
+A test pins that ratio against the engine's own geometry, so a pitch drawn for a
+different board is caught rather than silently stretched.
+
+Replaced the same way as the players: `pitch.png` in a pack wins over the shipped
+`pitch_intro.png`. It rides `/meta` and the same `/static/sprites/` path.
+
+**⚠️ THIS IS THE ONLY PITCH WE MAY SHIP.** FFB fetches a team's real pitch from
+fumbbl.com per team and per weather (`IconCache.getPitch` → `getIconByUrl`), and
+those are **FUMBBL USERS' OWN UPLOADS** — not christerk's to license and not ours
+to vendor, whatever permission we have for the client's own art. The one here is
+bundled in the FFB repo itself and is covered. Do not go collecting the others.
+
+**THE IMAGE REPLACES DECORATION, NEVER INFORMATION.** With a pitch on, the zone
+tints, the wide-zone shading and four of the five overlay lines stand down —
+they are painted on the photograph already. What does not stand down is anything
+the engine reported: legal and needs-a-roll marks, blockable/blitzable rings, the
+selection outline, the drag target, the crosshair, the ruler highlights. The LOS
+line stays too, in the accent, because it is the one line a coach reads mid-turn.
+
+> **⚠️ AND THE MARKS HAD TO BE MADE LOUDER, WHICH IS THE PART THAT NEARLY GOT
+> MISSED.** Clearing the cell backgrounds is right, but the legal-square fill is a
+> GREEN WASH and the pitch it now sits on is GREEN GRASS. This file already warns
+> about that exact pairing from the other direction ("a thin green outline on a
+> dark green pitch was invisible") and it came back anyway. Over a pitch the marks
+> get a dark scrim and a heavier ring.
+>
+> **It passed every check that existed**, because the harness COUNTED legal
+> squares and counting cannot see whether they are visible — the same lesson as
+> the odds tag that rendered fg-on-fg. There is now a check that measures the
+> painted difference between a legal square and a plain one, normalised because
+> the computed value may be `rgb(0-255)` or `oklch(0-1)` and a threshold in one
+> unit is silently unreachable in the other.
+
 ### Importing a team from FUMBBL (`fumbbl.py`)
 
 FUMBBL is where Blood Bowl is actually played online. `bb_roster_import_fumbbl`
@@ -803,9 +842,9 @@ different clause, so the test would have passed without exercising the guard at 
 ## 4. Working on it
 
 ```bash
-.venv/bin/python -m pytest tests/ -q      # 683 tests
+.venv/bin/python -m pytest tests/ -q      # 686 tests
 .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check .
-.venv/bin/python harness.py --check       # 146 browser checks + screenshots
+.venv/bin/python harness.py --check       # 148 browser checks + screenshots
 ```
 
 - **Use `.venv/bin/python`.** The system `python3` is 3.9 and produces ~11 bogus

@@ -422,6 +422,59 @@ def _play(browser, url: str, w: int, h: int) -> None:
     page.wait_for_timeout(600)
     legal = page.locator(".cell.legal").count()
     check("selecting a player highlights its legal squares", legal > 0, f"{legal} squares")
+
+    # ⚠️ COUNTING THEM CANNOT SEE WHETHER THEY ARE VISIBLE, and that gap has now
+    # bitten twice: once when legal squares were a thin green outline on a dark
+    # green pitch, and again when a photograph of GRASS went under a green wash.
+    # Both passed the count above. So measure the actual painted difference
+    # between a legal square and a plain one.
+    contrast = page.evaluate(
+        """() => {
+          // No regex here on purpose: this string travels through Python before
+          // it is JavaScript, and a backslash class silently became a literal
+          // backslash on the way — the probe returned null and the check failed
+          // for a reason that had nothing to do with the board.
+          const nums = (c) => {
+            if (!c || c.indexOf('(') < 0) return null;
+            return c.slice(c.indexOf('(') + 1, c.lastIndexOf(')')).split(',').map((n) => parseFloat(n));
+          };
+          const cells = [...document.querySelectorAll('.cell')];
+          // Prefer a plain legal square; a scenario where every legal square
+          // needs a roll is legitimate, so fall back rather than give up.
+          const legal =
+            cells.find((c) => c.classList.contains('legal') && !c.classList.contains('needsroll')) ||
+            cells.find((c) => c.classList.contains('legal'));
+          const plain = cells.find((c) => !c.classList.contains('legal') && !c.className.includes('hot'));
+          if (!legal || !plain) return null;
+          const ls = getComputedStyle(legal), ps = getComputedStyle(plain);
+          const a = nums(ls.backgroundColor), b = nums(ps.backgroundColor);
+          // Normalised, because the computed value may be rgb(0-255) or
+          // oklch(0-1) depending on how the rule was written — a threshold in
+          // one unit is silently unreachable in the other, which makes the check
+          // look like it passes when it is not testing anything.
+          const norm = (v) => (v && v.every((n) => Math.abs(n) <= 1.001) ? v.map((n) => n * 255) : v);
+          const an = norm(a), bn = norm(b);
+          let delta = 0;
+          if (an && bn) for (let i = 0; i < 3; i++) delta = Math.max(delta, Math.abs((an[i] || 0) - (bn[i] || 0)));
+          return {
+            legal: ls.backgroundColor,
+            plain: ps.backgroundColor,
+            ring: (ls.boxShadow || '').slice(0, 60),
+            alpha: a && a.length > 3 ? a[3] : 1,
+            delta,
+          };
+        }"""
+    )
+    check(
+        "a legal square is actually PAINTED differently from a plain one",
+        bool(contrast) and contrast["delta"] > 20 and contrast["alpha"] >= 0.4,
+        f"delta {contrast and contrast['delta']} alpha {contrast and contrast['alpha']}",
+    )
+    check(
+        "and carries a ring, so it reads on a busy background too",
+        bool(contrast) and "inset" in (contrast["ring"] or ""),
+        str(contrast and contrast["ring"]),
+    )
     check(
         "squares needing a roll look different from free ones",
         page.locator(".cell.legal.needsroll").count() > 0,

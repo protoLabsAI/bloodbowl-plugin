@@ -10,7 +10,7 @@
  */
 
 import { $, $$, api, fail, kit, ok } from "./api.js";
-import { buildBoard, setGeometry } from "./board.js";
+import { buildBoard, setGeometry, setPitch } from "./board.js";
 import * as sprites from "./sprites.js";
 import * as game from "./game.js";
 import * as setup from "./setup.js";
@@ -50,6 +50,7 @@ async function boot() {
     // Absent on an older plugin, which is why it is not destructured — the board
     // then draws the tiles it always drew.
     sprites.setCatalogue(meta.sprites);
+    setPitch(meta.pitch, window.BASE || "");
     setup.setScenario(meta.scenario);
 
     buildBoard({

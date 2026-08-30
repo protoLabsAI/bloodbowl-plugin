@@ -95,6 +95,68 @@ button.primary { background: var(--pl-color-accent); color: var(--pl-color-fg-on
 .cell.ez-home { background: color-mix(in oklab, var(--pl-color-accent) 22%, transparent); }
 .cell.ez-away { background: color-mix(in oklab, var(--pl-color-fg) 14%, transparent); }
 .cell.wide { box-shadow: inset 0 0 0 99px rgba(0, 0, 0, .22); }
+
+/* ---- the playing surface ------------------------------------------------
+   With a pitch image under the grid, everything the ART already draws stands
+   down: the zone tints, the wide-zone shading and the static overlay lines are
+   all painted on the photograph.
+
+   WHAT DOES NOT STAND DOWN IS ANYTHING THAT CARRIES INFORMATION — the legal and
+   needs-a-roll marks, the selection outline, the drag target, the hover
+   crosshair, the ruler highlights. That is the line: the image replaces
+   DECORATION, never a fact the engine reported. A prettier board that hid which
+   squares you may move to would be a worse board. */
+.board.has-pitch .cell {
+  background: none;
+  box-shadow: none;
+}
+/* ⚠️ AND THE MARKS HAVE TO BE MADE LOUDER, NOT JUST LEFT ALONE.
+   `background: none` above correctly clears the zone tints, but the legal-square
+   fill is a GREEN WASH and the pitch it now sits on is green grass — the same
+   pairing this file already warns about two rules down, arrived at from the
+   other direction. Left as it was it survived every count-based check and was
+   nearly invisible to a person.
+   So over a pitch the marks get a dark scrim under the colour and a heavier
+   ring. Same semantics, same two colours, legible on a photograph. */
+.board.has-pitch .cell.legal {
+  background: color-mix(in oklab, var(--pl-color-status-success) 52%, rgba(0, 0, 0, .55));
+  box-shadow: inset 0 0 0 2px var(--pl-color-status-success), inset 0 0 0 3px rgba(0, 0, 0, .55);
+}
+.board.has-pitch .cell.legal.needsroll {
+  background: color-mix(in oklab, var(--pl-color-status-warning) 56%, rgba(0, 0, 0, .55));
+  box-shadow: inset 0 0 0 2px var(--pl-color-status-warning), inset 0 0 0 3px rgba(0, 0, 0, .55);
+}
+.board.has-pitch .cell.legal.xhot,
+.board.has-pitch .cell.legal.yhot {
+  background: color-mix(in oklab, var(--pl-color-status-success) 66%, rgba(0, 0, 0, .5));
+}
+.board.has-pitch .cell.legal.needsroll.xhot,
+.board.has-pitch .cell.legal.needsroll.yhot {
+  background: color-mix(in oklab, var(--pl-color-status-warning) 70%, rgba(0, 0, 0, .5));
+}
+/* The other marks the engine paints, for the same reason. */
+.board.has-pitch .cell.blockable,
+.board.has-pitch .cell.blitzable,
+.board.has-pitch .cell.foulable,
+.board.has-pitch .cell.securable,
+.board.has-pitch .cell.handoffable,
+.board.has-pitch .cell.passable {
+  box-shadow: inset 0 0 0 2px currentColor, inset 0 0 0 4px rgba(0, 0, 0, .5);
+}
+.board.has-pitch .cell.xhot,
+.board.has-pitch .cell.yhot { background: rgba(255, 255, 255, .14); }
+/* The grid itself goes very faint rather than away — the art has its own square
+   dots, but a board you cannot count squares on is hard to play. */
+.board.has-pitch .cell {
+  border-color: rgba(255, 255, 255, .07);
+}
+/* Legibility over grass. The chips, the ruler and the End Zone labels were all
+   drawn for a flat dark board; on a photograph they need their own contrast. */
+.board.has-pitch .ezlab {
+  color: rgba(255, 255, 255, .92);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .95), 0 0 6px rgba(0, 0, 0, .8);
+}
+
 .cell.xhot, .cell.yhot { background: rgba(255, 255, 255, .07); }
 .cell.target { outline: 2px solid var(--pl-color-focus); outline-offset: -2px; z-index: 4; }
 .cell.armed { cursor: copy; }

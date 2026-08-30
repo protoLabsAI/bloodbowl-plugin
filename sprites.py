@@ -154,6 +154,9 @@ TEAM_ALIASES = {
 }
 
 
+PITCH_NAMES = ("pitch.png", "pitch_intro.png")
+
+
 def slug(text: str) -> str:
     """Letters and digits only. FFB runs words together (`triballinewoman`), so
     there is nothing to tokenise on — the comparison has to be on the reduction."""
@@ -193,6 +196,9 @@ def available() -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for d in reversed(packs()):  # later packs win, so walk worst-first
         for p in sorted(d.glob("*.png")):
+            if p.name in PITCH_NAMES:
+                continue  # the playing surface lives in the same folder, and
+                # `pitch_intro.png` splits into a team called "pitch"
             if "__" in p.stem or "_" not in p.stem:
                 continue  # `__` is the our-own-naming form, handled separately
             team, position = p.stem.split("_", 1)
@@ -296,6 +302,41 @@ def find(team_name: str, positional: dict, catalogue: dict[str, list[str]] | Non
                 return f"{prefix}_{c}.png"
 
     return None
+
+
+#: The playing surface. `pitch.png` is the name YOUR pack uses to replace it;
+#: `pitch_intro.png` is the one that ships.
+#:
+#: ⚠️ ONLY THIS ONE PITCH IS OURS TO SHIP. FFB fetches a team's actual pitch from
+#: fumbbl.com per team and per weather (`IconCache.getPitch` → `getIconByUrl`),
+#: and those are FUMBBL USERS' OWN UPLOADS — not christerk's to license and not
+#: ours to vendor. This is the one bundled in the FFB repo, and it is covered by
+#: the same permission as the player icons.
+def field() -> str | None:
+    """The pitch image, or None to leave the board's drawn green."""
+    for name in PITCH_NAMES:
+        if locate(name):
+            return name
+    return None
+
+
+def field_geometry() -> dict | None:
+    """What the board needs to lay the pitch over its grid.
+
+    The shipped image is 782x452 for a 26x15 pitch — 30.1px a square either way,
+    so it is a TRUE playing surface rather than a picture of one, and stretching
+    it across the grid lands its painted lines on our squares. `squares` says
+    what board it was drawn for, so a pitch drawn for a different one can be
+    spotted rather than silently stretched.
+    """
+    name = field()
+    if not name:
+        return None
+    path = locate(name)
+    if path is None:
+        return None
+    w, h = dimensions(path)
+    return {"file": name, "w": w, "h": h}
 
 
 _CATALOGUE: dict | None = None
