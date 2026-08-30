@@ -47,6 +47,40 @@ _MEDIA = {
 _PAGE_CACHE = {"Cache-Control": "no-cache"}
 
 
+_STAMP: str | None = None
+
+
+def asset_stamp() -> str:
+    """A short token that changes whenever the view's code changes.
+
+    Computed from the size and mtime of every module and the stylesheet, not from
+    the plugin VERSION — the version moves on releases and the code moves on every
+    deploy, and it is the deploys that strand a cache.
+
+    Cheap and cached: the files cannot change under a running process, and a
+    reload re-execs this module and so recomputes it.
+    """
+    global _STAMP
+    if _STAMP is not None:
+        return _STAMP
+    import hashlib
+
+    h = hashlib.sha256()
+    for f in sorted([*(WEB / "js").glob("*.js"), WEB / "style.css", WEB / "index.html"]):
+        try:
+            st = f.stat()
+        except OSError:
+            continue
+        h.update(f"{f.name}:{st.st_size}:{st.st_mtime_ns}".encode())
+    _STAMP = h.hexdigest()[:12]
+    return _STAMP
+
+
+def _page(name: str) -> str:
+    """A view page with its asset stamp substituted in."""
+    return (WEB / name).read_text(encoding="utf-8").replace("__ASSET_STAMP__", asset_stamp())
+
+
 def _cache_headers(suffix: str) -> dict:
     """How long a browser may hold one of these WITHOUT ASKING.
 
@@ -81,7 +115,7 @@ def build_view_router(cfg: dict | None = None):
 
     @r.get("/view", response_class=HTMLResponse)
     async def _view() -> HTMLResponse:
-        return HTMLResponse((WEB / "index.html").read_text(encoding="utf-8"), headers=_PAGE_CACHE)
+        return HTMLResponse(_page("index.html"), headers=_PAGE_CACHE)
 
     @r.get("/view3d", response_class=HTMLResponse)
     async def _view3d() -> HTMLResponse:
@@ -119,6 +153,15 @@ def build_view_router(cfg: dict | None = None):
         stylesheet the browser cannot fetch leaves an unreadable board. Everything
         that reads or writes the BOARD still goes through the gated prefix.
         """
+        # `/v/<stamp>/…` is the same tree under a versioned name, so a deploy hands
+        # every asset a URL no cache has an entry for. The stamp is not checked
+        # against the current one: an old page asking for old URLs should still be
+        # SERVED (it gets today's bytes), because refusing would break a tab that
+        # merely has not been refreshed yet.
+        if path.startswith("v/"):
+            rest = path.split("/", 2)
+            path = rest[2] if len(rest) > 2 else ""
+
         # The icons resolve through the sprite PACKS, so an operator's own
         # directory — which is deliberately outside this tree — is reachable at
         # the same URL as the shipped one. It is a separate branch rather than a

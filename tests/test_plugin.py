@@ -2573,3 +2573,68 @@ def test_every_view_page_says_not_to_hold_on_to_it(client):
         r = client.get(path)
         assert r.status_code == 200, path
         assert r.headers.get("cache-control") == "no-cache", (path, r.headers.get("cache-control"))
+
+
+def test_the_page_names_its_assets_under_a_versioned_path(client):
+    """CACHE HEADERS CANNOT REACH A BROWSER THAT DOES NOT ASK.
+
+    Observed on a live agent: the access log showed `/plugins/bloodbowl/view`
+    fetched on every open and the modules not once. The page was fresh, the files
+    were new, the server was sending `no-cache` — and the board did not change,
+    because a browser holding a copy it believes is fresh never requests it and so
+    never receives the header telling it to stop believing that.
+
+    A URL it has no entry for must be fetched. The page is the one thing that was
+    always fresh, so the page is where the new URL comes from.
+    """
+    page = client.get("/plugins/bloodbowl/view").text
+    assert "__ASSET_STAMP__" not in page, "the stamp placeholder was not substituted"
+
+    import re
+
+    m = re.search(r'var STAMP = "([0-9a-f]{6,})"', page)
+    assert m, "no asset stamp in the page"
+    stamp = m.group(1)
+
+    # A PATH, not a query string: the modules import each other by relative
+    # specifier, and `?v=` busts only the file the page names — so a new main.js
+    # would import a CACHED board.js, and that is worse than stale because the new
+    # main.js imports a symbol the old board.js does not export.
+    assert 'SELF += "/v/" + STAMP' in page
+
+    r = client.get(f"/plugins/bloodbowl/static/v/{stamp}/js/main.js")
+    assert r.status_code == 200 and "setPitch" in r.text
+    r = client.get(f"/plugins/bloodbowl/static/v/{stamp}/style.css")
+    assert r.status_code == 200 and "has-pitch" in r.text
+
+    # An OLD page asking for OLD urls still gets served today's bytes — refusing
+    # would break a tab that simply has not been refreshed.
+    r = client.get("/plugins/bloodbowl/static/v/deadbeef1234/js/main.js")
+    assert r.status_code == 200 and "setPitch" in r.text
+
+    # And the unversioned path keeps working, because the sprites use it.
+    assert client.get("/plugins/bloodbowl/static/js/main.js").status_code == 200
+
+
+def test_the_stamp_moves_when_the_code_does(tmp_path, monkeypatch):
+    """It is derived from size and mtime, not from the plugin VERSION — versions
+    move on releases and code moves on every deploy, and it is the deploys that
+    strand a cache."""
+    from bloodbowl import api
+
+    monkeypatch.setattr(api, "_STAMP", None)
+    first = api.asset_stamp()
+    assert len(first) == 12
+
+    monkeypatch.setattr(api, "_STAMP", None)
+    assert api.asset_stamp() == first, "stable while nothing changes"
+
+    target = api.WEB / "js" / "main.js"
+    original = target.stat()
+    try:
+        os_utime = __import__("os").utime
+        os_utime(target, (original.st_atime, original.st_mtime + 5))
+        monkeypatch.setattr(api, "_STAMP", None)
+        assert api.asset_stamp() != first, "a changed module must move the stamp"
+    finally:
+        __import__("os").utime(target, (original.st_atime, original.st_mtime))

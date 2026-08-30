@@ -7,6 +7,23 @@
   // works unchanged behind a fleet proxy that mounts the instance on a sub-path.
   var BASE = location.pathname.split("/plugins/")[0];
   var SELF = BASE + "/plugins/bloodbowl/static";
+  // A VERSIONED PATH, stamped by the view route whenever the assets change.
+  //
+  // Cache headers alone could not fix this, and it is worth knowing why: a browser
+  // that already holds a copy it believes is fresh DOES NOT ASK, so it never
+  // receives the header telling it to stop believing that. Observed on a live
+  // agent — the access log showed the PAGE fetched every time and the modules not
+  // once. A new URL has no cache entry, so it must be fetched, and the page is the
+  // one thing that was always fresh.
+  //
+  // A PATH rather than `?v=`, because the modules import each OTHER by relative
+  // specifier ("./board.js"). A query string busts only the file the page names,
+  // so main.js would arrive new and import a cached board.js — and that is worse
+  // than stale, because the new main.js imports `setPitch` which the old board.js
+  // does not export, and the whole module graph throws. Under a versioned
+  // directory every relative import inherits the stamp for free.
+  var STAMP = "__ASSET_STAMP__";
+  if (STAMP.indexOf("ASSET_STAMP") < 0) SELF += "/v/" + STAMP;
   (function () {
     for (var href of [BASE + "/_ds/plugin-kit.css", SELF + "/style.css"]) {
       var l = document.createElement("link"); l.rel = "stylesheet"; l.href = href;
