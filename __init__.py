@@ -589,6 +589,39 @@ def _tools(cfg: dict):
         return json.dumps({"ok": True, "rosters": saved()})
 
     @tool
+    def bb_roster_import_fumbbl(team_json: str, name: str = "", save: bool = False) -> str:
+        """Turn a FUMBBL team into a Team Draft List. Paste the JSON from
+        `https://fumbbl.com/api/team/get/<team id>`.
+
+        This plugin makes no network calls, so the coach fetches that URL and hands
+        the JSON over; nothing here contacts FUMBBL.
+
+        The two catalogues disagree about names in both directions at once — FUMBBL's
+        `Underworld Troll` is our `Troll*`, its bare `Blitzer` is our `Dwarf Blitzer`,
+        and `Dwarf Blocker Lineman` is BB2020's name for `Dwarf Lineman`. Matching is
+        scoped to the identified team and reports `how` for each position. ANYTHING IT
+        CANNOT MATCH IS NAMED IN `unmatched` RATHER THAN GUESSED, so read that before
+        playing the list: it is short by exactly those players.
+
+        `save=True` stores it as a roster; the import is otherwise read-only.
+        """
+        from . import draft as _d
+        from . import fumbbl as _f
+
+        try:
+            payload = json.loads(team_json) if isinstance(team_json, str) else team_json
+        except (TypeError, ValueError) as exc:
+            return json.dumps({"ok": False, "error": f"that is not JSON: {exc}"})
+        if not isinstance(payload, dict):
+            return json.dumps({"ok": False, "error": "expected the team object from /api/team/get/<id>"})
+
+        report = _f.import_team(payload, name=name)
+        if report["ok"] and save:
+            report["roster"] = _d.save(report["roster"]["name"], report["roster"])
+            report["saved"] = True
+        return json.dumps(report)
+
+    @tool
     def bb_roster_get(name: str) -> str:
         """One saved Team Draft List, itemised, with its remaining Treasury and any problems."""
         from .draft import load, price, problems
@@ -1494,6 +1527,7 @@ def _tools(cfg: dict):
         bb_roster_save,
         bb_roster_list,
         bb_roster_get,
+        bb_roster_import_fumbbl,
         bb_list_teams,
         bb_get_roster,
         bb_team_costs,

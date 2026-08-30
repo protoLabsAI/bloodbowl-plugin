@@ -376,6 +376,35 @@ def build_game_router(cfg: dict | None = None, announce=None):
             "teams": [{"name": t["name"], "tier": t.get("tier")} for t in rosters().get("teams", [])],
         }
 
+    @r.post("/draft/import/fumbbl")
+    async def _draft_import_fumbbl(body: dict | None = None) -> dict:
+        """A FUMBBL team JSON in, a draft list out — with what did not map NAMED.
+
+        The JSON is POSTED rather than fetched. This plugin declares `network: []`
+        and says so in its README; spending that on a convenience a coach can
+        supply from `fumbbl.com/api/team/get/<id>` in their own browser would be a
+        bad trade, and the naming work — which is the whole difficulty — is the
+        same either way.
+
+        `save` is opt-in and defaults OFF, so an import can be inspected before it
+        becomes a stored roster. It saves even when illegal, like every other
+        draft route: an imported league team legitimately breaks drafting limits
+        it was never subject to.
+        """
+        from . import draft as _d
+        from . import fumbbl as _f
+
+        body = body or {}
+        team_json = body.get("team")
+        if not isinstance(team_json, dict):
+            raise HTTPException(status_code=400, detail="expected {'team': <the FUMBBL team JSON>}")
+
+        report = _f.import_team(team_json, name=str(body.get("name") or ""))
+        if report["ok"] and body.get("save"):
+            report["roster"] = _d.save(report["roster"]["name"], report["roster"])
+            report["saved"] = True
+        return report
+
     @r.get("/draft/{name}")
     async def _draft_get(name: str) -> dict:
         from . import draft as _d

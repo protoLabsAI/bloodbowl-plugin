@@ -44,7 +44,16 @@
       </div>
     </div>
     <script type="module">
-      const kit = await import(window.__base + "/_ds/plugin-kit.js");
+      // Degrade rather than die: the kit is served by the CONSOLE, so it is absent
+      // in the plugin's own harness and on any host without `_ds`. A top-level
+      // await that throws means the module NEVER RUNS — no handlers, no list, an
+      // empty page with no clue why. Same fallback as the pitch and 3D views.
+      let kit;
+      try {
+        kit = await import(window.__base + "/_ds/plugin-kit.js");
+      } catch {
+        kit = { initPluginView() {}, apiFetch: (path, init) => fetch(window.__base + path, init) };
+      }
       kit.initPluginView();
       const API = "/api/plugins/bloodbowl";
       const $ = (id) => document.getElementById(id);

@@ -31,6 +31,29 @@
       ul.problems { margin: 6px 0 0; padding-left: 18px; }
       ul.problems li { margin: 2px 0; }
       .stat { font-variant-numeric: tabular-nums; opacity: .75; font-size: 12px; }
+      /* [hidden] is only `display: none` in the user-agent sheet, so ANY display rule
+         of ours beats it — `.row { display: flex }` on a hidden element leaves it on
+         screen. The pitch view learned this the hard way; assert it back here too. */
+      [hidden] { display: none !important; }
+      #import textarea {
+        width: 100%; box-sizing: border-box; min-height: 88px; resize: vertical;
+        font: 11px/1.4 var(--pl-font-mono, ui-monospace, monospace);
+        color: var(--pl-color-fg); background: var(--pl-color-bg-inset);
+        border: 1px solid var(--pl-color-border); border-radius: 6px; padding: 6px 8px;
+      }
+      .maps { border-collapse: collapse; width: 100%; margin-top: 8px; }
+      .maps td { padding: 3px 6px; border-bottom: 1px solid var(--pl-color-border); }
+      .maps .how { opacity: .6; font-size: 11px; }
+      /* The unmatched list is the POINT of the report, not a footnote — a coach who
+         misses it plays a squad that is quietly short. It gets the error colour and
+         its own border rather than a line in the same table as the successes. */
+      .unmatched {
+        margin-top: 10px; padding: 8px 10px; border-radius: 6px;
+        border: 1px solid var(--pl-color-status-error);
+        background: color-mix(in oklab, var(--pl-color-status-error) 12%, transparent);
+      }
+      .notes { margin: 8px 0 0; padding-left: 18px; font-size: 12px; opacity: .8; }
+      .notes li { margin: 3px 0; }
     </style>
   </head>
   <body>
@@ -40,11 +63,27 @@
         <div id="saved"></div>
         <h2 style="margin-top:16px">New from team</h2>
         <div id="teams"></div>
+        <h2 style="margin-top:16px">From FUMBBL</h2>
+        <button class="item" id="importOpen">Import a team…</button>
       </div>
       <div class="col">
         <div class="row">
           <input id="name" class="pl-input" placeholder="roster name" style="flex:1" />
           <button class="pl-btn" id="save">Save</button>
+        </div>
+        <div id="import" hidden style="margin-top:14px">
+          <h2>Import from FUMBBL</h2>
+          <div class="muted" style="font-size:12px;margin-bottom:6px">
+            Open <code>https://fumbbl.com/api/team/get/&lt;your team id&gt;</code> in a browser —
+            the id is the number in your team's FUMBBL page URL — and paste the JSON here.
+            <b>Nothing on this page contacts FUMBBL</b>; this plugin makes no network calls.
+          </div>
+          <textarea id="importJson" placeholder='{ "id": ..., "roster": { "name": "..." }, "players": [ ... ] }'></textarea>
+          <div class="row">
+            <button class="pl-btn" id="importGo">Import</button>
+            <button class="pl-btn" id="importCancel">Cancel</button>
+          </div>
+          <div id="importResult"></div>
         </div>
         <h2 id="teamName" style="margin-top:14px">—</h2>
         <table><thead><tr><th>Positional</th><th>MA/ST/AG/AV</th><th class="num">Cost</th><th class="num">Max</th><th></th></tr></thead>
@@ -70,8 +109,19 @@
       </div>
     </div>
     <script type="module">
-      const kit = await import(window.__base + "/_ds/plugin-kit.js");
-      kit.initPluginView();
+      // DEGRADE RATHER THAN DIE. The kit is served by the CONSOLE, so it is absent
+      // in the plugin's own harness and on any host without `_ds`. This was a bare
+      // top-level `await import`, and a top-level await that throws means the module
+      // NEVER RUNS: no handlers bound, no teams listed, an empty page with no clue
+      // why. The pitch view (web/js/api.js) and the 3D board both already fall back;
+      // this one did not, which is exactly why it had no harness coverage to notice.
+      let kit;
+      try {
+        kit = await import(window.__base + "/_ds/plugin-kit.js");
+        kit.initPluginView();
+      } catch {
+        kit = { initPluginView() {}, apiFetch: (path, init) => fetch(window.__base + path, init) };
+      }
       const API = "/api/plugins/bloodbowl";
       const $ = (id) => document.getElementById(id);
       const gp = (n) => (n === undefined || n === null ? "" : n.toLocaleString() + " gp");
@@ -185,6 +235,56 @@
             : `<div class="good">Legal draft list</div>`;
         }, 120);
       }
+
+      // --- importing a FUMBBL team ------------------------------------------
+      // The mapping is the SERVER's, like costing and legality: a view that decided
+      // which of our positionals a FUMBBL name meant would be a second catalogue to
+      // drift from the real one. All this does is show the answer — and it shows the
+      // UNMATCHED half loudly, because that is the half a coach must act on.
+      const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+      function showImport(on) {
+        $("import").hidden = !on;
+        if (on) { $("importJson").value = ""; $("importResult").innerHTML = ""; $("importJson").focus(); }
+      }
+      $("importOpen").onclick = () => showImport(true);
+      $("importCancel").onclick = () => showImport(false);
+
+      $("importGo").onclick = async () => {
+        let payload;
+        try {
+          payload = JSON.parse($("importJson").value);
+        } catch (e) {
+          $("importResult").innerHTML = `<div class="unmatched">That is not JSON — paste the whole response, braces and all. (${esc(e.message)})</div>`;
+          return;
+        }
+        const res = await kit.apiFetch(`${API}/draft/import/fumbbl`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ team: payload }),
+        });
+        const d = await res.json();
+        if (!res.ok || !d.ok) {
+          $("importResult").innerHTML = `<div class="unmatched">${esc(d.text || d.detail || "could not import that")}</div>`;
+          return;
+        }
+
+        $("importResult").innerHTML =
+          `<table class="maps">${d.matched.map((m) =>
+            `<tr><td class="num">${m.n}</td><td>${esc(m.fumbbl)}</td><td>→ ${esc(m.position)}</td>
+             <td class="how">${esc(m.how)}</td></tr>`).join("")}</table>` +
+          (d.unmatched.length
+            ? `<div class="unmatched"><b>${d.unmatched.reduce((a, u) => a + u.n, 0)} player(s) did not map and are NOT on the list.</b>
+               <ul class="problems">${d.unmatched.map((u) => `<li>${u.n} × ${esc(u.fumbbl)} — ${esc(u.why)}</li>`).join("")}</ul>
+               Add them by hand below if the right positional is obvious to you.</div>`
+            : "") +
+          (d.notes.length ? `<ul class="notes">${d.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : "");
+
+        // Load it into the builder rather than saving it: an import is a starting
+        // point a coach edits, and `problems` on an imported league team is often
+        // about DRAFTING limits it was never subject to.
+        roster = d.roster;
+        $("name").value = roster.name || "";
+        await loadOptions();
+      };
 
       $("save").onclick = async () => { await refresh(); await boot(); };
       for (const b of document.querySelectorAll("[data-place]")) {

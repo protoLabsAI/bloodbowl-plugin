@@ -1,0 +1,81 @@
+{
+ "id": 0,
+ "name": "Norse test side",
+ "roster": {
+  "id": 0,
+  "name": "Norse"
+ },
+ "ruleset": 4,
+ "division": "Competitive",
+ "teamValue": 1205000,
+ "rerolls": 3,
+ "fanFactor": 5,
+ "assistantCoaches": 0,
+ "cheerleaders": 0,
+ "apothecary": "Yes",
+ "coach": {
+  "name": "a coach"
+ },
+ "players": [
+  {
+   "number": 1,
+   "status": 0,
+   "position": "Ulfwerener"
+  },
+  {
+   "number": 2,
+   "status": 0,
+   "position": "Valkyrie"
+  },
+  {
+   "number": 3,
+   "status": 0,
+   "position": "Norse Raider Lineman"
+  },
+  {
+   "number": 4,
+   "status": 0,
+   "position": "Norse Raider Lineman"
+  },
+  {
+   "number": 5,
+   "status": 0,
+   "position": "Norse Raider Lineman"
+  },
+  {
+   "number": 6,
+   "status": 0,
+   "position": "Norse Raider Lineman"
+  },
+  {
+   "number": 7,
+   "status": 0,
+   "position": "Beer Boar"
+  },
+  {
+   "number": 8,
+   "status": 0,
+   "position": "Ulfwerener"
+  },
+  {
+   "number": 9,
+   "status": 0,
+   "position": "Norse Raider Lineman"
+  },
+  {
+   "number": 10,
+   "status": 0,
+   "position": "Norse Raider Lineman"
+  },
+  {
+   "number": 11,
+   "status": 0,
+   "position": "Norse Berserker"
+  },
+  {
+   "number": 12,
+   "status": 0,
+   "position": "Norse Raider Lineman"
+  }
+ ]
+}

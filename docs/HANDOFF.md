@@ -652,6 +652,82 @@ ROUTE needs a process restart on a live host and `/meta` is already fetched at
 boot. Adding `.png` to the static route's suffix allowlist is a behaviour change
 and reloads fine.
 
+### Importing a team from FUMBBL (`fumbbl.py`)
+
+FUMBBL is where Blood Bowl is actually played online. `bb_roster_import_fumbbl`
+turns the JSON from `fumbbl.com/api/team/get/<id>` into a Team Draft List, so a
+coach's real side can be set up here without retyping it.
+
+**IT MAKES NO NETWORK CALL, AND THAT IS THE DESIGN.** The manifest declares
+`network: []` and the README says so; fetching would spend that claim on a
+convenience the coach can supply with a copy-paste, and the fetch was never the
+hard part. Their API *is* reachable anonymously (the whole `fumbbl.com` HTML site
+sits behind Anubis anti-scraping, the JSON endpoints do not) — reachable is not
+the same as ours to use, and FUMBBL deployed Anubis specifically to stop
+automated traffic. Ask before building anything that talks to them.
+
+**⚠️ THE TWO CATALOGUES DISAGREE ABOUT NAMES IN BOTH DIRECTIONS AT ONCE.** Every
+one of these is real, off four actual teams, and no two obey the same rule:
+
+| FUMBBL | ours (S3) | what moved |
+|---|---|---|
+| `Underworld Troll` | `Troll*` | their prefix, not ours |
+| `Blitzer` (Dwarf) | `Dwarf Blitzer` | our prefix, not theirs |
+| `Norse Raider Lineman` | `Norse Raider` | "Lineman" added |
+| `Underworld Snotlings` | `Snotling Lineman` | "Lineman" dropped, AND plural |
+| `Dwarf Blocker Lineman` | `Dwarf Lineman` | a word inserted mid-name |
+
+So there is no strip rule and no append rule — each would break two other lines.
+What works is four passes of normalise-and-compare, each needing exactly ONE
+winner: exact · team name differs · wording differs (filler dropped) · ours
+contained in theirs. A pass that finds several has found an AMBIGUITY, and it
+stops there rather than falling through to a looser pass that would only pick
+more confidently from a set already known to be unseparable.
+
+**Matching is scoped to the identified TEAM, which is what makes the loose passes
+safe.** Dwarf's `Troll Slayer` and Underworld's `Troll*` are one token apart; a
+global name index would have to choose between them and a team-scoped one never
+sees the other roster at all. The trailing `*` is the source page's Big Guy
+marker — the same fact is already in `role`, so it is decoration in the name.
+
+**AN UNMATCHED POSITION IS NAMED, NOT GUESSED, AND NOT SILENTLY DROPPED.** A wrong
+positional means wrong STATS, quietly, in the one place a coach is trusting a
+table instead of their memory — the exact failure this plugin exists to prevent.
+The list comes back short by exactly those players, `draft.problems()` then says
+"fewer than 11" in the rulebook's own terms, and a note names them. Same for
+players FUMBBL marks with a non-zero `status`: they are counted and reported BY
+CODE rather than explained, because what those codes mean is not documented here
+and a confident gloss ("journeyman") that turned out to be "missing next game"
+would be the same failure in miniature. A real Wood Elf team had two of status 6.
+
+**An imported team legitimately breaks the DRAFTING rules**, and saying so is the
+difference between a useful warning and a wrong one: Dedicated Fans cap at 3 *when
+drafting* and grow past it in a league, so `problems` flags a five-fan team that
+is entirely legal where it came from. The note says which limits are draft-time.
+The edition gap is stated the same way — FUMBBL `ruleset: 4` is BB2020, we play
+S3, and players are matched by NAME with S3 stats and costs applied.
+
+The fixtures are four real teams reduced to the fields the importer reads; coach
+and player names are other people's and a naming rule needs none of them.
+
+**The paste box is in the roster builder** (`/plugins/bloodbowl/draft`), and it
+shows the mapping table with a `how` per row, the notes, and — in its own bordered
+block, in the error colour — the players that did not map. That block is the
+POINT of the feature rather than a footnote: a coach who misses it plays a squad
+that is quietly short. There is a harness check that it is on screen and that its
+ink differs from its own background, because present-in-the-DOM is not visible.
+
+> **⚠️ AND ADDING THAT COVERAGE FOUND A DEAD VIEW.** `draft.html` and
+> `models.html` both opened with a bare top-level `await import` of
+> `_ds/plugin-kit.js`. The kit is served by the CONSOLE, so it is absent in this
+> plugin's own harness and on any host without `_ds` — and **a top-level await
+> that throws means the module NEVER RUNS**. Not a degraded page: no handlers
+> bound, no teams listed, static markup and nothing else, with no clue why. It is
+> also why neither view had a single browser check — the harness cannot drive a
+> page that never wakes up, so the gap hid the bug that caused it. Both now fall
+> back to a plain same-origin fetch like `web/js/api.js` and the 3D board always
+> did, and a test asserts every view that imports the kit has a fallback.
+
 ### The model library (`models.py`, view `/plugins/bloodbowl/models`)
 
 One mesh per positional, organised by team; the 3D board loads it and **falls back to
