@@ -1,0 +1,91 @@
+{
+ "id": 0,
+ "name": "Dwarf test side",
+ "roster": {
+  "id": 0,
+  "name": "Dwarf"
+ },
+ "ruleset": 4,
+ "division": "Competitive",
+ "teamValue": 1370000,
+ "rerolls": 3,
+ "fanFactor": 3,
+ "assistantCoaches": 0,
+ "cheerleaders": 0,
+ "apothecary": "No",
+ "coach": {
+  "name": "a coach"
+ },
+ "players": [
+  {
+   "number": 1,
+   "status": 0,
+   "position": "Blitzer"
+  },
+  {
+   "number": 2,
+   "status": 0,
+   "position": "Dwarf Blocker Lineman"
+  },
+  {
+   "number": 3,
+   "status": 0,
+   "position": "Dwarf Blocker Lineman"
+  },
+  {
+   "number": 4,
+   "status": 0,
+   "position": "Dwarf Blocker Lineman"
+  },
+  {
+   "number": 5,
+   "status": 0,
+   "position": "Dwarf Blocker Lineman"
+  },
+  {
+   "number": 6,
+   "status": 0,
+   "position": "Dwarf Blocker Lineman"
+  },
+  {
+   "number": 7,
+   "status": 0,
+   "position": "Blitzer"
+  },
+  {
+   "number": 8,
+   "status": 0,
+   "position": "Runner"
+  },
+  {
+   "number": 9,
+   "status": 0,
+   "position": "Troll Slayer"
+  },
+  {
+   "number": 10,
+   "status": 0,
+   "position": "Troll Slayer"
+  },
+  {
+   "number": 11,
+   "status": 0,
+   "position": "Runner"
+  },
+  {
+   "number": 12,
+   "status": 6,
+   "position": "Dwarf Blocker Lineman"
+  },
+  {
+   "number": 13,
+   "status": 6,
+   "position": "Dwarf Blocker Lineman"
+  },
+  {
+   "number": 14,
+   "status": 6,
+   "position": "Dwarf Blocker Lineman"
+  }
+ ]
+}

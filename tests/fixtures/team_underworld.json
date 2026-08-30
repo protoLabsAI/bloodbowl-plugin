@@ -1,0 +1,96 @@
+{
+ "id": 0,
+ "name": "Underworld Denizens test side",
+ "roster": {
+  "id": 0,
+  "name": "Underworld Denizens"
+ },
+ "ruleset": 4,
+ "division": "Competitive",
+ "teamValue": 1050000,
+ "rerolls": 3,
+ "fanFactor": 2,
+ "assistantCoaches": 0,
+ "cheerleaders": 0,
+ "apothecary": "Yes",
+ "coach": {
+  "name": "a coach"
+ },
+ "players": [
+  {
+   "number": 1,
+   "status": 0,
+   "position": "Underworld Troll"
+  },
+  {
+   "number": 2,
+   "status": 0,
+   "position": "Underworld Goblin Lineman"
+  },
+  {
+   "number": 3,
+   "status": 0,
+   "position": "Underworld Goblin Lineman"
+  },
+  {
+   "number": 4,
+   "status": 0,
+   "position": "Underworld Goblin Lineman"
+  },
+  {
+   "number": 5,
+   "status": 0,
+   "position": "Underworld Goblin Lineman"
+  },
+  {
+   "number": 6,
+   "status": 0,
+   "position": "Underworld Goblin Lineman"
+  },
+  {
+   "number": 7,
+   "status": 0,
+   "position": "Underworld Goblin Lineman"
+  },
+  {
+   "number": 8,
+   "status": 0,
+   "position": "Underworld Snotlings"
+  },
+  {
+   "number": 9,
+   "status": 0,
+   "position": "Underworld Snotlings"
+  },
+  {
+   "number": 10,
+   "status": 0,
+   "position": "Underworld Goblin Lineman"
+  },
+  {
+   "number": 11,
+   "status": 0,
+   "position": "Underworld Goblin Lineman"
+  },
+  {
+   "number": 12,
+   "status": 0,
+   "position": "Underworld Snotlings"
+  },
+  {
+   "number": 13,
+   "status": 0,
+   "position": "Underworld Goblin Lineman"
+  },
+  {
+   "number": 14,
+   "status": 0,
+   "position": "Underworld Goblin Lineman"
+  },
+  {
+   "number": 15,
+   "status": 0,
+   "position": "Underworld Goblin Lineman"
+  }
+ ]
+}

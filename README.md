@@ -153,6 +153,19 @@ board for scenario work.
 
 An illegal list still SAVES, with its problems listed — a team is over budget and short of
 players for most of the time it is being drafted. Placing one is the step that refuses.
+
+**Import a team from FUMBBL** — `bb_roster_import_fumbbl`. Paste the JSON from
+`https://fumbbl.com/api/team/get/<team id>` and your real team becomes a draft list, with
+its Team Re-rolls, Fan Factor, Apothecary and staff carried across as the inputs this
+engine already takes. *Nothing here contacts FUMBBL* — the plugin declares `network: []`
+and keeps it; you fetch that URL in your own browser.
+
+The two catalogues disagree about names in both directions at once — FUMBBL's
+`Underworld Troll` is our `Troll*`, its bare `Blitzer` is our `Dwarf Blitzer`, and
+`Dwarf Blocker Lineman` is BB2020's name for `Dwarf Lineman` — so matching is scoped to
+the identified team, reports *how* each position matched, and **names anything it cannot
+match rather than guessing**. A wrong positional would mean wrong stats, silently, in the
+one place you are trusting a table over your memory.
 Costing and legality are decided server-side by the same functions that gate placement, so
 the builder cannot become a second rulebook.
 
