@@ -40,6 +40,13 @@ _MEDIA = {
 }
 
 
+#: The view PAGES. They are read from disk and returned as a string, so unlike the
+#: static files they carry no ETag and no Last-Modified — there is nothing for a
+#: browser to revalidate against and nothing telling it not to keep the page that
+#: bootstraps every module and stylesheet. Say it outright.
+_PAGE_CACHE = {"Cache-Control": "no-cache"}
+
+
 def _cache_headers(suffix: str) -> dict:
     """How long a browser may hold one of these WITHOUT ASKING.
 
@@ -74,7 +81,7 @@ def build_view_router(cfg: dict | None = None):
 
     @r.get("/view", response_class=HTMLResponse)
     async def _view() -> HTMLResponse:
-        return HTMLResponse((WEB / "index.html").read_text(encoding="utf-8"))
+        return HTMLResponse((WEB / "index.html").read_text(encoding="utf-8"), headers=_PAGE_CACHE)
 
     @r.get("/view3d", response_class=HTMLResponse)
     async def _view3d() -> HTMLResponse:
@@ -92,17 +99,17 @@ def build_view_router(cfg: dict | None = None):
         Rule 1 of docs/guides/building-react-plugin-views.md exists for this. Serving the
         page from a declared route is what every reference plugin does.
         """
-        return HTMLResponse((WEB / "3d" / "index.html").read_text(encoding="utf-8"))
+        return HTMLResponse((WEB / "3d" / "index.html").read_text(encoding="utf-8"), headers=_PAGE_CACHE)
 
     @r.get("/draft", response_class=HTMLResponse)
     async def _draft_page() -> HTMLResponse:
         """The roster builder."""
-        return HTMLResponse((WEB / "draft.html").read_text(encoding="utf-8"))
+        return HTMLResponse((WEB / "draft.html").read_text(encoding="utf-8"), headers=_PAGE_CACHE)
 
     @r.get("/models", response_class=HTMLResponse)
     async def _models_page() -> HTMLResponse:
         """The model library. A real route, like every other declared view."""
-        return HTMLResponse((WEB / "models.html").read_text(encoding="utf-8"))
+        return HTMLResponse((WEB / "models.html").read_text(encoding="utf-8"), headers=_PAGE_CACHE)
 
     @r.get("/static/{path:path}")
     async def _static(path: str):
