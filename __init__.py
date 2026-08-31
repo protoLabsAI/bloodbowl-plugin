@@ -218,6 +218,17 @@ def announce(before: dict, after: dict) -> dict:
             log.debug("[bloodbowl] handover %s already announced — not nudging again", key)
             return {}
         _LAST_ANNOUNCED = key
+    # WAKE THE DRIVER. The runner is the only thing that fires a turn; a handover
+    # is a SIGNAL to look now, not a schedule to wait for. This is what makes
+    # ending your turn against the agent feel immediate instead of polled.
+    if fresh:
+        try:
+            from . import runner as _runner
+
+            _runner.wake()
+        except Exception:  # noqa: BLE001 — waking is an optimisation, never a requirement
+            log.debug("[bloodbowl] could not wake the runner", exc_info=True)
+
     if fresh and _emit is not None:
         try:
             _emit("turn_ready", dict(fresh))
@@ -309,6 +320,14 @@ def register(registry) -> None:
         def _turn_ready(payload: dict) -> None:
             d = (payload or {}).get("data") or {}
             if d.get("controller") != "agent":
+                return
+            # ⚠️ ONE DRIVER. The runner fires every agent turn — head-to-head
+            # included — so this handler must never fire one too. Two mechanisms
+            # is what produced nine concurrent tasks for a single handover, all
+            # of which stalled. `_run_turn` calls this directly with `driven`
+            # set; anything else arriving here is the bus, and the bus does not
+            # get to start a turn.
+            if not d.get("driven"):
                 return
             if d.get("why") == "answer":
                 prompt = (
@@ -403,6 +422,15 @@ def register(registry) -> None:
 
         registry.on("bloodbowl.turn_ready", _turn_ready)
         log.info("[bloodbowl] turn nudge subscribed")
+
+        # AUTO MODE. One loop, one turn in flight, no events: it asks who is
+        # waited on, fires that seat, and waits for the board to change hands.
+        from . import runner as _runner
+
+        def _run_turn(owed: dict) -> None:
+            _turn_ready({"data": dict(owed, driven=True)})
+
+        _runner.start(_run_turn)
 
     try:
         # ⚠️ `reload=` IS NOT OPTIONAL HERE, AND LEAVING IT OUT COSTS THE WHOLE

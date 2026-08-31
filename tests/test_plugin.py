@@ -1531,11 +1531,20 @@ def test_each_handover_gets_its_own_job_id(registry, monkeypatch):
     captured[0]()
     handler = registry.subscriptions[-1][1]
 
+    # `driven` is what the RUNNER sets. The bus no longer starts a turn — one
+    # driver, or two mechanisms race and produce nine tasks for one handover.
     for half, turn in ((1, 2), (1, 3)):
-        handler({"data": {"controller": "agent", "side": "away", "why": "turn", "half": half, "turn": turn}})
+        handler(
+            {"data": {"controller": "agent", "side": "away", "why": "turn", "half": half, "turn": turn, "driven": True}}
+        )
     jobs = [j for _s, j in sent]
     assert len(set(jobs)) == 2, f"two turns must not share a job id: {jobs}"
     assert all("h1t" in j and "away" in j for j in jobs), jobs
+
+    # And an undriven event — anything arriving from the bus — starts nothing.
+    before = len(sent)
+    handler({"data": {"controller": "agent", "side": "away", "why": "turn", "half": 1, "turn": 4}})
+    assert len(sent) == before, "the bus must not start a turn; only the runner does"
 
 
 def test_a_lost_nudge_can_be_re_sent_without_throwing_the_game_away(client):

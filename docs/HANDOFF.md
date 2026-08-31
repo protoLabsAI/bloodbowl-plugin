@@ -323,6 +323,35 @@ it, surfaces wire once and a config change needs a restart"). Re-subscribing is
 safe rather than doubling, and the evidence is that nothing fired at all after a
 reload rather than firing twice.
 
+### Auto mode: one thing fires a turn (`runner.py`)
+
+**Turns used to be driven by an EVENT and it was the wrong shape.** Several routes
+published a handover, a bus event became a nudge, the nudge enqueued a turn, and a
+failed fire was retried by the scheduler. Each part is reasonable. Together they
+produced, all in one day: **nine nudges for one handover** (every route saw news,
+and a per-attempt job id meant nothing collapsed them), seats **woken with nothing
+to do** that spent a model call working out it was not their move, and **retry
+storms** where an interrupted turn restarted into the session it had already
+half-filled, so each attempt was slower than the last.
+
+A match does not need any of that. `runner.py` is a loop: ask `handover.owed` who
+is waited on, fire that seat, WAIT for the board to change hands, go again. **One
+turn in flight by construction**, which is also how the game works.
+
+**It drives every agent turn, head-to-head included** — one driver, so a turn
+cannot be fired twice and there is one place to look when one does not happen. The
+bus handler now refuses anything without `driven`, which only the runner sets.
+
+**⚠️ AND IT DOES NOT MAKE A PERSON WAIT FOR A POLL.** `announce` calls
+`runner.wake()`, so ending your turn against the agent starts its turn
+immediately; the poll underneath is a backstop for a signal that never arrives,
+not the normal path. A driver you have to wait five seconds for is not one you
+want to play against.
+
+A turn that never hands over is logged loudly and re-fired once
+(`TURN_TIMEOUT_S`). A silent retry is what made a stuck match look like a slow one
+for hours.
+
 **The nudge.** `engine/handover.py` works out who the match is waiting on and
 whether that CHANGED; `__init__.announce` publishes `bloodbowl.turn_ready`; and
 `register()` subscribes and calls `sdk.run_in_session` to run an agent turn from it.
