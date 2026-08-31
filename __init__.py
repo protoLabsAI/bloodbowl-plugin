@@ -980,78 +980,93 @@ def _tools(cfg: dict):
         than performed. The reply carries every roll that was made — quote those
         rather than describing what probably happened.
         """
-        from .engine import handover, pace
-        from .engine.game import act, walk
-        from .store import load_match, save_match
+        from .store import match_write
 
-        m = load_match()
-        if m is None:
-            return json.dumps({"ok": False, "error": "no match in progress"})
-        cmd = {
-            "player": player,
-            "x": int(x),
-            "y": int(y),
-            "team_reroll": bool(team_reroll),
-            "drop_ball": bool(drop_ball),
-        }
-        if action == "block":
-            cmd.update({"target": target, "follow_up": bool(follow_up)})
-            # Only when something was actually said. `prefer` is a word rather than
-            # an index precisely so that "I did not answer" and "I want the first
-            # die" can no longer arrive looking identical — the empty string is
-            # silence and the engine plays the side entitled to choose.
-            if str(prefer).strip():
-                cmd["prefer"] = str(prefer).strip().lower()
-            if second_target:
-                cmd["second_target"] = second_target
-            # The DEFENDER's choices. Each belongs to the coach being Blocked
-            # rather than the one Blocking, and each says "may" in the rules — so
-            # the engine's policy is a default, not the rule.
-            for field, value in (
-                ("sidestep_to", tuple(sidestep_to) if sidestep_to else None),
-                ("stand_firm", stand_firm),
-                ("trickster_to", tuple(trickster_to) if trickster_to else None),
-                ("juggernaut", juggernaut),
-            ):
-                if value is not None:
-                    cmd[field] = value
-        elif action in ("handoff", "blitz", "foul", "throwteam"):
-            cmd["target"] = target
-        # The agent plays at a human pace. This is a real wait, and it is the whole
-        # point: the board polls every couple of seconds, and a turn played faster
-        # than that is not something a person can watch happen.
-        waited = pace.wait()
-        before = len(m.events)
-        was = handover.owed(m)
-        if action == "move" and path:
-            # Save and pace BETWEEN squares, not just at the end. Both belong out here
-            # rather than in the engine, and both are the reason a run is watchable: the
-            # board polls every couple of seconds and reads the saved match, so a run
-            # persisted only once arrives as a jump cut — you cannot see which step cost
-            # the Dodge, which is the one thing worth watching a move for.
-            def after_step(_report):
-                save_match(m)
-                pace.wait()
+        # ⚠️ THE WHOLE ROUND TRIP IS SERIALISED, not just the save.
+        #
+        # This loads the match, applies an action and saves it back. A model
+        # batches independent tool calls IN PARALLEL — normal, and usually what
+        # you want — and two of them racing here both read the same state, each
+        # apply their action, and the second save silently discards the first.
+        # The action does not fail. It VANISHES, and the coach then spends its
+        # turn arguing with a board that disagrees with what it just did.
+        #
+        # Observed on a live agent, which worked it out itself and still lost the
+        # turn to it: "I intended to build a cage but the cage moves (h03, h06)
+        # did not persist due to the parallel-call race."
+        with match_write():
+            from .engine import handover, pace
+            from .engine.game import act, walk
+            from .store import load_match, save_match
 
-            report = walk(m, player, path, cmd=cmd, by=_seat_of(m, state), after_step=after_step)
-        else:
-            report = act(m, action, cmd, by=_seat_of(m, state))
-        save_match(m)
-        # The agent's own move can hand the game back — a Turnover does exactly
-        # that — so this side announces too. `changed` is what stops it firing on
-        # every action of its own turn.
-        announce(was, handover.owed(m))
-        if waited:
-            report["paced_s"] = round(waited, 2)
-        report["rolls"] = [r.describe() for e in m.events[before:] for r in e.rolls]
-        report["log"] = [e.text for e in m.events[before:] if e.text]
-        # Its own field, not a log line: `log` carries what HAPPENED on the pitch, and a
-        # note about how the coach is spending calls is not that.
-        if action == "move" and report.get("ok"):
-            hint = _step_hint(m, player, bool(path))
-            if hint:
-                report["hint"] = hint
-        return json.dumps(report)
+            m = load_match()
+            if m is None:
+                return json.dumps({"ok": False, "error": "no match in progress"})
+            cmd = {
+                "player": player,
+                "x": int(x),
+                "y": int(y),
+                "team_reroll": bool(team_reroll),
+                "drop_ball": bool(drop_ball),
+            }
+            if action == "block":
+                cmd.update({"target": target, "follow_up": bool(follow_up)})
+                # Only when something was actually said. `prefer` is a word rather than
+                # an index precisely so that "I did not answer" and "I want the first
+                # die" can no longer arrive looking identical — the empty string is
+                # silence and the engine plays the side entitled to choose.
+                if str(prefer).strip():
+                    cmd["prefer"] = str(prefer).strip().lower()
+                if second_target:
+                    cmd["second_target"] = second_target
+                # The DEFENDER's choices. Each belongs to the coach being Blocked
+                # rather than the one Blocking, and each says "may" in the rules — so
+                # the engine's policy is a default, not the rule.
+                for field, value in (
+                    ("sidestep_to", tuple(sidestep_to) if sidestep_to else None),
+                    ("stand_firm", stand_firm),
+                    ("trickster_to", tuple(trickster_to) if trickster_to else None),
+                    ("juggernaut", juggernaut),
+                ):
+                    if value is not None:
+                        cmd[field] = value
+            elif action in ("handoff", "blitz", "foul", "throwteam"):
+                cmd["target"] = target
+            # The agent plays at a human pace. This is a real wait, and it is the whole
+            # point: the board polls every couple of seconds, and a turn played faster
+            # than that is not something a person can watch happen.
+            waited = pace.wait()
+            before = len(m.events)
+            was = handover.owed(m)
+            if action == "move" and path:
+                # Save and pace BETWEEN squares, not just at the end. Both belong out here
+                # rather than in the engine, and both are the reason a run is watchable: the
+                # board polls every couple of seconds and reads the saved match, so a run
+                # persisted only once arrives as a jump cut — you cannot see which step cost
+                # the Dodge, which is the one thing worth watching a move for.
+                def after_step(_report):
+                    save_match(m)
+                    pace.wait()
+
+                report = walk(m, player, path, cmd=cmd, by=_seat_of(m, state), after_step=after_step)
+            else:
+                report = act(m, action, cmd, by=_seat_of(m, state))
+            save_match(m)
+            # The agent's own move can hand the game back — a Turnover does exactly
+            # that — so this side announces too. `changed` is what stops it firing on
+            # every action of its own turn.
+            announce(was, handover.owed(m))
+            if waited:
+                report["paced_s"] = round(waited, 2)
+            report["rolls"] = [r.describe() for e in m.events[before:] for r in e.rolls]
+            report["log"] = [e.text for e in m.events[before:] if e.text]
+            # Its own field, not a log line: `log` carries what HAPPENED on the pitch, and a
+            # note about how the coach is spending calls is not that.
+            if action == "move" and report.get("ok"):
+                hint = _step_hint(m, player, bool(path))
+                if hint:
+                    report["hint"] = hint
+            return json.dumps(report)
 
     @tool
     def bb_game_routes(player: str, top: int = 12) -> str:

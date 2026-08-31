@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import tempfile
+import threading
 from pathlib import Path
 
 from .pitch import Scenario
@@ -138,6 +139,34 @@ def save(scenario: Scenario) -> None:
 
 def match_path() -> Path:
     return state_dir() / "match.json"
+
+
+#: Serialises the read-modify-write around a match.
+#:
+#: ⚠️ WHY THIS EXISTS. A tool call loads the match from disk, applies an action,
+#: and saves it back. A model batches independent tool calls IN PARALLEL — that is
+#: normal and usually desirable — and two of them racing here both read the same
+#: state, each applies its own action, and the second save silently discards the
+#: first. The action does not fail. It vanishes.
+#:
+#: Observed on a live agent, which diagnosed it itself and then wasted the rest of
+#: its turn on it: "I intended to build a cage but the cage moves (h03, h06) did
+#: not persist due to the parallel-call race." It then re-read the board twenty-two
+#: times and tried to end its turn eleven times trying to make sense of a board
+#: that kept disagreeing with what it had just done.
+#:
+#: An RLock, not a file lock: the racing callers are threads in one process, and
+#: the same thread re-enters this while walking a path square by square.
+_MATCH_LOCK = threading.RLock()
+
+
+@contextlib.contextmanager
+def match_write():
+    """Hold for a whole load -> apply -> save. The unit that must be atomic is the
+    round trip, not the write: locking only `save_match` would still let two
+    callers read the same state and clobber each other."""
+    with _MATCH_LOCK:
+        yield
 
 
 def load_match():
