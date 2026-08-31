@@ -109,3 +109,79 @@ def test_the_match_being_over_stops_it_firing(monkeypatch):
     runner.stop()
     t.join(timeout=2)
     assert not fired, "a finished match must not be played on"
+
+
+def test_a_flickering_handover_does_not_fire_the_same_turn_twice(monkeypatch):
+    """THE DUPLICATE TASK, AND THE "turn is not mine" THAT CAME WITH IT.
+
+    Remembering only the PREVIOUS key is not enough. `owed` can flicker — a
+    question appears and is answered, a read lands mid-write — and an A -> B -> A
+    sequence re-fires A. Observed live: "firing away for H1t1" twice, two tasks in
+    one session, and a seat waking to a turn that had already moved on.
+    """
+    fired: list = []
+    seq = [
+        {"side": "away", "controller": "agent", "half": 1, "turn": 1, "why": "turn"},
+        {"side": "away", "controller": "agent", "half": 1, "turn": 1, "why": "answer"},
+        {"side": "away", "controller": "agent", "half": 1, "turn": 1, "why": "turn"},  # back to A
+    ]
+    calls = {"n": 0}
+
+    class _Match:
+        over = False
+        controllers = {"home": "agent", "away": "agent"}
+        session_ids = {"home": "s:home", "away": "s:away"}
+        session_id = "s"
+
+    def owed(_m):
+        i = min(calls["n"] // 3, len(seq) - 1)
+        calls["n"] += 1
+        return seq[i]
+
+    monkeypatch.setattr(runner, "IDLE_POLL_S", 0.01)
+    monkeypatch.setattr(runner, "TURN_TIMEOUT_S", 0.05)
+    monkeypatch.setattr("bloodbowl.store.load_match", lambda: _Match())
+    monkeypatch.setattr("bloodbowl.engine.handover.owed", owed)
+
+    t = runner.start(lambda o: fired.append((o["side"], o["why"])))
+    time.sleep(0.5)
+    runner.stop()
+    t.join(timeout=2)
+
+    turns = [f for f in fired if f == ("away", "turn")]
+    assert len(turns) <= 1, f"the same turn fired {len(turns)} times after a flicker: {fired}"
+
+
+def test_a_new_match_starts_with_a_clean_sheet(monkeypatch):
+    """The same half/turn/side belongs to a different game — a second match must
+    not be refused its first turn because the first match already played one."""
+    fired: list = []
+    state = {"sessions": {"home": "a:home", "away": "a:away"}}
+
+    class _Match:
+        over = False
+        controllers = {"home": "agent", "away": "agent"}
+        session_id = "a"
+
+        @property
+        def session_ids(self):
+            return state["sessions"]
+
+    monkeypatch.setattr(runner, "IDLE_POLL_S", 0.01)
+    # Long on purpose: the driver must notice the new match because the MATCH
+    # changed, not because it gave up waiting for the old turn.
+    monkeypatch.setattr(runner, "TURN_TIMEOUT_S", 60.0)
+    monkeypatch.setattr("bloodbowl.store.load_match", lambda: _Match())
+    monkeypatch.setattr(
+        "bloodbowl.engine.handover.owed",
+        lambda m: {"side": "home", "controller": "agent", "half": 1, "turn": 1, "why": "turn"},
+    )
+
+    t = runner.start(lambda o: fired.append(o["side"]))
+    time.sleep(0.15)
+    assert len(fired) == 1
+    state["sessions"] = {"home": "b:home", "away": "b:away"}  # a new match
+    time.sleep(0.15)
+    runner.stop()
+    t.join(timeout=2)
+    assert len(fired) == 2, "a new match must get its first turn fired"
