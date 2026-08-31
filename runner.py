@@ -84,14 +84,36 @@ def _loop(run_turn) -> None:
     from .engine import handover
     from .store import load_match
 
-    last_fired: tuple | None = None
+    # ⚠️ EVERY TURN THIS MATCH HAS ALREADY FIRED, not just the last one.
+    #
+    # Remembering only the PREVIOUS key is not enough: `owed` can flicker — a
+    # question appears and is answered, a read lands mid-write — and an
+    # A -> B -> A sequence then re-fires A. Observed: "firing away for H1t1"
+    # twice, two tasks in one session, and a seat waking to a turn that had
+    # already moved on and answering "the turn is not mine".
+    #
+    # A turn fires ONCE. The only thing that re-arms it is the timeout below,
+    # which says so out loud.
+    fired: set[tuple] = set()
+    match_key: str = ""
     while not _STOP.is_set():
         try:
             match = load_match()
             if match is None or match.over:
-                last_fired = None
+                fired.clear()
                 _rest(IDLE_POLL_S)
                 continue
+
+            # A new match starts with a clean sheet — the same half/turn/side
+            # belongs to a different game.
+            # getattr, not attribute access: this loop must survive a match shape
+            # it does not recognise. An exception here costs the whole driver, and
+            # a driver that dies is a board that never moves again.
+            sessions = getattr(match, "session_ids", None) or {}
+            here = "|".join(sorted(str(v) for v in sessions.values())) or str(getattr(match, "session_id", "") or "")
+            if here != match_key:
+                match_key = here
+                fired.clear()
 
             owed = handover.owed(match)
             if not owed or owed.get("controller") != "agent":
@@ -99,9 +121,10 @@ def _loop(run_turn) -> None:
                 continue
 
             key = _owed_key(owed)
-            if key == last_fired:
-                # Already fired this exact turn and the board has not moved on.
-                # Waiting is right: the seat is still playing it.
+            if key in fired:
+                # Already fired. Either the seat is still playing it, or the
+                # board flickered back to it — and firing again is how you get
+                # two tasks in one session and a seat told it is not its turn.
                 _rest(IDLE_POLL_S)
                 continue
 
@@ -112,7 +135,7 @@ def _loop(run_turn) -> None:
                 owed.get("turn"),
                 owed.get("why"),
             )
-            last_fired = key
+            fired.add(key)
             run_turn(owed)
 
             # WAIT FOR THE BOARD TO CHANGE HANDS, rather than firing again on a
@@ -124,6 +147,18 @@ def _loop(run_turn) -> None:
                 waited += IDLE_POLL_S
                 now = load_match()
                 if now is None or now.over:
+                    break
+                # ⚠️ A DIFFERENT MATCH ENDS THE WAIT IMMEDIATELY. Abandoning a game
+                # and starting another while a turn is in flight is ordinary — it
+                # is what anyone testing does — and without this the driver sat
+                # out the full timeout before noticing, so the new match looked
+                # dead for ten minutes.
+                now_sessions = getattr(now, "session_ids", None) or {}
+                now_here = "|".join(sorted(str(v) for v in now_sessions.values())) or str(
+                    getattr(now, "session_id", "") or ""
+                )
+                if now_here != match_key:
+                    log.info("[bloodbowl] auto: the match changed under a turn in flight — starting on the new one")
                     break
                 if _owed_key(handover.owed(now)) != key:
                     log.info(
@@ -141,7 +176,7 @@ def _loop(run_turn) -> None:
                     owed.get("turn"),
                     TURN_TIMEOUT_S,
                 )
-                last_fired = None
+                fired.discard(key)
         except Exception:  # noqa: BLE001 — the runner must outlive any one turn
             log.exception("[bloodbowl] auto: loop error; continuing")
             _rest(IDLE_POLL_S)
