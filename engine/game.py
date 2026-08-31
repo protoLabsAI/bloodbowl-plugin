@@ -1352,6 +1352,167 @@ def end_turn(match: Match, forced: bool = False, start_next: bool = True, dice=N
     return {"ok": True, "clock": match.clock.to_dict(), "over": match.over}
 
 
+def routes(match: Match, player_id: str, limit: int = 0) -> dict:
+    """Every square this player can reach, and the chance of ARRIVING ON THEIR FEET.
+
+    This is the thing a coach actually decides on and the one thing the board
+    could not tell them. `legal_moves` answers for the eight squares next to a
+    player, one step at a time; a run is three or four steps and its risk is the
+    PRODUCT of them, which is exactly the arithmetic people — and models — get
+    wrong. Three separate 2+ rolls is not "three safe rolls", it is 58%.
+
+    So the engine does the multiplying, for the same reason it rolls the dice: a
+    number the coach derives is a number the coach can derive wrongly, and the
+    whole design of this plugin is that rulings and arithmetic belong here.
+
+    `chance` is the probability of completing the whole route standing. It counts
+    every Dodge and every Rush the run needs, using the engine's own modifiers —
+    NOT a tidy approximation. What it does not model is what happens after a
+    failure (the turnover, the bounce), because those are outcomes rather than
+    odds, and `unknowns` names anything skipped so nothing is quietly assumed.
+    """
+    import heapq
+
+    from ..pitch import LENGTH, WIDTH
+    from .dice import chance
+    from .rules import MAX_RUSHES, STAND_UP_COST, agility_target, dodge_modifier, markers_of_square
+    from .state import touchdown_row
+
+    p = match.by_id(player_id)
+    if p is None:
+        return {"ok": False, "error": f"no player with id {player_id!r}"}
+    if p.place != "pitch":
+        return {"ok": False, "error": f"{p.name()} is not on the pitch"}
+
+    ag = agility_target(p)
+    budget = p.movement()
+    allowed = MAX_RUSHES
+    stand_cost = STAND_UP_COST if p.down == "prone" else 0
+    start_used = p.ma_used + stand_cost
+
+    # Best-first on probability: the FIRST time a square is settled it is by the
+    # safest route to it, so a later, riskier path to the same square is never
+    # worth exploring. (Max-probability has the same optimal-substructure that
+    # makes Dijkstra work, since every step multiplies by a factor <= 1.)
+    best: dict[tuple[int, int], dict] = {}
+    start = (p.x, p.y)
+    heap = [(-1.0, start_used, start, [])]
+    while heap:
+        neg, used, square, path = heapq.heappop(heap)
+        prob = -neg
+        if square in best:
+            continue
+        best[square] = {"chance": prob, "ma_used": used, "path": path}
+        marked_here = bool(markers_of_square(match, p.side, square[0], square[1]))
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if dx == 0 and dy == 0:
+                    continue
+                nx, ny = square[0] + dx, square[1] + dy
+                if not (1 <= nx <= WIDTH and 1 <= ny <= LENGTH):
+                    continue
+                if (nx, ny) in best or match.at(nx, ny) is not None:
+                    continue
+                rushes = max(0, (used + 1) - budget)
+                if rushes > allowed:
+                    continue
+                step = 1.0
+                # Leaving a Marked square costs a Dodge, modified by who Marks the
+                # square being moved INTO — never the one being left.
+                if marked_here:
+                    step *= chance(ag, dodge_modifier(match, p, nx, ny))
+                # A Rush is a 2+ for the step that goes past the Move Allowance.
+                if rushes > max(0, used - budget):
+                    step *= chance(2)
+                if step <= 0:
+                    continue
+                heapq.heappush(heap, (-(prob * step), used + 1, (nx, ny), [*path, [nx, ny]]))
+
+    best.pop(start, None)
+    squares = [
+        {"x": x, "y": y, "chance": round(v["chance"], 4), "steps": len(v["path"]), "path": v["path"]}
+        for (x, y), v in best.items()
+    ]
+    squares.sort(key=lambda s: (-s["chance"], s["steps"]))
+
+    out: dict = {"ok": True, "player": player_id, "squares": squares[:limit] if limit else squares}
+
+    # The two destinations that decide most turns, named rather than left to be
+    # picked out of the list.
+    target_row = touchdown_row(p.side)
+    scoring = [s for s in squares if s["y"] == target_row]
+    if scoring:
+        out["to_end_zone"] = max(scoring, key=lambda s: s["chance"])
+
+    ball = match.ball
+    if not ball.carrier and ball.in_play and not ball.in_air:
+        onto = next((s for s in squares if s["x"] == ball.x and s["y"] == ball.y), None)
+        if onto:
+            marking = -len(markers_of_square(match, p.side, ball.x, ball.y))
+            pick = chance(ag, marking)
+            out["to_ball"] = {
+                **onto,
+                "pick_up": round(pick, 4),
+                # Getting there and picking it up are two tests, and the coach
+                # cares about the pair — walking to a ball you then fumble is how
+                # a drive ends.
+                "chance_with_pick_up": round(onto["chance"] * pick, 4),
+            }
+
+    out["unknowns"] = [
+        "Jumping over a Prone player is not searched — it is a different test and a 2-square step.",
+        "What happens AFTER a failed roll (turnover, bounce, injury) is an outcome, not part of these odds.",
+        "Team Re-rolls are not counted: spending one is a decision, not a probability.",
+    ]
+    return out
+
+
+def situation(match: Match) -> dict:
+    """Direction, possession and distance to score — the three facts every Blood
+    Bowl decision hangs off, stated rather than left to be derived.
+
+    `scores_in` is the row that side must reach. `to_score` counts ROWS, not
+    squares walked: it is the distance the ball still has to travel, which is what
+    decides whether a drive is a two-turn score or a six-turn grind. It is not a
+    path and does not know about anybody in the way — `game.routes` is for that.
+    """
+    from .state import TURNS_PER_HALF, touchdown_row
+
+    active = match.clock.active
+    carrier = None
+    for p in match.players:
+        if p.id == match.ball.carrier:
+            carrier = p
+            break
+
+    out = {
+        "active": active,
+        "half": match.clock.half,
+        "turn": match.clock.turn,
+        "turns_left_this_half": max(0, TURNS_PER_HALF - match.clock.turn),
+        "score": dict(match.score),
+        "scores_in": {side: touchdown_row(side) for side in ("home", "away")},
+        "ball": {
+            "x": match.ball.x,
+            "y": match.ball.y,
+            "carrier": match.ball.carrier or "",
+            "loose": not match.ball.carrier,
+        },
+    }
+    if carrier is not None:
+        target = touchdown_row(carrier.side)
+        out["ball"].update(
+            {
+                "held_by": carrier.side,
+                "carrier_at": [carrier.x, carrier.y],
+                # Rows between the carrier and the line they are running at.
+                "to_score": abs(target - carrier.y),
+                "ours": carrier.side == active,
+            }
+        )
+    return out
+
+
 def state_report(match: Match) -> dict:
     """The match as a caller should see it: the board, plus what the engine is
     knowingly not applying to it.
@@ -1368,6 +1529,17 @@ def state_report(match: Match) -> dict:
         # two gaps because it sounds settled.
         "partly_modelled_skills": partly_modelled_on_pitch(match),
     }
+    # WHERE THE GAME ACTUALLY IS, in one object, at the top level.
+    #
+    # Everything here is derivable from `match` and every reader was deriving it
+    # — badly. An agent playing a seat was recorded mid-turn arguing with itself
+    # about which half the ball was in and which way it was attacking, having
+    # spent a third of its budget on queries before moving anybody. Direction,
+    # possession and distance-to-score are the three facts every decision in this
+    # game hangs off; a board that makes you compute them first is a board that
+    # gets played badly.
+    out["situation"] = situation(match)
+
     if match.pending:
         # Top level, not buried in `match`: while a Kick-off Event is unanswered
         # NOTHING else can happen, so it is the first thing about the position and

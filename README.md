@@ -197,7 +197,7 @@ A model can take eight activations in under a second, which is a diff rather tha
 game — the pace is what makes a turn something you can watch happen. Your own
 clicks are never paced.
 
-**Playing** — `bb_game_new` · `bb_game_state` · `bb_game_legal` · `bb_game_odds` ·
+**Playing** — `bb_game_new` · `bb_game_state` · `bb_game_legal` · `bb_game_routes` · `bb_game_odds` ·
 `bb_game_act` (`path=[[8,15],[8,16]]` walks a run; `drop_ball=True` for a Fumblerooski) ·
 `bb_game_end_turn` · `bb_game_kickoff` · `bb_game_log` · `bb_game_abandon` (refused while a coach is playing) · `bb_pass_ranges`
 
@@ -230,7 +230,14 @@ Casualty branch asks the same way — two Casualty Rolls, and the Coach picks.
 
 **Finishing** — `bb_game_here` · `bb_game_nudge` · `bb_game_setup` · `bb_game_apothecary` · `bb_game_extra_time` · `bb_game_penalties`
 
-`bb_game_legal` and `bb_game_odds` are free and side-effect-free — ask them as
+`bb_game_routes` answers the question a coach actually has: *where can this player
+get to, and what are the odds of arriving on their feet?* It searches every reachable
+square and multiplies the Dodges and Rushes on the way, because a run's risk is the
+product of its steps and three separate 2+ rolls is 58%, not "three safe rolls". It
+names the safest route to the End Zone you are attacking, and to a loose ball with
+the pick-up rolled in.
+
+`bb_game_legal`, `bb_game_routes` and `bb_game_odds` are free and side-effect-free — ask them as
 often as you like. They exist so the coach never has to work out a dodge modifier
 or a block's dice count itself.
 
