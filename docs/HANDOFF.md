@@ -412,6 +412,26 @@ Two things about it worth keeping:
 The view keeps its own client-side walk (`web/js/game.js:walkPath`) because it has
 to render between steps; the halt conditions are deliberately the same list.
 
+> **⚠️ AND THE SECOND MATCH FOUND A RACE, WHICH THE COACH DIAGNOSED ITSELF.**
+> A tool call loads the match, applies an action and saves it back. A model
+> batches independent tool calls IN PARALLEL — normal, and usually desirable —
+> and two of them racing both read the same state, each apply their action, and
+> the second save silently discards the first. **The action does not fail; it
+> vanishes.**
+>
+> The seat worked it out and still lost the turn to it: *"I intended to build a
+> cage but the cage moves (h03, h06) did not persist due to the parallel-call
+> race."* It then read the board 22 times and tried to end its turn 11 times,
+> arguing with a board that disagreed with what it had just done. That is where
+> most of a 99-call turn went.
+>
+> `store.match_write()` serialises the WHOLE round trip, because the unit that
+> must be atomic is load→apply→save and not the write: locking only `save_match`
+> still lets two callers read the same state and clobber each other. The test
+> drives the real tool from two threads and **fails three times out of three
+> without the lock** — a test that called `game.act` directly would pass against
+> the broken version, which is the trap here.
+
 ### The coaching skill (`skills/coaching-a-turn/`)
 
 > **⚠️ THE FIRST MEASURED MATCH FOUND THE HOLE IN THIS SKILL, ON TURN ONE.** A seat

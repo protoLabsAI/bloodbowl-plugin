@@ -242,3 +242,64 @@ def test_the_skill_states_the_carrier_rule_as_a_rule():
     assert "THE BALL CARRIER DOES NOT HIT ANYONE" in text
     assert "never throws a Block, never declares a Blitz, and never Fouls" in text
     assert "outranks everything below it" in text, "it has to beat the other steps, not sit among them"
+
+
+# --- the parallel-call race ------------------------------------------------
+
+
+def test_two_actions_at_once_do_not_lose_one(registry, tmp_path):
+    """FROM A LIVE MATCH. A model batches independent tool calls in parallel —
+    normal, and usually what you want. Two of them here both loaded the same
+    match, each applied their action, and the second save silently discarded the
+    first. The action did not fail; it VANISHED.
+
+    The coach worked it out itself and still lost the turn to it: "I intended to
+    build a cage but the cage moves (h03, h06) did not persist due to the
+    parallel-call race." It then re-read the board 22 times and tried to end its
+    turn 11 times, arguing with a board that disagreed with what it had just done.
+
+    This drives the REAL tool from threads, because the bug only exists in the
+    read-modify-write round trip — a test that called `game.act` directly would
+    pass against the broken version.
+    """
+    import json as j
+    import threading
+
+    import bloodbowl
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+
+    # A board with two home players who can each walk somewhere harmless.
+    tools["bb_pitch_clear"].invoke({})
+    for pos, x, y in (("Orc Lineman", 5, 10), ("Orc Lineman", 9, 10)):
+        tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": pos, "x": x, "y": y})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 2, "y": 20})
+    tools["bb_game_new"].invoke({"seed": 4, "kicking_to": "home"})
+    _decline_any_pending(tools)
+
+    results: list = []
+
+    def move(pid, x, y):
+        results.append(j.loads(tools["bb_game_act"].invoke({"action": "move", "player": pid, "x": x, "y": y})))
+
+    a = threading.Thread(target=move, args=("h00", 5, 11))
+    b = threading.Thread(target=move, args=("h01", 9, 11))
+    a.start(), b.start()
+    a.join(), b.join()
+
+    state = j.loads(tools["bb_game_state"].invoke({}))
+    where = {p["id"]: (p["x"], p["y"]) for p in state["match"]["players"]}
+    moved = sum(1 for pid, sq in (("h00", (5, 11)), ("h01", (9, 11))) if where.get(pid) == sq)
+    assert moved == 2, f"one of two parallel moves was lost: {where}, replies {[r.get('ok') for r in results]}"
+
+
+def _decline_any_pending(tools):
+    """Kick-off Events that ask a question block everything until answered."""
+    import json as j
+
+    for _ in range(4):
+        st = j.loads(tools["bb_game_state"].invoke({}))
+        if not st.get("waiting_on"):
+            return
+        tools["bb_game_choose"].invoke({"decline": True})
