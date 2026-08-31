@@ -176,16 +176,48 @@ def _step_hint(match, player: str, used_path: bool) -> str:
     )
 
 
+#: The last handover we published, so the same one is never published twice.
+#: Process-local, like the pace and the step hint — a restart forgetting it is
+#: the right cost.
+_LAST_ANNOUNCED: tuple | None = None
+
+
 def announce(before: dict, after: dict) -> dict:
     """Publish `bloodbowl.turn_ready` when the match starts waiting on somebody NEW.
 
     This is the seam that makes a head-to-head playable: the human can see the board
     and knows it is their move, but an agent only acts when something asks it to.
     `sdk.react_on` turns this event into an agent turn — see `register`.
+
+    ⚠️ ONCE PER HANDOVER, AND THE GUARD IS NOT OPTIONAL.
+
+    Several routes publish — `act`, `choose`, `end-turn` — and one tool call can
+    go through more than one of them (an action that causes a Turnover ends the
+    turn, and both announce). `handover.changed` compares the before it was
+    HANDED against the after, so each caller passes a different `before` and each
+    one looks like news.
+
+    Since the job id became unique per attempt (so a re-nudge could not cancel a
+    running turn), `run_in_session` no longer collapses them either. The result
+    measured on a live agent: **NINE nudges for a single handover**, nine
+    concurrent A2A tasks for the same seat, contending until they all stalled at
+    900s with "no progress while starting up". The game stopped dead, and the log
+    showed nine cheerful "turn enqueued" lines.
+
+    So the fact is published once. A DIFFERENT handover — the other side, the next
+    turn, a question — publishes again; the same one does not, however many routes
+    noticed it.
     """
+    global _LAST_ANNOUNCED
     from .engine import handover
 
     fresh = handover.changed(before, after)
+    if fresh:
+        key = (fresh.get("half"), fresh.get("turn"), fresh.get("side"), fresh.get("why"))
+        if key == _LAST_ANNOUNCED:
+            log.debug("[bloodbowl] handover %s already announced — not nudging again", key)
+            return {}
+        _LAST_ANNOUNCED = key
     if fresh and _emit is not None:
         try:
             _emit("turn_ready", dict(fresh))
