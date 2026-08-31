@@ -448,6 +448,35 @@ to render between steps; the halt conditions are deliberately the same list.
 > without the lock** — a test that called `game.act` directly would pass against
 > the broken version, which is the trap here.
 
+### The board rides the prompt (`middleware.py`)
+
+A seat was reading `bb_game_state` **nine to sixteen times a turn**. Three
+quarters of every read is the ROSTER — position, team, badge, statline — none of
+which can change once a match has started, all of it re-sent each time. And
+between two reads the board MOVES, so a coach working from an earlier answer is
+working from a board that no longer exists. One spent a turn arguing with exactly
+that.
+
+So the board is attached to the system message for each model call, through
+`registry.register_middleware` (ADR 0032) and `wrap_model_call` —
+`graph/middleware/room_cast.py` is the reference implementation. **209 tokens
+against 1,654 for a full state read**, on every call, for no round trip.
+
+**⚠️ IT REPLACES ITS OWN PREVIOUS BLOCK.** Sixteen model calls must leave ONE
+board in the request; sixteen stale ones would be worse than the reads they
+replace. That merge is `attach()`, a PLAIN FUNCTION rather than a method, because
+`AgentMiddleware` comes from the host — a test of the middleware class skips
+wherever this plugin's own suite runs, which is precisely where a regression gets
+caught. Test the pure part.
+
+**It does not replace `bb_game_state`**, which is still the full honest answer
+with the unmodelled-skill reporting attached. This is the position at a glance,
+for the decisions that need it every time.
+
+Guarded like the nudge: no host, no middleware. And a board that cannot be
+rendered logs and returns the request untouched — the coach still has the tool,
+and a failed decoration must never take a turn down.
+
 ### The coaching skill (`skills/coaching-a-turn/`)
 
 > **⚠️ THE FIRST MEASURED MATCH FOUND THE HOLE IN THIS SKILL, ON TURN ONE.** A seat

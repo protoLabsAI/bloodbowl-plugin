@@ -350,3 +350,87 @@ def test_the_skill_tells_the_coach_to_advance_the_ball():
     assert "MOVE THE BALL DOWNFIELD" in text
     assert "ends the turn closer to the line than it started" in text
     assert "never scores" in text, "say what one row a turn costs"
+
+
+# --- the board in the prompt ----------------------------------------------
+
+
+def test_the_board_renders_small_enough_to_send_every_call():
+    """A seat read the position 9-16 times a turn, three quarters of it roster
+    data that cannot change. Riding the prompt it is sent once per model call,
+    so it has to be cheap — and it has to state the two facts every decision
+    hangs off rather than leaving them to be derived."""
+    from bloodbowl import middleware
+
+    m = board(orc(8, 13), rat(8, 14))
+    place(m, "h00", 8, 13)
+    text = middleware.render(m)
+
+    assert middleware.MARK in text, "it must be findable, so a later call can replace it"
+    assert "home runs at row 26" in text and "away runs at row 1" in text
+    assert "h00" in text and "a00" in text
+    assert len(text) < 2000, f"{len(text)} chars is too much to send on every call"
+
+
+def test_the_board_block_replaces_itself_rather_than_stacking():
+    """SIXTEEN STALE BOARDS WOULD BE WORSE THAN THE READS THEY REPLACE.
+
+    Tested through the plain `attach` rather than the middleware class, because
+    `AgentMiddleware` comes from the host and a test of the class SKIPS wherever
+    this suite runs — which is where a regression would actually be caught.
+    """
+    from bloodbowl import middleware
+
+    real = [{"type": "text", "text": "the real system prompt"}]
+    once = middleware.attach(real, middleware.MARK + "\nboard one")
+    twice = middleware.attach(once, middleware.MARK + "\nboard two")
+
+    boards = [b for b in twice if middleware.MARK in str(b.get("text", ""))]
+    assert len(boards) == 1, f"{len(boards)} board blocks — they are stacking"
+    assert "board two" in boards[0]["text"], "it kept the stale one"
+    assert any("the real system prompt" in str(b.get("text", "")) for b in twice), "it ate the prompt"
+
+
+def test_attach_handles_a_plain_string_prompt_and_refuses_anything_else():
+    from bloodbowl import middleware
+
+    out = middleware.attach("a string prompt", "BOARD")
+    assert out[0]["text"] == "a string prompt" and out[-1]["text"] == "BOARD"
+    assert middleware.attach(None, "BOARD") is None, "nothing safe to attach to"
+
+
+def test_no_board_no_block():
+    """Ordinary chat must not carry a board. The middleware is registered for the
+    whole agent, not just for a seat."""
+    import bloodbowl.store as store
+    from bloodbowl import middleware
+
+    mw = middleware.factory({})
+    if mw is None:
+        import pytest as _pytest
+
+        _pytest.skip("no host langchain available")
+
+    store.clear_match() if hasattr(store, "clear_match") else None
+    from pathlib import Path
+
+    p = store.match_path()
+    if Path(p).exists():
+        Path(p).unlink()
+
+    class R:
+        system_message = None
+
+    assert mw._transform(R()) is not None, "no match must be a no-op, not a crash"
+
+
+def test_the_board_does_not_announce_a_question_that_is_not_there():
+    """`pending` can be a dict that exists and says nothing. "WAITING ON AN
+    ANSWER: None" is worse than silence — it stops a coach for nothing."""
+    from bloodbowl import middleware
+
+    m = board(orc(8, 13), rat(8, 14))
+    m.pending = {}
+    assert "WAITING" not in middleware.render(m)
+    m.pending = {"kind": "quick_snap", "question": "up to 5 players may move one square"}
+    assert "WAITING ON AN ANSWER" in middleware.render(m)

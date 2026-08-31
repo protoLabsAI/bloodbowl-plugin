@@ -219,6 +219,19 @@ def register(registry) -> None:
         log.exception("[bloodbowl] range-ruler config failed")
 
     try:
+        # THE BOARD RIDES THE PROMPT (ADR 0032). A seat was reading the position
+        # nine to sixteen times a turn, and between two reads the board moves —
+        # so a coach working from an earlier answer is working from a board that
+        # no longer exists. Attached per model call, it is always current, costs
+        # no round trip, and replaces its own previous copy instead of stacking.
+        from .middleware import factory as _board_middleware
+
+        if hasattr(registry, "register_middleware"):
+            registry.register_middleware(_board_middleware)
+    except Exception:  # noqa: BLE001
+        log.exception("[bloodbowl] range-ruler config failed")
+
+    try:
         from .api import build_data_router, build_game_router, build_view_router
 
         registry.register_router(build_view_router(cfg), prefix="/plugins/bloodbowl")

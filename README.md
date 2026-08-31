@@ -244,6 +244,17 @@ ground can I take without falling over".
 often as you like. They exist so the coach never has to work out a dodge modifier
 or a block's dice count itself.
 
+## The board in the prompt
+
+Playing a turn used to mean reading `bb_game_state` nine to sixteen times, three
+quarters of it roster data that cannot change — and the board moves between reads, so
+an earlier answer describes a board that no longer exists.
+
+The plugin registers a middleware (ADR 0032) that attaches the live position to the
+system message on each model call: **209 tokens against 1,654**, always current, no
+round trip, and it replaces its own previous copy rather than stacking. `bb_game_state`
+is still there for the full answer.
+
 ## The coaching skill
 
 `skills/coaching-a-turn/SKILL.md` ships with the plugin, so any agent that installs
