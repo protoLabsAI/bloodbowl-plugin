@@ -1,6 +1,6 @@
 id: bloodbowl
 name: Blood Bowl (pitch, scenarios, rosters)
-version: 0.7.0
+version: 0.8.0
 description: >-
   A real 26x15 Blood Bowl pitch you can play on. Set a scenario up by hand, from a
   preset, or by asking the agent — then play it from kick-off to full time with the
