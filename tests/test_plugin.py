@@ -2686,11 +2686,16 @@ def test_the_coaching_skill_is_an_ordered_procedure_not_a_pile_of_advice():
     # margin, not the meaning.
     body = " ".join(raw.split())
     assert len(steps) >= 6, f"expected an ordered list of steps, found {steps}"
-    assert steps[0].startswith("### 1."), "the steps have to be numbered to be an order"
+    # Step ZERO is answering a pending question, which outranks the turn itself —
+    # a match deadlocked because a seat analysed a Kick-off question instead of
+    # answering it, and while one is open nothing in the game can happen at all.
+    assert steps[0].startswith("### 0."), "answering a pending question comes before the turn"
+    assert steps[1].startswith("### 1."), "the steps have to be numbered to be an order"
     assert "top to bottom" in body, "say that it is executed in order, not surveyed"
 
     # The thresholds are the operational half; without them "score if you can" is
     # not a decision procedure.
+    assert "DECLINING IS ALWAYS LEGAL" in body, "a blocked game is worse than a suboptimal answer"
     for number in ("0.70", "0.33", "0.94"):
         assert number in body, f"missing the {number} threshold"
     # And they must be marked as a default to argue with, not scripture.

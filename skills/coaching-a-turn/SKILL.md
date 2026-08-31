@@ -44,6 +44,27 @@ Then decide what kind of turn this is, in one line, before moving anyone:
 
 ## The order
 
+### 0. IF THE ENGINE IS WAITING ON AN ANSWER, ANSWER IT — FIRST, AND FAST
+
+`situation` and the board both say when a Kick-off Event is waiting on you. **While
+a question is unanswered NOTHING can happen** — not your turn, not the other
+coach's, not even the ball landing. The game is stopped until you speak.
+
+So answer it before anything else, and **answer it cheaply**. These are usually a
+free bonus; the difference between the best answer and a decent one is a square or
+two, and it is never worth a fraction of what stopping the game costs.
+
+**DECLINING IS ALWAYS LEGAL AND IS A REAL ANSWER.** Every one of these says the
+Coach *may*. If the right choice is not obvious within two or three tool calls,
+decline and get on with the game.
+
+*This is step zero because a match deadlocked on it.* A seat was asked a Charge!
+question — up to six players get a free move — and spent its ENTIRE step budget
+working out the perfect six, checking tackle zones square by square by hand. It
+never answered. The board sat frozen at the kick-off, and because the clock still
+read "home to act" nothing about it looked broken. A suboptimal Charge! costs a
+square. An unanswered one costs the match.
+
 ### 1. Score if you can
 
 If the carrier's `to_end_zone.chance` from `bb_game_routes` is **≥ 0.70**, take it.

@@ -502,6 +502,25 @@ Guarded like the nudge: no host, no middleware. And a board that cannot be
 rendered logs and returns the request untouched — the coach still has the tool,
 and a failed decoration must never take a turn down.
 
+> **⚠️ A FULL MATCH DEADLOCKED AT THE KICK-OFF, AND NOTHING LOOKED WRONG.**
+> Kick-off Event 10 is CHARGE! — up to D3+3 players get a free Move — and it
+> ASKS. While the question is open nothing can happen: not either turn, not even
+> the ball landing. The clock still reads "home to act" throughout, so a frozen
+> board looks exactly like a slow model.
+>
+> The seat was nudged, ran, and spent its ENTIRE step budget choosing the perfect
+> six players — checking tackle zones square by square by hand, 33 `routes` calls
+> and 10 `choose` attempts — and never answered. Reproducible on the seed.
+>
+> It is step ZERO of the skill now: answer a pending question first and cheaply,
+> and **declining is always legal and is a real answer**. These are free bonuses;
+> the best answer beats a decent one by a square, and stopping the game costs the
+> match. The board block in the prompt says the same thing at the point of
+> decision.
+>
+> Worth knowing for diagnosis: `pending` in `bb_game_state`, and the whole game
+> stopped while the clock looks normal.
+
 ### The coaching skill (`skills/coaching-a-turn/`)
 
 > **⚠️ THE FIRST MEASURED MATCH FOUND THE HOLE IN THIS SKILL, ON TURN ONE.** A seat

@@ -69,7 +69,11 @@ def render(match, session_id: str = "") -> str:
     # it tells a coach to stop for something that is not there.
     question = (match.pending or {}).get("question") or (match.pending or {}).get("kind")
     if question:
-        lines.append(f"WAITING ON AN ANSWER — nothing else can happen until it is given: {question}")
+        lines.append(
+            f"⚠️ WAITING ON AN ANSWER FROM {str(match.pending.get('side') or '?').upper()} — the whole game is "
+            f"stopped until it is given, including the ball landing. Answer with bb_game_choose; declining is "
+            f"always legal and is a real answer. QUESTION: {question}"
+        )
 
     for side in ("home", "away"):
         team = match.home_team if side == "home" else match.away_team
