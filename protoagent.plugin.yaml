@@ -16,6 +16,15 @@ config_section: bloodbowl
 config:
   # Where the current board is persisted. Empty = the plugin's own state/ dir.
   state_dir: ""
+  # Let the agent play its own turns, unprompted.
+  #
+  # OFF by default, and that default is deliberate. Auto mode is a background
+  # loop that spends MODEL CAPACITY with nobody watching: a full-AI match is
+  # ~32 turns of tool-calling that will happily run for an hour against the
+  # same gateway your real work queues on. Head-to-head play does not need it
+  # — ending your turn nudges the agent directly — so turning this on is a
+  # choice to let the machine play by itself, made once, on purpose.
+  auto_play: false
   # Your own player icons. Empty = the ones that ship with the plugin.
   #
   # A pack only needs to hold what it REPLACES — resolution falls through per

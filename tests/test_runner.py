@@ -185,3 +185,38 @@ def test_a_new_match_starts_with_a_clean_sheet(monkeypatch):
     runner.stop()
     t.join(timeout=2)
     assert len(fired) == 2, "a new match must get its first turn fired"
+
+
+# --- auto mode is OPT-IN -----------------------------------------------------
+# The default is a safety property, not a preference: `start()` drives a loop that
+# spends model capacity unattended. It shipped ON once and quietly competed with
+# real work for the local gateway, so these pin the default rather than the wiring.
+
+
+def test_auto_play_defaults_off():
+    """No config, empty config, and a config that never mentions it are all OFF."""
+    assert runner.auto_play(None) is False
+    assert runner.auto_play({}) is False
+    assert runner.auto_play({"state_dir": "/tmp"}) is False
+
+
+def test_auto_play_manifest_default_is_off():
+    """The SHIPPED default, read from the manifest — not just the code path.
+
+    A helper that defaults off is no use if the manifest writes `true` into every
+    fresh install's config, so assert the file itself.
+    """
+    import pathlib
+
+    import yaml
+
+    manifest = yaml.safe_load((pathlib.Path(__file__).parent.parent / "protoagent.plugin.yaml").read_text())
+    assert manifest["config"]["auto_play"] is False
+
+
+def test_auto_play_reads_the_shapes_yaml_and_humans_produce():
+    """Bools from YAML, strings from a text field. Both must work."""
+    for on in (True, "true", "True", " on ", "yes", "1"):
+        assert runner.auto_play({"auto_play": on}) is True, on
+    for off in (False, "false", "off", "no", "0", "", "  ", None):
+        assert runner.auto_play({"auto_play": off}) is False, off
