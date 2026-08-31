@@ -520,6 +520,24 @@ def test_validate_is_free_of_side_effects_so_a_coach_can_ask_about_every_square(
 # --- the game loop through the tools --------------------------------------
 
 
+def read_board():
+    """The saved match as a dict, for tests that used to call `bb_game_state`.
+
+    That tool is gone: the board rides the prompt now, and a seat that could ask
+    for it called it 66 times in one turn while already holding it. Tests still
+    need to look at the position, so they read the STORE — which is what the tool
+    did anyway, minus a round trip.
+    """
+
+    from bloodbowl.engine.game import state_report
+    from bloodbowl.store import load_match
+
+    m = load_match()
+    if m is None:
+        return {"ok": False, "error": "no match in progress"}
+    return {"ok": True, **state_report(m)}
+
+
 def _tools(registry):
     import bloodbowl
 
@@ -588,11 +606,11 @@ def test_legal_reports_every_neighbour_without_changing_the_game(registry):
     _setup_board()
     t = _tools(registry)
     t["bb_game_new"].invoke({"seed": 3, "kicking_to": "home"})
-    before = j.loads(t["bb_game_state"].invoke({}))
+    before = read_board()
     out = j.loads(t["bb_game_legal"].invoke({"player": "h00"}))
     assert out["ok"] and len(out["squares"]) == 8
     assert any(s["legal"] and s.get("dodge") for s in out["squares"]), "this player is Marked, so moves need a Dodge"
-    after = j.loads(t["bb_game_state"].invoke({}))
+    after = read_board()
     assert before == after, "asking what is legal must not advance the game"
 
 
@@ -669,7 +687,7 @@ def test_abandoning_a_match_leaves_the_board(registry):
     t = _tools(registry)
     t["bb_game_new"].invoke({"seed": 1, "kicking_to": "home"})
     assert j.loads(t["bb_game_abandon"].invoke({}))["discarded"] is True
-    assert j.loads(t["bb_game_state"].invoke({}))["ok"] is False
+    assert read_board()["ok"] is False
 
     from bloodbowl.store import load
 

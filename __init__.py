@@ -119,7 +119,7 @@ def _ai_sessions(base: str) -> dict:
     ever played reused `bloodbowl:home` and `bloodbowl:away`. A seat therefore inherited
     every earlier match's transcript — including, after two games were abandoned, three
     consecutive turns concluding "No match in progress — game already concluded". It then
-    repeated that conclusion for a live match WITHOUT CALLING bb_game_state at all, and
+    repeated that conclusion for a live match WITHOUT READING THE BOARD at all, and
     the game sat frozen for nine minutes while the nudges fired into it.
 
     A model trusts its own recent output over its instructions; the fix is not to argue
@@ -304,7 +304,8 @@ def register(registry) -> None:
                 prompt = (
                     f"Your turn in the Blood Bowl match: you play {d.get('side')}, and it was "
                     f"half {d.get('half')}, turn {d.get('turn')} when this was sent.\n\n"
-                    "Read the board with bb_game_state, then PLAY THE WHOLE TURN — activate the "
+                    "The board is in your prompt already — do not go looking for it. "
+                    "PLAY THE WHOLE TURN — activate the "
                     "players you want and finish with bb_game_end_turn, which hands the board back. "
                     "bb_game_legal and bb_game_odds are free, so check before you commit.\n\n"
                     "THE BOARD IS THE TRUTH, not this message. Nudges queue, so the clock may have "
@@ -320,7 +321,7 @@ def register(registry) -> None:
             session = str(d.get("session_id") or "") or "system:activity"
             # A FULL-AI SEAT GETS A FRESH CONVERSATION PER TURN.
             #
-            # A seat's context grows by roughly 40k tokens a turn — one `bb_game_state` is
+            # A seat's context grows by roughly 40k tokens a turn — a full state read was
             # ~2.6k, `bb_game_legal` is asked per player, and every `bb_game_act` returns
             # its events. Measured on a live match: an away seat rebuilt 165,000 tokens in
             # FOUR turns after being purged. It then degraded exactly as you would expect —
@@ -827,31 +828,6 @@ def _tools(cfg: dict):
         return json.dumps({"ok": True, "session_id": sid, "was": was, "message": "your turns will arrive here"})
 
     @tool
-    def bb_game_state() -> str:
-        """The match as it stands: clock, score, ball, and every player with their
-        square, status and movement used.
-
-        Read this rather than recalling where anyone was — the board changes every
-        action.
-
-        ``unmodelled_skills`` lists the Skills currently on the pitch that this
-        engine does NOT apply, and who is carrying them. Worth a glance before
-        promising a coach what a player will do.
-
-        ``partly_modelled_skills`` is the one that catches people out: a Skill the
-        engine applies in PART, with the clause it leaves out spelled in
-        ``not_applied``. Read it before saying a skill "works" — half of a skill
-        working looks exactly like all of it working.
-        """
-        from .engine.game import state_report
-        from .store import load_match
-
-        m = load_match()
-        if m is None:
-            return json.dumps({"ok": False, "error": "no match in progress; start one with bb_game_new"})
-        return json.dumps({"ok": True, **state_report(m)})
-
-    @tool
     def bb_game_legal(player: str) -> str:
         """What a player may do right now — every square they could step to, which
         need a Dodge and at what modifier, and which need a Rush.
@@ -1196,7 +1172,7 @@ def _tools(cfg: dict):
 
         Four Kick-off Events say "the Coach selects…", and the engine will not
         choose for you — it pauses the Drive, says what it is waiting for in
-        ``bb_game_state``'s ``waiting_on``, and refuses other actions until you
+        the board in your prompt, and refuses other actions until you
         answer. Nothing else can happen in between: the ball is still in the air
         and the first turn has not started.
 
@@ -1619,7 +1595,6 @@ def _tools(cfg: dict):
         bb_preset_save,
         bb_preset_delete,
         bb_game_new,
-        bb_game_state,
         bb_game_legal,
         bb_game_act,
         bb_game_routes,

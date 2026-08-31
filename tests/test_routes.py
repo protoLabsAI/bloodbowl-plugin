@@ -14,6 +14,24 @@ from bloodbowl.engine.game import legal_moves, new_match, routes, situation
 from bloodbowl.pitch import Player, Scenario
 
 
+def read_board():
+    """The saved match as a dict, for tests that used to call `bb_game_state`.
+
+    That tool is gone: the board rides the prompt now, and a seat that could ask
+    for it called it 66 times in one turn while already holding it. Tests still
+    need to look at the position, so they read the STORE — which is what the tool
+    did anyway, minus a round trip.
+    """
+
+    from bloodbowl.engine.game import state_report
+    from bloodbowl.store import load_match
+
+    m = load_match()
+    if m is None:
+        return {"ok": False, "error": "no match in progress"}
+    return {"ok": True, **state_report(m)}
+
+
 def place(match, pid, x, y):
     """Put a player where the test wants them, AFTER the match starts.
 
@@ -288,7 +306,7 @@ def test_two_actions_at_once_do_not_lose_one(registry, tmp_path):
     a.start(), b.start()
     a.join(), b.join()
 
-    state = j.loads(tools["bb_game_state"].invoke({}))
+    state = read_board()
     where = {p["id"]: (p["x"], p["y"]) for p in state["match"]["players"]}
     moved = sum(1 for pid, sq in (("h00", (5, 11)), ("h01", (9, 11))) if where.get(pid) == sq)
     assert moved == 2, f"one of two parallel moves was lost: {where}, replies {[r.get('ok') for r in results]}"
@@ -296,10 +314,9 @@ def test_two_actions_at_once_do_not_lose_one(registry, tmp_path):
 
 def _decline_any_pending(tools):
     """Kick-off Events that ask a question block everything until answered."""
-    import json as j
 
     for _ in range(4):
-        st = j.loads(tools["bb_game_state"].invoke({}))
+        st = read_board()
         if not st.get("waiting_on"):
             return
         tools["bb_game_choose"].invoke({"decline": True})

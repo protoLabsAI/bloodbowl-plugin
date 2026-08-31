@@ -746,6 +746,24 @@ def test_the_page_loads_its_assets_through_the_slug_aware_base(client):
     assert 'href="/plugins/' not in page
 
 
+def read_board():
+    """The saved match as a dict, for tests that used to call `bb_game_state`.
+
+    That tool is gone: the board rides the prompt now, and a seat that could ask
+    for it called it 66 times in one turn while already holding it. Tests still
+    need to look at the position, so they read the STORE — which is what the tool
+    did anyway, minus a round trip.
+    """
+
+    from bloodbowl.engine.game import state_report
+    from bloodbowl.store import load_match
+
+    m = load_match()
+    if m is None:
+        return {"ok": False, "error": "no match in progress"}
+    return {"ok": True, **state_report(m)}
+
+
 def _decomment(text: str) -> str:
     """Strip /* */ and // comments.
 
@@ -1138,7 +1156,7 @@ def test_the_tools_say_the_engine_is_waiting_before_an_action_is_refused(registr
         raise AssertionError("no seed in 1..39 rolled a Kick-off Event that asks the Coach anything")
 
     assert "bb_game_choose" in started["message"], started["message"]
-    state = json.loads(tools["bb_game_state"].invoke({}))
+    state = read_board()
     assert state["waiting_on"]["choice"] == started["pending"]["choice"]
 
 
@@ -1212,7 +1230,7 @@ def test_the_apothecary_casualty_choice_works_through_the_tools(registry):
     assert asked["ok"] and asked["pending"]["choice"] == "apothecary", asked
     assert len(asked["results"]) == 2
 
-    state = json.loads(tools["bb_game_state"].invoke({}))
+    state = read_board()
     assert state["waiting_on"]["choice"] == "apothecary", "a reloaded match must still be waiting"
 
     best = 1 + max(range(2), key=lambda i: asked["results"][i]["result"] == "Badly Hurt")
