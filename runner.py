@@ -148,9 +148,16 @@ def _loop(run_turn) -> None:
 
 
 def start(run_turn) -> threading.Thread:
-    """Begin driving self-playing matches. Idempotent."""
+    """Begin driving matches. Idempotent — one runner, never two.
+
+    ⚠️ IT KEEPS THE RUNNER IT ALREADY HAS, including the `run_turn` it was built
+    with. Starting a second would be two drivers, which is the entire class of bug
+    this file exists to remove. A caller that needs a different one calls `stop()`
+    first — and a test that forgets is the reason this note is here.
+    """
     global _THREAD
     if _THREAD is not None and _THREAD.is_alive():
+        log.debug("[bloodbowl] auto: already running; keeping the existing driver")
         return _THREAD
     _STOP.clear()
     _THREAD = threading.Thread(target=_loop, args=(run_turn,), name="bloodbowl-auto", daemon=True)
@@ -160,4 +167,11 @@ def start(run_turn) -> threading.Thread:
 
 
 def stop() -> None:
+    """Stop the driver and wait for it, so a caller can start a different one."""
+    global _THREAD
     _STOP.set()
+    _WAKE.set()
+    t = _THREAD
+    if t is not None and t.is_alive():
+        t.join(timeout=5)
+    _THREAD = None

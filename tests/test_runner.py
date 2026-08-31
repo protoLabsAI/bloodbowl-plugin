@@ -14,7 +14,22 @@ from __future__ import annotations
 import threading
 import time
 
+import pytest
 from bloodbowl import runner
+
+
+@pytest.fixture(autouse=True)
+def _a_clean_driver():
+    """ONE RUNNER, AND NOT ONE LEFT OVER FROM ANOTHER TEST.
+
+    `start` is idempotent and keeps the driver it already has — correct in
+    production, where two drivers is the bug this file removes, and a trap in a
+    suite where an earlier test (or `register()`) left one alive. These tests
+    passed alone and failed together until this existed.
+    """
+    runner.stop()
+    yield
+    runner.stop()
 
 
 def test_it_fires_the_side_that_is_owed_and_only_once(monkeypatch):
