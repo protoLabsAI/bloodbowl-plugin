@@ -469,6 +469,13 @@ replace. That merge is `attach()`, a PLAIN FUNCTION rather than a method, becaus
 wherever this plugin's own suite runs, which is precisely where a regression gets
 caught. Test the pure part.
 
+> **⚠️ DO NOT GREP A CHECKPOINT TO SEE WHETHER THE BOARD ARRIVED.** The system
+> message goes into the model REQUEST; the checkpoint stores the message list. The
+> board is genuinely in the prompt and genuinely absent from the checkpoint, so
+> looking there says "not injected" about a working injection. That cost an
+> iteration. The observable is the log line the middleware writes when it
+> attaches — `board attached to the prompt — H1t1 home to act, 647 chars`.
+
 **It does not replace `bb_game_state`**, which is still the full honest answer
 with the unmodelled-skill reporting attached. This is the position at a glance,
 for the decisions that need it every time.
