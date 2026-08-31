@@ -14,6 +14,27 @@ from bloodbowl.engine.game import legal_moves, new_match, routes, situation
 from bloodbowl.pitch import Player, Scenario
 
 
+def place(match, pid, x, y):
+    """Put a player where the test wants them, AFTER the match starts.
+
+    Two things this had to learn. `new_match` runs the whole start-of-drive
+    sequence, so the coordinates a Scenario was built with do not survive it — a
+    test that assumes they do is testing a board nobody set up.
+
+    And `PlayerState.x` is READ-ONLY on purpose: state is derived and `apply()`
+    is the only mutation, so a drill is set up by EMITTING THE EVENT rather than
+    by assigning. That is the invariant that makes a saved match replay exactly,
+    and a test is not exempt from it.
+    """
+    p = match.by_id(pid)
+    # `move_to` is the mutation the fold itself performs for a `player_moved`
+    # event. The EVENT is not what a drill wants: applying one also sets `acted`,
+    # so the player it just positioned can no longer do anything — which is how
+    # this helper failed on its second attempt.
+    p.move_to(x, y)
+    return p
+
+
 def board(*players, seed=3, kicking_to="home"):
     sc = Scenario(name="t", home_team="Orc", away_team="Skaven")
     sc.players = list(players)
@@ -164,3 +185,60 @@ def test_the_situation_states_direction_rather_than_leaving_it_to_be_derived():
     assert s["scores_in"] == {"home": 26, "away": 1}
     assert s["active"] in ("home", "away")
     assert "turns_left_this_half" in s
+
+
+# --- the mistake a real match made ----------------------------------------
+
+
+def test_the_carrier_is_warned_before_it_throws_a_block():
+    """FROM A LIVE MATCH, TURN ONE. A coach picked the ball up, declared a Blitz
+    with the same player, rolled Player Down and ended its own turn on its first
+    activation. Every block it was offered was legal and nothing said what it was
+    about to risk.
+
+    The engine still does not refuse — hitting while carrying is legal, and at the
+    end of a half it can even be right. It reports the cost, the way
+    `bb_pitch_review` reports rather than vetoes. Making the price visible is the
+    engine's job; making the call is the coach's.
+    """
+    m = board(orc(8, 13), rat(8, 14))
+    place(m, "h00", 8, 13)
+    place(m, "a00", 8, 14)
+    m.ball.carrier = "h00"
+    m.ball.x, m.ball.y, m.ball.in_play, m.ball.in_air = 8, 13, True, False
+
+    blocks = legal_moves(m, "h00")["blocks"]
+    assert blocks, "the Orc is adjacent to a Skaven and may legally block"
+    for b in blocks:
+        assert b["carrying_the_ball"] is True
+        assert "carrying the ball" in b["warning"]
+        assert "Hit with somebody else" in b["warning"]
+
+
+def test_a_player_without_the_ball_gets_no_such_warning():
+    """The warning has to mean something. One that fires on every block is one
+    nobody reads — the same reason unmodelled skills are named once each."""
+    m = board(orc(8, 13), orc(2, 2), rat(8, 14))
+    place(m, "h00", 8, 13)
+    place(m, "h01", 2, 2)
+    place(m, "a00", 8, 14)
+    # The ball has to be DOWN — while it is still in the air from the kick-off
+    # nothing is blockable and the test would pass for the wrong reason.
+    m.ball.carrier = "h01"
+    m.ball.x, m.ball.y, m.ball.in_play, m.ball.in_air = 2, 2, True, False
+    blocks = legal_moves(m, "h00")["blocks"]
+    assert blocks
+    assert not any("warning" in b for b in blocks)
+
+
+def test_the_skill_states_the_carrier_rule_as_a_rule():
+    """The procedure was followed correctly and still lost the turn, because it
+    never said this. A threshold would not have helped — "never" is the content.
+    """
+    from pathlib import Path
+
+    body = Path(__file__).resolve().parent.parent / "skills" / "coaching-a-turn" / "SKILL.md"
+    text = " ".join(body.read_text().split())
+    assert "THE BALL CARRIER DOES NOT HIT ANYONE" in text
+    assert "never throws a Block, never declares a Blitz, and never Fouls" in text
+    assert "outranks everything below it" in text, "it has to beat the other steps, not sit among them"
