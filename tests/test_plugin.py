@@ -2638,3 +2638,60 @@ def test_the_stamp_moves_when_the_code_does(tmp_path, monkeypatch):
         assert api.asset_stamp() != first, "a changed module must move the stamp"
     finally:
         __import__("os").utime(target, (original.st_atime, original.st_mtime))
+
+
+def test_the_coaching_skill_ships_and_names_only_real_tools():
+    """The plugin shipped 38 tools and NO skill — the engine taught the agent what
+    was legal and nothing taught it what was good, and it played accordingly (one
+    recorded turn: 47 tool calls, 7 actions, a 0-0 match).
+
+    A skill that names a tool which does not exist is worse than no skill: it
+    reads as authoritative and sends the coach after something that will never
+    answer. Same gate the README has.
+    """
+    import re
+
+    skill = ROOT / "skills" / "coaching-a-turn" / "SKILL.md"
+    assert skill.is_file(), "the turn procedure is the point of all this"
+    body = skill.read_text()
+
+    assert body.startswith("---"), "a skill needs frontmatter to be discovered"
+    for key in ("name:", "description:", "tools:"):
+        assert key in body.split("---")[1], f"frontmatter is missing {key}"
+
+    registry = _Reg()
+    import bloodbowl
+
+    bloodbowl.register(registry)
+    live = {t.name for t in registry.tools}
+
+    named = [t.strip() for t in re.search(r"^tools: \[(.*?)\]", body, re.M).group(1).split(",")]
+    assert named, "a turn procedure that calls nothing is prose"
+    assert not set(named) - live, f"skill names tools that do not exist: {set(named) - live}"
+
+    # `bb_game_*` is a wildcard in prose, not a tool.
+    mentioned = {m for m in re.findall(r"bb_[a-z_]+", body) if not m.endswith("_")}
+    assert not mentioned - live, f"skill mentions tools that do not exist: {mentioned - live}"
+
+
+def test_the_coaching_skill_is_an_ordered_procedure_not_a_pile_of_advice():
+    """THE ORDER IS THE SKILL. A scripted bot built as an ordered priority list
+    won the first Bot Bowl; ML entries could beat a random opponent and not a
+    scripted one. Advice with no sequence is what the agent already had in its
+    SOUL — good principles, no procedure — and it played 0-0 with them.
+    """
+    raw = (ROOT / "skills" / "coaching-a-turn" / "SKILL.md").read_text()
+    steps = [line for line in raw.splitlines() if line.startswith("### ")]
+    # Prose wraps; a phrase check that trips over a line break is testing the
+    # margin, not the meaning.
+    body = " ".join(raw.split())
+    assert len(steps) >= 6, f"expected an ordered list of steps, found {steps}"
+    assert steps[0].startswith("### 1."), "the steps have to be numbered to be an order"
+    assert "top to bottom" in body, "say that it is executed in order, not surveyed"
+
+    # The thresholds are the operational half; without them "score if you can" is
+    # not a decision procedure.
+    for number in ("0.70", "0.33", "0.94"):
+        assert number in body, f"missing the {number} threshold"
+    # And they must be marked as a default to argue with, not scripture.
+    assert "starting point" in body

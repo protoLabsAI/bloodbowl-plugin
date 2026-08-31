@@ -412,6 +412,38 @@ Two things about it worth keeping:
 The view keeps its own client-side walk (`web/js/game.js:walkPath`) because it has
 to render between steps; the halt conditions are deliberately the same list.
 
+### The coaching skill (`skills/coaching-a-turn/`)
+
+**The plugin shipped 38 tools and no skill.** The engine taught the agent what was
+LEGAL and nothing taught it what was GOOD, and it played accordingly: one recorded
+turn spent 47 tool calls on 7 actions, and a full sixteen-turn AI-vs-AI match
+finished 0-0.
+
+That result is not a curiosity. Blood Bowl's turn branching factor is ~10^50
+(chess ~30, Go ~300) and **a random agent scored zero points in 350,000 matches** —
+0-0 is what near-random play looks like. The research is unusually clear about the
+remedy: in Bot Bowl I and II, machine-learning entries could beat a random opponent
+and never a scripted one; GrodBot, scripted with heavy domain knowledge, won the
+first competition; and the eventual ML winner got there by imitating a scripted
+bot first and keeping scripted rules on top. **Encoded domain knowledge is what
+plays this game.**
+
+So the skill is an ORDERED PROCEDURE, executed top to bottom, not a pile of
+advice. The agent's SOUL already had good principles — turn economy, sequencing,
+position over heroics — and principles without a sequence is exactly what produced
+the 0-0. The order is the skill: a safe action taken early can make a risky one
+later unnecessary, which is why you sequence rather than survey.
+
+The thresholds (score ≥0.70, pickup >0.33, cage and blocks >0.94) come from
+GrodBot, which was written for an older edition, and the skill says so: they are a
+default to argue with from the score and the clock, not scripture. Two down with
+three turns left, a 50% score attempt is right; level with eight turns, it is a
+blunder.
+
+A test pins that the skill names only tools that exist — a procedure citing a dead
+tool reads as authoritative and sends the coach after something that will never
+answer — and that it stays an ordered, numbered list with its thresholds intact.
+
 ### Telling a coach where they can go (`game.routes`, `dice.chance`)
 
 `bb_game_legal` answers for the eight squares beside a player. A run is three or
