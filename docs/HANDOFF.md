@@ -290,6 +290,24 @@ safe because the seat check refuses anything that is not that side's move.
 watchers running at once (one left behind per deploy) produced three nudges in 16
 seconds and froze the board for half an hour. Report a stall; let a person decide.
 
+**⚠️ A PLUGIN RELOAD KILLS THE NUDGE UNLESS THE SURFACE HAS A `reload=` HOOK.**
+`register_surface(start=…)` runs `start` in the SERVER'S STARTUP HOOK. A reload
+re-registers the surface and does NOT re-run start — while it does drop the
+handler the previous start subscribed. So after any `POST /enabled` nothing is
+listening for `bloodbowl.turn_ready`, and a full-AI match sits at the kick-off
+forever: no error, no warning, an idle board that looks exactly like a slow model.
+
+Measured on the live agent: 313 nudges over the plugin's life, then a deploy, then
+a match that took no turns at all. **The log tells you which state you are in** —
+`turn nudge subscribed` appears once per START, so a `loaded bloodbowl:` line with
+no subscribe line after it means auto-play is dead until a restart. That is the
+diagnostic; the board itself looks fine.
+
+Fixed by passing `reload=`, which the registry offers for exactly this ("without
+it, surfaces wire once and a config change needs a restart"). Re-subscribing is
+safe rather than doubling, and the evidence is that nothing fired at all after a
+reload rather than firing twice.
+
 **The nudge.** `engine/handover.py` works out who the match is waiting on and
 whether that CHANGED; `__init__.announce` publishes `bloodbowl.turn_ready`; and
 `register()` subscribes and calls `sdk.run_in_session` to run an agent turn from it.

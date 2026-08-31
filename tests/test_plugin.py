@@ -2695,3 +2695,41 @@ def test_the_coaching_skill_is_an_ordered_procedure_not_a_pile_of_advice():
         assert number in body, f"missing the {number} threshold"
     # And they must be marked as a default to argue with, not scripture.
     assert "starting point" in body
+
+
+def test_the_turn_nudge_survives_a_plugin_reload():
+    """A RELOAD USED TO KILL AUTO-PLAY SILENTLY.
+
+    `register_surface(start=...)` runs `start` in the SERVER'S STARTUP HOOK. A
+    plugin reload re-registers the surface and does not re-run start — while the
+    reload does drop the handler the previous start subscribed. So after any
+    `POST /enabled` nothing listens for `bloodbowl.turn_ready`, and a full-AI
+    match sits at the kick-off forever: no error, no warning, an idle board that
+    looks exactly like a slow model.
+
+    Measured on a live agent: 313 nudges over the plugin's life, then a deploy,
+    then a match that never took a single turn.
+    """
+
+    class _Surfaces:
+        config: dict = {}
+        surfaces: list = []
+
+        def register_tool(self, t): ...
+        def register_router(self, router, prefix=None): ...
+        def register_middleware(self, factory): ...
+        def on(self, event, handler): ...
+
+        def register_surface(self, start, stop=None, name=None, reload=None):
+            self.surfaces.append({"name": name, "start": start, "reload": reload})
+
+    import bloodbowl
+
+    reg = _Surfaces()
+    bloodbowl.register(reg)
+    turns = [s for s in reg.surfaces if s["name"] == "bloodbowl-turns"]
+    assert turns, "the nudge surface is not registered at all"
+    assert callable(turns[0]["reload"]), (
+        "the nudge surface has no reload hook — it will go silent on the next deploy "
+        "and a full-AI match will never start"
+    )

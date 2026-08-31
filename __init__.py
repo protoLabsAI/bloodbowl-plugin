@@ -372,7 +372,29 @@ def register(registry) -> None:
         log.info("[bloodbowl] turn nudge subscribed")
 
     try:
-        registry.register_surface(_start_nudge, name="bloodbowl-turns")
+        # ⚠️ `reload=` IS NOT OPTIONAL HERE, AND LEAVING IT OUT COSTS THE WHOLE
+        # FEATURE SILENTLY.
+        #
+        # `start` runs in the STARTUP hook. A plugin reload re-registers the
+        # surface and does NOT re-run start — while the reload does drop the
+        # handler the previous start had subscribed. So after any `POST /enabled`
+        # the bus has nobody listening for `bloodbowl.turn_ready`, and a full-AI
+        # match sits at the kick-off forever: no error, no warning, an idle board
+        # that looks exactly like a slow model.
+        #
+        # Measured on the live agent: 313 nudges over the plugin's life, then a
+        # deploy, then a match that never took a single turn. The log tells you
+        # which state you are in — "turn nudge subscribed" appears once per START,
+        # so a `loaded bloodbowl:` line with no subscribe line after it means the
+        # nudge is dead until a restart.
+        #
+        # Re-subscribing is safe rather than doubling: the reload drops the old
+        # handler, which is exactly why nothing fired at all.
+        registry.register_surface(
+            _start_nudge,
+            name="bloodbowl-turns",
+            reload=lambda _cfg=None: _start_nudge(),
+        )
     except Exception:  # noqa: BLE001 — no host, no nudge; the plugin still works
         log.debug("[bloodbowl] turn nudge unavailable (no host)", exc_info=True)
 
