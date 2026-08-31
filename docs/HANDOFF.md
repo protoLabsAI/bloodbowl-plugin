@@ -268,6 +268,21 @@ the wire drops player fields sitting at their default, which is most of a
 once-per-turn flag set. It touched both views and the suite, which is why it was
 its own change rather than a rider on the context fix.
 
+**⚠️ AND ONE HANDOVER MUST BE ANNOUNCED ONCE — THE THIRD EDGE OF THE SAME KNIFE.**
+Several routes publish (`act`, `choose`, `end-turn`) and ONE tool call can go
+through more than one: an action that causes a Turnover ends the turn, and both
+announce. `handover.changed` compares the `before` it was handed against the
+after, so each caller passes a different `before` and each one looks like news.
+
+With the job id unique per attempt, `run_in_session` no longer collapses them
+either — the two fixes above combine into a leak. Measured on the live agent:
+**NINE nudges for a single handover**, nine concurrent A2A tasks for one seat,
+contending until they all stalled at 900s with "no progress while starting up".
+The game stopped dead and the log showed nine cheerful "turn enqueued" lines.
+
+`announce` now remembers the last handover it published and refuses to publish it
+twice. A different one — the other side, the next turn, a question — still nudges.
+
 **⚠️ THE NUDGE JOB ID IS UNIQUE PER ATTEMPT, AND THAT MATTERS TWICE OVER.**
 `sdk.run_in_session` is idempotent-REPLACE: re-using an id cancels whatever that id
 has pending — INCLUDING A TURN THAT IS CURRENTLY RUNNING.

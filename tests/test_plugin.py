@@ -2785,3 +2785,38 @@ def test_a_running_charge_does_not_look_like_a_blocked_game():
     assert "in progress" in js, "say that it is running"
     css = _decomment(_web("style.css"))
     assert ".choice.running" in css, "the two states must be visually different"
+
+
+def test_one_handover_is_announced_once_however_many_routes_notice_it(monkeypatch):
+    """NINE NUDGES FOR ONE HANDOVER KILLED A LIVE MATCH.
+
+    Several routes publish — act, choose, end-turn — and a single tool call can go
+    through more than one (an action causing a Turnover ends the turn, and both
+    announce). `handover.changed` compares the `before` it was handed against the
+    after, so each caller passes a different before and each looks like news.
+
+    Since the job id became unique per attempt (#86, so a re-nudge could not cancel
+    a running turn), `run_in_session` stopped collapsing them too. Measured on the
+    live agent: nine concurrent A2A tasks for the same seat, contending until they
+    all stalled at 900s with "no progress while starting up". The game stopped and
+    the log showed nine cheerful "turn enqueued" lines.
+    """
+    import bloodbowl
+
+    sent = []
+    monkeypatch.setattr(bloodbowl, "_emit", lambda name, data: sent.append((name, dict(data))))
+    monkeypatch.setattr(bloodbowl, "_LAST_ANNOUNCED", None)
+
+    owed = {"side": "away", "controller": "agent", "half": 1, "turn": 3, "why": "turn"}
+
+    # Three routes all notice the same handover, each with its own `before`.
+    bloodbowl.announce({}, owed)
+    bloodbowl.announce({"side": "home", "half": 1, "turn": 3, "why": "turn"}, owed)
+    bloodbowl.announce({}, owed)
+    assert len(sent) == 1, f"{len(sent)} nudges for one handover — that is nine tasks in production"
+
+    # A genuinely different handover is still news.
+    bloodbowl.announce({}, {**owed, "turn": 4})
+    assert len(sent) == 2, "the next turn must still nudge"
+    bloodbowl.announce({}, {**owed, "turn": 4, "side": "home"})
+    assert len(sent) == 3, "the other side must still nudge"
