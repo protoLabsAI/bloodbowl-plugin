@@ -1054,6 +1054,32 @@ def _tools(cfg: dict):
         return json.dumps(report)
 
     @tool
+    def bb_game_routes(player: str, top: int = 12) -> str:
+        """Where this player can get to, and the chance of ARRIVING ON THEIR FEET.
+
+        Ask this instead of walking `bb_game_legal` around the board a square at a
+        time. `bb_game_legal` answers for the eight squares next to a player; a run
+        is three or four steps, and its risk is the PRODUCT of them. Three separate
+        2+ rolls is not three safe rolls, it is 58% — and that multiplication is
+        the single easiest thing to get wrong by eye, so the engine does it.
+
+        `chance` counts every Dodge and every Rush the route needs, with the
+        engine's own modifiers. `to_end_zone` is the safest route to the line you
+        are attacking, and `to_ball` is the safest route to a loose ball WITH the
+        pick-up rolled in — walking to a ball you then fumble is how a drive ends.
+        `unknowns` names what the number deliberately leaves out.
+
+        `top` caps the square list; the named destinations are always included.
+        """
+        from .engine.game import routes
+        from .store import load_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress"})
+        return json.dumps(routes(m, player, limit=max(0, int(top))))
+
+    @tool
     def bb_game_odds(player: str, target: str) -> str:
         """What a Block would be before you throw it: how many dice, WHO chooses
         them, and the assists on each side.
@@ -1546,6 +1572,7 @@ def _tools(cfg: dict):
         bb_game_state,
         bb_game_legal,
         bb_game_act,
+        bb_game_routes,
         bb_game_odds,
         bb_game_end_turn,
         bb_game_kickoff,

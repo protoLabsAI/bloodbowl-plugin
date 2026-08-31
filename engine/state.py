@@ -858,6 +858,17 @@ class Match:
             "ball": self.ball.to_dict(),
             "clock": self.clock.to_dict(),
             "score": dict(self.score),
+            # WHICH WAY EACH SIDE IS ATTACKING. The engine has always known this
+            # (`touchdown_row`) and never said it, so every reader had to derive
+            # it from raw coordinates — and an agent playing a seat was observed
+            # doing exactly that, mid-turn, and talking itself out of the right
+            # answer: "Wait, the ball carrier is at (8,16) which is in the away
+            # half? Let me think about coordinates."
+            #
+            # It is one line of arithmetic and it is the single most basic fact
+            # about the board. A fact the engine holds and does not report is a
+            # fact somebody downstream will get wrong.
+            "attacking": {side: touchdown_row(side) for side in ("home", "away")},
             "over": self.over,
             "drive": self.drive,
             "blitz": dict(self.blitz),

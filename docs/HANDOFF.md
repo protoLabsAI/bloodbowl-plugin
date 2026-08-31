@@ -412,6 +412,47 @@ Two things about it worth keeping:
 The view keeps its own client-side walk (`web/js/game.js:walkPath`) because it has
 to render between steps; the halt conditions are deliberately the same list.
 
+### Telling a coach where they can go (`game.routes`, `dice.chance`)
+
+`bb_game_legal` answers for the eight squares beside a player. A run is three or
+four steps and **its risk is the product of them** — and that multiplication is
+the single easiest thing in this game to get wrong by eye. The SOUL of the agent
+built on this plugin told it so ("three separate 2+ rolls is not three safe
+rolls, it is 58%") and then gave it nothing that could compute it, so it did the
+arithmetic in its head, badly, 21 odds-calls at a time.
+
+`game.routes` searches every reachable square and reports the chance of ARRIVING
+ON YOUR FEET, counting each Dodge and Rush with the engine's own modifiers. It
+names the two destinations that decide most turns: the safest route to the End
+Zone you are attacking, and the safest route to a loose ball WITH the pick-up
+rolled in — walking to a ball you then fumble is how a drive ends.
+
+**`dice.chance` lives beside `roll_target` on purpose.** The odds a coach is
+shown and the roll they describe have to be one rule; if the natural-1/natural-6
+clause ever moves, both move together. It counts faces rather than doing algebra
+so the two stay obviously identical — which is also why "needs 7+" is 1/6 rather
+than zero, and "needs 1+" is 5/6 rather than certain. Those two are exactly where
+eyeballed odds go wrong.
+
+**Best-first on probability, so the SAFEST route wins, not the shortest** — and
+that turns out to find real Blood Bowl. Stepping straight from a Marked square
+into the square next door is a Dodge at -1 if an opponent Marks it; dodging out
+to open ground first and walking back in needs no second Dodge at all. 67% in two
+steps beating 50% in one. Nobody taught it that; it falls out of searching on
+odds. There is a test.
+
+> **⚠️ THE DRIFT GUARD IS CONTAINMENT, NOT EQUALITY.** `routes` uses the same rule
+> helpers as `move.validate` but its own loop, so a test pins that every square
+> the engine allows is reachable. It must NOT demand that one-step routes equal
+> `legal_moves` — the safest route to a neighbouring square is often longer, and
+> asserting otherwise asserts the search is dumber than it is. That is exactly how
+> this test failed the first time it ran.
+
+`situation()` rides `bb_game_state` for the same reason: direction, possession and
+distance-to-score are the three facts every decision hangs off, `touchdown_row`
+has always known the first, and an agent was recorded mid-turn arguing with
+itself about which way it was attacking.
+
 ### Die faces in the log (`web/js/dice.js`)
 
 `/game/log` sends every roll TWICE — `rolls` is the sentence the engine wrote

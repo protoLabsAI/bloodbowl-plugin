@@ -287,6 +287,29 @@ def roll_2d6(dice: Dice, kind: str, target: int, modifier: int = 0, note: str = 
     return r
 
 
+def chance(target: int, modifier: int = 0) -> float:
+    """The probability `roll_target` passes, from the SAME rule that decides it.
+
+    It lives beside `roll_target` on purpose. A coach's odds and the roll they
+    describe have to be one rule — if the natural-1/natural-6 clause ever moves,
+    the two move together, and nobody ships a board that quotes 100% for a test
+    it can still fail. The engine adjudicates; this is the engine saying what it
+    is about to adjudicate.
+
+    Counting faces rather than doing algebra keeps the two obviously identical:
+    a natural 1 always fails and a natural 6 always succeeds however heavy the
+    modifiers, so a "needs 7+" is 1/6 and not zero, and a "needs 1+" is 5/6 and
+    not certain. Those two are exactly where eyeballed odds go wrong.
+    """
+    passing = 0
+    for raw in range(1, 7):
+        if raw == 1:
+            continue
+        if raw == 6 or raw + modifier >= target:
+            passing += 1
+    return passing / 6.0
+
+
 def roll_target(dice: Dice, kind: str, target: int, modifier: int = 0, note: str = "") -> Roll:
     """A single d6 against a target, the shape most Blood Bowl tests take.
 
