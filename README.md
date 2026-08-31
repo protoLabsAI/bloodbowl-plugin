@@ -241,6 +241,20 @@ the pick-up rolled in.
 often as you like. They exist so the coach never has to work out a dodge modifier
 or a block's dice count itself.
 
+## The coaching skill
+
+`skills/coaching-a-turn/SKILL.md` ships with the plugin, so any agent that installs
+it gets a **procedure** and not just tools. It is an ordered list worked top to
+bottom — score if you can, free the carrier before you move it, bank the certain
+actions, spend the one Blitz deliberately, only near-certain blocks, cage on the
+diagonals, screen, end the turn on purpose — with the odds at which each applies.
+
+The order is the point. A scripted bot built exactly this way won the first
+[Bot Bowl](https://njustesen.github.io/botbowl/) AI competition, while
+machine-learning entries could beat a random opponent and not a scripted one. Blood
+Bowl's turn branching factor is around 10^50, and a random agent scored zero points
+in 350,000 matches — this is not a game you play well by surveying options.
+
 ## The data
 
 `data/skills.json` — all 108 Skills and Traits with their real text, category,
