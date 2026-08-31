@@ -1,6 +1,6 @@
 [project]
 name = "bloodbowl-plugin"
-version = "0.7.0"
+version = "0.8.0"
 description = "Blood Bowl pitch, scenario board and S3 roster reference for protoAgent"
 requires-python = ">=3.12"
 
