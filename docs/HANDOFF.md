@@ -494,9 +494,15 @@ caught. Test the pure part.
 > iteration. The observable is the log line the middleware writes when it
 > attaches — `board attached to the prompt — H1t1 home to act, 647 chars`.
 
-**It does not replace `bb_game_state`**, which is still the full honest answer
-with the unmodelled-skill reporting attached. This is the position at a glance,
-for the decisions that need it every time.
+**IT REPLACED `bb_game_state`, WHICH NO LONGER EXISTS.** Asking a model not to
+call a tool it has does not work — this codebase learned that when shipping `path`
+did not stop it moving one square at a time, and learned it again when a seat
+called the state tool SIXTY-SIX TIMES in one turn while holding the board in its
+prompt, ran out of budget and never finished. The structural answer is that there
+is nothing to call. Everything the tool uniquely carried rides with the board,
+including the unmodelled and partly-modelled Skill reporting — which is not
+decoration, because a Skill the engine does not apply changes what a player will
+really do. Tests read `state_report` from the store directly.
 
 Guarded like the nudge: no host, no middleware. And a board that cannot be
 rendered logs and returns the request untouched — the coach still has the tool,

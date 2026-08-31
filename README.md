@@ -92,7 +92,7 @@ modelling a skill changes the game, quoting it changes what can honestly be said
 about it, and the second is what stops a confident wrong explanation.
 
 Anything not modelled is **reported, not ignored** — but reported once. The first
-time an unmodelled Skill is relevant, the log says so and then stops; `bb_game_state`
+time an unmodelled Skill is relevant, the log says so and then stops; the board in the prompt
 carries the standing list of every unmodelled Skill on the pitch and who has it.
 Ten of the eleven kick-off events say plainly that they were rolled but not applied.
 
@@ -197,7 +197,7 @@ A model can take eight activations in under a second, which is a diff rather tha
 game — the pace is what makes a turn something you can watch happen. Your own
 clicks are never paced.
 
-**Playing** — `bb_game_new` · `bb_game_state` · `bb_game_legal` · `bb_game_routes` · `bb_game_odds` ·
+**Playing** — `bb_game_new` · `bb_game_legal` · `bb_game_routes` · `bb_game_odds` ·
 `bb_game_act` (`path=[[8,15],[8,16]]` walks a run; `drop_ball=True` for a Fumblerooski) ·
 `bb_game_end_turn` · `bb_game_kickoff` · `bb_game_log` · `bb_game_abandon` (refused while a coach is playing) · `bb_pass_ranges`
 
@@ -252,8 +252,12 @@ an earlier answer describes a board that no longer exists.
 
 The plugin registers a middleware (ADR 0032) that attaches the live position to the
 system message on each model call: **209 tokens against 1,654**, always current, no
-round trip, and it replaces its own previous copy rather than stacking. `bb_game_state`
-is still there for the full answer.
+round trip, and it replaces its own previous copy rather than stacking.
+
+**There is no state tool any more.** Asking a model not to call one it has does not
+work — a seat called it *sixty-six times in a single turn* while the board sat in its
+prompt, and ran out of budget before finishing. So the board carries everything it
+uniquely did, including which Skills this engine is not applying.
 
 ## The coaching skill
 

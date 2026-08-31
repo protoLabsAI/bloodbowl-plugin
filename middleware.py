@@ -18,10 +18,16 @@ means:
   is attached, so sixteen model calls leave ONE board in the request rather than
   sixteen stale ones — which would be worse than the reads it replaces.
 
-⚠️ IT DOES NOT REPLACE `bb_game_state`. The tool still exists and is still the
-honest full answer, with the unmodelled-skill reporting attached. This is the
-position at a glance, for the decisions that need it every time; a coach that
-wants the whole truth still asks.
+⚠️ THIS REPLACED `bb_game_state`, WHICH NO LONGER EXISTS. Asking a model not to
+call a tool it has does not work — this codebase already learned that when
+shipping `path` did not stop it moving one square at a time. A seat called the
+state tool SIXTY-SIX TIMES in a single turn while the board sat in its prompt,
+ran out of budget, and never finished the turn. The structural answer is that
+there is nothing to call.
+
+So everything the tool uniquely carried is here: the position, and the
+unmodelled/partly-modelled Skill reporting, which is not decoration — a Skill the
+engine does not apply changes what a player will really do.
 
 Guarded like the nudge: no host, no middleware. The suite and the browser harness
 register with no host at all, and losing this binding is exactly what "no host"
@@ -89,7 +95,25 @@ def render(match, session_id: str = "") -> str:
             )
             who.append(f"{p.id}{flags}({p.x},{p.y}){p.player.position or ''}")
         lines.append(f"{side} ({team}) — {len(who)} on the pitch: " + ", ".join(who))
-    lines.append("Flags: ! prone · * stunned · . already acted. Ask bb_game_state for the full position.")
+    lines.append("Flags: ! prone · * stunned · . already acted.")
+
+    # THE HONESTY REPORTING COMES WITH THE BOARD, because there is no longer a
+    # tool to ask for it. A Skill the engine does not apply, or applies in half,
+    # changes what a player will actually do — and a coach reading a position that
+    # quietly omits that is being misled by the thing it trusts most. It rides
+    # here for the same reason the log carries its dice.
+    try:
+        from .engine.skills import partly_modelled_on_pitch, unmodelled_on_pitch
+
+        gaps = unmodelled_on_pitch(match) or []
+        half = partly_modelled_on_pitch(match) or []
+        if gaps:
+            lines.append("NOT MODELLED by this engine (do not plan around them): " + ", ".join(str(g) for g in gaps))
+        if half:
+            lines.append("PARTLY modelled (half a skill reads as all of it): " + ", ".join(str(g) for g in half))
+    except Exception:  # noqa: BLE001 — decoration must never take a turn down
+        pass
+
     return "\n".join(lines)
 
 

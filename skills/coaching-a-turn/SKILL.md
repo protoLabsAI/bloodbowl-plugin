@@ -6,7 +6,7 @@ description: >-
   spending eight activations well: what to check, in what order, at what odds,
   and when to stop. Read it before the first activation of a turn, not after a
   turn has gone wrong.
-tools: [bb_game_state, bb_game_routes, bb_game_legal, bb_game_odds, bb_game_act, bb_game_end_turn, bb_game_log]
+tools: [bb_game_routes, bb_game_legal, bb_game_odds, bb_game_act, bb_game_end_turn, bb_game_log]
 ---
 
 # Coaching a turn
@@ -24,8 +24,10 @@ reason to sequence rather than to plan.
 
 ## Before you touch anybody
 
-One `bb_game_state`. Read `situation` first — it tells you the three things every
-decision hangs off and you do not have to derive any of them:
+**The board is already in your prompt.** Every model call carries the current
+position — direction, ball, every player, who has acted, and anything this engine
+is not modelling. There is no state tool to call and nothing to fetch. Read what
+you were given:
 
 - `scores_in` — the row YOUR side is running at. Never work this out from
   coordinates; it is right there and getting it backwards loses games.
@@ -191,7 +193,10 @@ You have a real budget and it is smaller than it looks — a turn that spends it
 calls asking questions never gets to eleven activations. A recorded turn once used
 47 calls to take 7 actions.
 
-- **One `bb_game_state` at the start.** Not per player.
+- **Do not go looking for the board.** It is in front of you, refreshed on every
+  model call. A seat once spent 66 tool calls re-reading a position it was already
+  holding, and ran out of budget before it finished the turn. That tool is gone
+  now; this is what replaced it.
 - **`bb_game_routes` per player you are seriously considering**, not per square.
   It replaces walking `bb_game_legal` around the board.
 - **Move with `path=`.** `bb_game_act(action="move", player=…, path=[[8,15],[8,16],…])`
