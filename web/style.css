@@ -467,6 +467,15 @@ button.mini { padding: 0 6px; font-size: 10px; margin-left: 6px; }
   background: color-mix(in oklab, var(--pl-color-accent) 12%, var(--pl-color-bg-raised));
 }
 .choice .grow { flex: 1; }
+/* A BLOCKED GAME AND A RUNNING ONE MUST NOT LOOK THE SAME.
+   The bar above the board carries two opposite meanings — "everything is stopped
+   until you answer" and "somebody is taking their free moves" — and rendering
+   both in the same accent brown made a live game read as a hung one. The
+   blocking state keeps the accent; a running Charge goes quiet and green. */
+.choice.running {
+  border-color: var(--pl-color-status-success);
+  background: color-mix(in oklab, var(--pl-color-status-success) 10%, var(--pl-color-bg-raised));
+}
 /* Eligible = Open, which is narrower than "standing" and worth showing: a coach
    looking for a player the rule will not let them pick needs to see why. */
 .cell.choosable { cursor: pointer; box-shadow: inset 0 0 0 2px var(--pl-color-accent); }

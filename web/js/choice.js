@@ -113,8 +113,15 @@ export function paint(match) {
       return p && !p.done;
     });
     const spent = ch.used || [];
+    // ⚠️ A CHARGE IN PROGRESS IS NOT A BLOCKED GAME, AND MUST NOT LOOK LIKE ONE.
+    // Both states put a bar above the board, and the unanswered-question bar means
+    // "everything is stopped until you speak" while this one means "somebody is
+    // playing". Reported as identical brown bars, the running game reads as a hung
+    // one — which is exactly how it was read.
+    bar.classList.add("running");
     $("#choiceText").innerHTML = esc(
-      `Charge! ${ch.side} — ${left.length} of ${ch.players.length} still to activate.` +
+      `▶ Charge! in progress — ${ch.side} sending in players. ` +
+        `${left.length} of ${ch.players.length} still to activate.` +
         (spent.length ? ` Used: ${spent.join(", ")}.` : " A Blitz, a Throw Team-mate and a Kick Team-mate are free."),
     );
     for (const id of left) {
@@ -128,6 +135,8 @@ export function paint(match) {
     return;
   }
   $("#choiceDecline").textContent = "Decline";
+  // The blocking state: nothing in the game can happen until this is answered.
+  bar.classList.remove("running");
   bar.hidden = false;
   $("#choiceText").innerHTML = esc(q.text || q.choice);
 
