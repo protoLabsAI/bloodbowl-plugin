@@ -747,7 +747,31 @@ def walk(
     ``ok`` is true only when EVERY requested square was walked — a partial run reports how
     far it got and why it stopped.
     """
-    path = [(int(sq[0]), int(sq[1])) for sq in squares]
+    # ⚠️ TAKE THE SHAPE `bb_game_routes` HANDS BACK, because that is what a coach
+    # will paste in. `routes` reports squares as {"x":…, "y":…, "chance":…} and
+    # its own suggested paths as [[x, y], …] — two shapes, one obvious thing to do
+    # with them. A coach copied the first into `path` and this raised KeyError: 0,
+    # which was not a refusal it could read: it crashed the tool, the tool error
+    # handler, and the whole turn with it, mid-match, on a live board.
+    #
+    # A malformed path is a REFUSAL, never an exception. The engine already
+    # refuses illegal moves in words; a plan it cannot parse is the same kind of
+    # thing and deserves the same answer.
+    path = []
+    for sq in squares or []:
+        try:
+            if isinstance(sq, dict):
+                path.append((int(sq["x"]), int(sq["y"])))
+            else:
+                path.append((int(sq[0]), int(sq[1])))
+        except (KeyError, IndexError, TypeError, ValueError):
+            return {
+                "ok": False,
+                "error": (
+                    f"could not read {sq!r} as a square. A path is a list of squares, each either "
+                    '[x, y] or {"x": x, "y": y} — the shapes bb_game_routes returns.'
+                ),
+            }
     if not path:
         return {"ok": False, "error": "no squares given to walk"}
     if len(path) > MAX_PATH:
