@@ -1536,7 +1536,13 @@ def situation(match: Match) -> dict:
     return out
 
 
-def state_report(match: Match) -> dict:
+#: What changes about a player during a match. Everything else on them — their
+#: position, team, badge and statline — is ROSTER data that cannot move, and
+#: re-sending it on every read is most of the cost of reading.
+_MOVES = ("id", "side", "x", "y", "down", "place", "acted", "done", "ma_used", "movement")
+
+
+def state_report(match: Match, brief: bool = False) -> dict:
     """The match as a caller should see it: the board, plus what the engine is
     knowingly not applying to it.
 
@@ -1544,8 +1550,23 @@ def state_report(match: Match) -> dict:
     the honest version of "here is the position" includes the ways the position is
     a simplification. A coach reading only the board would have to know to ask.
     """
+    board = match.to_dict(include_log=False)
+
+    # ⚠️ THREE QUARTERS OF A STATE READ IS THE ROSTER, AND IT CANNOT CHANGE.
+    # A seat asks for the position nine to sixteen times a turn, and each read was
+    # re-sending every player's position name, team, badge and five statistics —
+    # none of which move once a match has started. `brief` keeps everything that
+    # changes and drops what cannot, which is the difference between a cheap
+    # question and an expensive one when the answer is asked sixteen times.
+    if brief:
+        board.pop("setups", None)
+        board.pop("session_ids", None)
+        board.pop("spp", None)
+        board.pop("seed", None)
+        board["players"] = [{k: v for k, v in p.items() if k in _MOVES} for p in board.get("players") or []]
+
     out = {
-        "match": match.to_dict(include_log=False),
+        "match": board,
         "unmodelled_skills": unmodelled_on_pitch(match),
         # Both lists, always. A Skill applied in part reads as fully applied
         # unless something says otherwise, and that is the more dangerous of the

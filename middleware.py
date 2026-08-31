@@ -1,0 +1,150 @@
+"""Putting the board in the prompt instead of making the coach ask for it.
+
+A seat was reading `bb_game_state` nine to sixteen times a turn. Three quarters
+of every read is the ROSTER — each player's position, team, badge and statline —
+none of which can change once a match has started, all of it re-sent every time.
+And between two reads the board moves, so a coach working from an earlier answer
+is working from a board that no longer exists. That is not a hypothetical: one
+spent a turn arguing with a board that disagreed with what it had just done.
+
+So the board rides the prompt. `wrap_model_call` attaches it to the system
+message for THAT CALL ONLY (ADR 0032, `registry.register_middleware`), which
+means:
+
+* it is always current, because it is rendered at the moment of the call rather
+  than whenever the coach last asked;
+* it costs no tool call and no round trip;
+* it does not accumulate. A previous board block is stripped before the new one
+  is attached, so sixteen model calls leave ONE board in the request rather than
+  sixteen stale ones — which would be worse than the reads it replaces.
+
+⚠️ IT DOES NOT REPLACE `bb_game_state`. The tool still exists and is still the
+honest full answer, with the unmodelled-skill reporting attached. This is the
+position at a glance, for the decisions that need it every time; a coach that
+wants the whole truth still asks.
+
+Guarded like the nudge: no host, no middleware. The suite and the browser harness
+register with no host at all, and losing this binding is exactly what "no host"
+should cost.
+"""
+
+from __future__ import annotations
+
+import logging
+
+log = logging.getLogger("protoagent.plugins.bloodbowl")
+
+#: Marks our own block so a later call can replace it rather than stack on it.
+MARK = "⟦bloodbowl board⟧"
+
+
+def render(match, session_id: str = "") -> str:
+    """The position, small enough to send on every model call.
+
+    Deliberately NOT `state_report`: this is read by a coach mid-decision, so it
+    is laid out for reading rather than for parsing — sides together, the ball
+    first, and the two facts that decide everything (which way you are running,
+    how far the ball has to go) stated rather than derivable.
+    """
+    from .engine.game import situation
+
+    s = situation(match)
+    lines = [MARK]
+    c = match.clock
+    lines.append(f"Half {c.half}, turn {c.turn} of {s['turns_left_this_half'] + c.turn} — {c.active} to act.")
+    lines.append(f"Score: home {match.score.get('home', 0)} — away {match.score.get('away', 0)}.")
+    lines.append(f"home runs at row {s['scores_in']['home']}; away runs at row {s['scores_in']['away']}.")
+
+    ball = s["ball"]
+    if ball.get("carrier"):
+        lines.append(
+            f"BALL: carried by {ball['carrier']} ({ball.get('held_by')}) at "
+            f"{tuple(ball.get('carrier_at', ()))}, {ball.get('to_score')} rows from scoring."
+        )
+    else:
+        lines.append(f"BALL: loose at ({ball['x']},{ball['y']}).")
+
+    # Only when there is actually a question. `pending` can be a dict that exists
+    # and says nothing, and "WAITING ON AN ANSWER: None" is worse than silence —
+    # it tells a coach to stop for something that is not there.
+    question = (match.pending or {}).get("question") or (match.pending or {}).get("kind")
+    if question:
+        lines.append(f"WAITING ON AN ANSWER — nothing else can happen until it is given: {question}")
+
+    for side in ("home", "away"):
+        team = match.home_team if side == "home" else match.away_team
+        who = []
+        for p in match.players:
+            if p.side != side or p.place != "pitch":
+                continue
+            flags = "".join(
+                (
+                    "" if p.down == "standing" else ("!" if p.down == "prone" else "*"),
+                    "." if p.acted else "",
+                )
+            )
+            who.append(f"{p.id}{flags}({p.x},{p.y}){p.player.position or ''}")
+        lines.append(f"{side} ({team}) — {len(who)} on the pitch: " + ", ".join(who))
+    lines.append("Flags: ! prone · * stunned · . already acted. Ask bb_game_state for the full position.")
+    return "\n".join(lines)
+
+
+def attach(content, board_text: str) -> list | None:
+    """Put the board into a system message's content, replacing our own previous
+    copy. Returns the new block list, or None if there is nothing safe to attach to.
+
+    A PLAIN FUNCTION on purpose: this is the part with the interesting rule in it
+    (replace, never stack), and it must be testable without a host. The middleware
+    class around it cannot be — `AgentMiddleware` comes from the host — so a test
+    of the class alone SKIPS wherever the plugin's own suite runs, which is
+    everywhere that matters for a regression.
+    """
+    block = {"type": "text", "text": board_text}
+    if isinstance(content, str):
+        return ([{"type": "text", "text": content}] if content else []) + [block]
+    if isinstance(content, list):
+        # Sixteen model calls must leave ONE board in the request. Sixteen stale
+        # ones would be worse than the tool reads this replaces.
+        kept = [b for b in content if not (isinstance(b, dict) and MARK in str(b.get("text", "")))]
+        return kept + [block]
+    return None
+
+
+def factory(cfg: dict | None = None):
+    """`(config) -> AgentMiddleware | None`, per `registry.register_middleware`."""
+    try:
+        from langchain.agents.middleware import AgentMiddleware
+    except Exception:  # noqa: BLE001 — no host, no middleware. That is the cost of no host.
+        return None
+
+    class BoardMiddleware(AgentMiddleware):
+        """Attaches the live board to the system message, when there is one."""
+
+        def _transform(self, request):
+            try:
+                from .store import load_match
+
+                match = load_match()
+                if match is None or match.over:
+                    return request
+                sysmsg = getattr(request, "system_message", None)
+                if sysmsg is None:
+                    return request  # create_agent always supplies one; nothing safe to attach to
+
+                blocks = attach(getattr(sysmsg, "content", None), render(match))
+                if blocks is None:
+                    return request
+                return request.override(system_message=sysmsg.model_copy(update={"content": blocks}))
+            except Exception:  # noqa: BLE001
+                # A board that cannot be rendered must never take the turn down
+                # with it — the coach still has bb_game_state.
+                log.exception("[bloodbowl] board injection failed; continuing without it")
+                return request
+
+        def wrap_model_call(self, request, handler):
+            return handler(self._transform(request))
+
+        async def awrap_model_call(self, request, handler):
+            return await handler(self._transform(request))
+
+    return BoardMiddleware()
