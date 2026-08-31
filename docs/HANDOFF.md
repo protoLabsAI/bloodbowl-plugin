@@ -496,6 +496,28 @@ to render between steps; the halt conditions are deliberately the same list.
 
 ### The board rides the prompt (`middleware.py`)
 
+**⚠️ THE BOARD MUST SAY WHICH SIDE IS READING IT.** It said who was TO ACT and
+nothing about who the reader was, so a seat carried its own identity from the
+nudge message — and across a retry or an interruption it lost it and started
+arguing with itself about whose turn it was. Reported from a live match twice.
+
+Two agent seats are otherwise identical (both "agent"); `Match.session_ids` is the
+only thing that tells them apart, matched on PREFIX because the nudge keys a
+session per TURN (`…:home:h1t3`) off the per-match seat id (`…:home`). Middleware
+can read the session where a TOOL BODY cannot — the tracing contextvar does not
+survive the hop into a tool, but middleware runs inside the graph.
+
+Ordinary chat resolves to no seat and is told nothing, which is right: it is not
+playing.
+
+**One call plans the whole team** (`bb_game_plan` / `game.team_routes`). Asking
+`routes` per player costs eleven calls before anybody moves, and a turn has a
+budget it cannot see — a live seat spent 30 route calls and 17 odds calls on a
+turn that then timed out and was retried six times. Telling it to ask less does
+not work, because asking was the only way it had to find out. So one call answers
+for every player who can still act.
+
+
 A seat was reading `bb_game_state` **nine to sixteen times a turn**. Three
 quarters of every read is the ROSTER — position, team, badge, statline — none of
 which can change once a match has started, all of it re-sent each time. And

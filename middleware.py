@@ -44,6 +44,43 @@ log = logging.getLogger("protoagent.plugins.bloodbowl")
 MARK = "⟦bloodbowl board⟧"
 
 
+def seat_of(match, session_id: str) -> str:
+    """Which side this conversation is playing, or "" if it is not a seat.
+
+    `Match.session_ids` is the only thing that tells two agent seats apart — they
+    are otherwise identical, both "agent". Matched on prefix because the nudge
+    keys a session per TURN (`…:home:h1t3`) off the per-match seat id
+    (`…:home`), which is what bounds a seat's context.
+    """
+    if not session_id:
+        return ""
+    for side, sid in (match.session_ids or {}).items():
+        if sid and (session_id == sid or session_id.startswith(str(sid))):
+            return str(side)
+    return ""
+
+
+def current_session() -> str:
+    """The session this model call belongs to, if the host will say.
+
+    Middleware runs inside the graph, so unlike a TOOL BODY — where the tracing
+    contextvar does not survive the hop — this can actually read it.
+    """
+    for probe in (
+        lambda: __import__("graph.tracing", fromlist=["x"]).current_session_id(),
+        lambda: (__import__("graph.middleware.request_context", fromlist=["x"]).current_request_metadata() or {}).get(
+            "session_id"
+        ),
+    ):
+        try:
+            got = probe()
+            if got:
+                return str(got)
+        except Exception:  # noqa: BLE001 — no host, or a shape we do not know
+            continue
+    return ""
+
+
 def render(match, session_id: str = "") -> str:
     """The position, small enough to send on every model call.
 
@@ -60,6 +97,22 @@ def render(match, session_id: str = "") -> str:
     lines.append(f"Half {c.half}, turn {c.turn} of {s['turns_left_this_half'] + c.turn} — {c.active} to act.")
     lines.append(f"Score: home {match.score.get('home', 0)} — away {match.score.get('away', 0)}.")
     lines.append(f"home runs at row {s['scores_in']['home']}; away runs at row {s['scores_in']['away']}.")
+
+    # ⚠️ WHICH SIDE THE READER IS. The board says who is TO ACT; it said nothing
+    # about who is reading it, so a seat had to carry that from the nudge message
+    # — and across a retry or an interruption it lost it and started arguing with
+    # itself about whose turn it was. Two agent seats are otherwise identical.
+    me = seat_of(match, session_id or current_session())
+    if me:
+        mine = me == s["active"]
+        lines.append(
+            f"YOU ARE PLAYING {me.upper()}. "
+            + (
+                "IT IS YOUR TURN — play it."
+                if mine
+                else f"It is {s['active']}'s turn, not yours. Say so in one line and stop."
+            )
+        )
 
     ball = s["ball"]
     if ball.get("carrier"):

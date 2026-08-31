@@ -1392,6 +1392,59 @@ def end_turn(match: Match, forced: bool = False, start_next: bool = True, dice=N
     return {"ok": True, "clock": match.clock.to_dict(), "over": match.over}
 
 
+def team_routes(match: Match, side: str = "") -> dict:
+    """The best option for EVERY player who can still act, in one answer.
+
+    A coach asking `routes` per player spends eleven calls before it has moved
+    anybody, and a turn has a budget it cannot see. Measured on a live seat: 30
+    route calls and 17 odds calls in a turn that then ran out of time and was
+    retried six times. Telling it to ask less did not work — asking is the only
+    way it had to find out.
+
+    So one call covers the side: for each player still able to act, the safest
+    ground it can take toward the line, and whether it can score or reach a loose
+    ball. Same numbers as `routes`, one round trip instead of eleven.
+    """
+    side = side or match.clock.active
+    out = []
+    for p in match.players:
+        if p.side != side or p.place != "pitch" or p.done:
+            continue
+        r = routes(match, p.id, limit=0)
+        if not r.get("ok"):
+            continue
+        row = {
+            "player": p.id,
+            "position": p.player.position or "",
+            "at": [p.x, p.y],
+            "down": p.down,
+            "acted": bool(p.acted),
+            "has_ball": match.ball.carrier == p.id,
+        }
+        for key in ("to_end_zone", "to_ball"):
+            if r.get(key):
+                row[key] = {k: v for k, v in r[key].items() if k != "path"}
+        down = r.get("downfield") or {}
+        for label in ("safe", "bold"):
+            if down.get(label):
+                row[label] = {k: v for k, v in down[label].items() if k != "path"}
+        out.append(row)
+
+    # The carrier first, then whoever can take the most ground safely — which is
+    # the order the turn procedure works in, so the list reads as the plan.
+    out.sort(key=lambda r: (not r["has_ball"], -((r.get("safe") or {}).get("rows_gained") or 0)))
+    return {
+        "ok": True,
+        "side": side,
+        "players": out,
+        "note": (
+            "One row per player who can still act. `safe` and `bold` are the furthest ground "
+            "toward the line you attack, at >=94% and >=70%. Ask bb_game_routes for one player "
+            "only when you need the actual squares to walk."
+        ),
+    }
+
+
 def routes(match: Match, player_id: str, limit: int = 0) -> dict:
     """Every square this player can reach, and the chance of ARRIVING ON THEIR FEET.
 
