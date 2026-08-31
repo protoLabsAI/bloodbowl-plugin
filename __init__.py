@@ -310,7 +310,11 @@ def register(registry) -> None:
     #
     # `register_surface` is the seam for exactly this: `start` runs in the startup
     # hook, by which time `registry.host.on` exists.
-    def _start_nudge():
+    def _start_nudge(reloaded: dict | None = None):
+        # A reload hands us fresh config; registration has none, so fall back to
+        # what `register()` was given. This is what lets the setting be flipped
+        # without a process restart.
+        live_cfg = reloaded if isinstance(reloaded, dict) else cfg
         from graph import sdk  # type: ignore[import-not-found]
 
         # NOT `sdk.react_on`: that binds ONE session at registration, and the
@@ -425,12 +429,26 @@ def register(registry) -> None:
 
         # AUTO MODE. One loop, one turn in flight, no events: it asks who is
         # waited on, fires that seat, and waits for the board to change hands.
+        #
+        # ⚠️ OPT-IN, AND THE DEFAULT MUST STAY OFF. This loop spends model
+        # capacity with nobody watching — a full-AI match is ~32 turns of
+        # tool-calling against the same gateway real work queues on, and it
+        # outlives the browser tab that started it. It ran on by default once and
+        # quietly competed with in-flight code review for the local models.
+        # Head-to-head does NOT need it: ending your turn nudges the agent
+        # directly, through the subscription above.
         from . import runner as _runner
 
         def _run_turn(owed: dict) -> None:
             _turn_ready({"data": dict(owed, driven=True)})
 
-        _runner.start(_run_turn)
+        if _runner.auto_play(live_cfg):
+            _runner.start(_run_turn)
+        else:
+            # Stop, don't just skip: a reload is how the setting gets turned OFF,
+            # and a driver started by the previous config is still running.
+            _runner.stop()
+            log.info("[bloodbowl] auto mode off (bloodbowl.auto_play) — the agent plays when nudged")
 
     try:
         # ⚠️ `reload=` IS NOT OPTIONAL HERE, AND LEAVING IT OUT COSTS THE WHOLE
@@ -454,7 +472,7 @@ def register(registry) -> None:
         registry.register_surface(
             _start_nudge,
             name="bloodbowl-turns",
-            reload=lambda _cfg=None: _start_nudge(),
+            reload=lambda _cfg=None: _start_nudge(_cfg),
         )
     except Exception:  # noqa: BLE001 — no host, no nudge; the plugin still works
         log.debug("[bloodbowl] turn nudge unavailable (no host)", exc_info=True)

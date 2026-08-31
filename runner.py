@@ -182,6 +182,24 @@ def _loop(run_turn) -> None:
             _rest(IDLE_POLL_S)
 
 
+def auto_play(cfg: dict | None) -> bool:
+    """May the agent play its own turns? OFF unless explicitly switched on.
+
+    The default is the safety property, not a preference: this gates a loop that
+    spends model capacity unattended. Anything not recognisably "on" is off.
+
+    Accepts the shapes a human actually writes, because YAML hands us more than
+    one. `auto_play: on` and `auto_play: no` arrive already parsed as bools (YAML
+    1.1 folds on/off/yes/no), while a console text field or an env-sourced value
+    arrives as a STRING — and a setting that reads the string "true" as False is
+    worse than having no setting at all.
+    """
+    v = cfg.get("auto_play", False) if isinstance(cfg, dict) else False
+    if isinstance(v, str):
+        return v.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(v)
+
+
 def start(run_turn) -> threading.Thread:
     """Begin driving matches. Idempotent — one runner, never two.
 
