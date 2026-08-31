@@ -115,7 +115,10 @@ def factory(cfg: dict | None = None):
     try:
         from langchain.agents.middleware import AgentMiddleware
     except Exception:  # noqa: BLE001 — no host, no middleware. That is the cost of no host.
+        log.info("[bloodbowl] no host middleware API; the board stays a tool call")
         return None
+
+    log.info("[bloodbowl] board middleware built — the position will ride the prompt")
 
     class BoardMiddleware(AgentMiddleware):
         """Attaches the live board to the system message, when there is one."""
@@ -134,6 +137,17 @@ def factory(cfg: dict | None = None):
                 blocks = attach(getattr(sysmsg, "content", None), render(match))
                 if blocks is None:
                     return request
+                # ⚠️ SAY SO IN THE LOG. The system message goes into the model
+                # REQUEST, not into the checkpointed message list — so grepping a
+                # checkpoint for the board proves nothing either way, and looking
+                # there cost an iteration. This line is the observable.
+                log.info(
+                    "[bloodbowl] board attached to the prompt — H%st%s %s to act, %d chars",
+                    match.clock.half,
+                    match.clock.turn,
+                    match.clock.active,
+                    len(blocks[-1].get("text", "")),
+                )
                 return request.override(system_message=sysmsg.model_copy(update={"content": blocks}))
             except Exception:  # noqa: BLE001
                 # A board that cannot be rendered must never take the turn down
