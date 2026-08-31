@@ -2738,3 +2738,32 @@ def test_the_turn_nudge_survives_a_plugin_reload():
         "the nudge surface has no reload hook — it will go silent on the next deploy "
         "and a full-AI match will never start"
     )
+
+
+def test_the_board_keeps_polling_even_when_the_page_reports_hidden():
+    """A BOARD THAT STOPS UPDATING IS INDISTINGUISHABLE FROM A HUNG GAME.
+
+    The poll used to skip on `document.hidden`. A plugin view is iframed into a
+    console panel, where a hidden document does not reliably mean nobody is
+    looking — and a silently frozen board was reported as a broken match while the
+    engine was writing a new position every second.
+
+    Only a drag may stand the poll down: `render()` replaces a player's node when
+    its signature changes, which kills the gesture under the pointer.
+    """
+    js = _decomment(_web("js/main.js"))
+    assert "document.hidden) return" not in js, "the poll still gives up when the page reports hidden"
+    assert "visibilitychange" in js, "coming back to the page must catch up immediately"
+    assert "setup.state.dragging" in js, "a drag must still stand the poll down"
+
+
+def test_a_running_charge_does_not_look_like_a_blocked_game():
+    """The bar above the board carries two opposite meanings — "everything is
+    stopped until you answer" and "somebody is taking their free moves". Rendered
+    identically, a live game reads as a hung one."""
+    js = _decomment(_web("js/choice.js"))
+    assert 'classList.add("running")' in js
+    assert 'classList.remove("running")' in js, "the blocking state must clear it"
+    assert "in progress" in js, "say that it is running"
+    css = _decomment(_web("style.css"))
+    assert ".choice.running" in css, "the two states must be visually different"

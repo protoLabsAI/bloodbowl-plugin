@@ -88,15 +88,36 @@ async function boot() {
   }
 }
 
-setInterval(async () => {
-  if (setup.state.dragging || document.hidden) return;
+async function tick() {
+  // A DRAG IS THE ONLY THING THAT STOPS THE POLL. `render()` replaces a player's
+  // node when its signature changes, which tears it out from under the pointer
+  // and kills the gesture silently — so standing down mid-drag is load-bearing.
+  if (setup.state.dragging) return;
   try {
     if (mode === "setup") await setup.poll();
     else await game.poll();
   } catch {
     /* transient — the next tick will catch up */
   }
-}, 2500);
+}
+
+// ⚠️ `document.hidden` USED TO SKIP THE POLL ENTIRELY, and that is wrong for a
+// board that lives in a PANEL. A plugin view is iframed into the console, and a
+// hidden document there does not reliably mean "nobody is looking" — it can mean
+// the panel is not the foreground tab while being perfectly visible. A board that
+// silently stops updating is indistinguishable from a hung game, and it was read
+// as exactly that: "im not seeing a damn thing happen in the ui" while the engine
+// was writing a new position every second.
+//
+// So it always polls. The cost is one small GET every 2.5s; the cost of the
+// optimisation was not trusting the board.
+setInterval(tick, 2500);
+
+// And catch up the INSTANT the page comes back, rather than waiting out a tick —
+// returning to a board that is 2.5 seconds stale is the moment it feels broken.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) tick();
+});
 
 let booted = false;
 function go() {
