@@ -434,3 +434,26 @@ def test_the_board_does_not_announce_a_question_that_is_not_there():
     assert "WAITING" not in middleware.render(m)
     m.pending = {"kind": "quick_snap", "question": "up to 5 players may move one square"}
     assert "WAITING ON AN ANSWER" in middleware.render(m)
+
+
+def test_ending_a_turn_ends_a_charge_that_is_still_running():
+    """FROM A LIVE MATCH. `charge.should_end` is only consulted inside `act`, so a
+    coach that ended its turn mid-Charge — reasonable, and what the procedure tells
+    it to do when out of useful moves — advanced the clock and left `match.charge`
+    populated forever.
+
+    Nothing refused and nothing logged. The cost was on the BOARD: it shows a bar
+    whenever a Charge is live, so a finished one pinned "Charge! away — 5 of 5
+    still to activate" above a game that had moved on two turns, and the match read
+    as frozen to the person watching it.
+    """
+    from bloodbowl.engine import charge
+    from bloodbowl.engine.game import end_turn
+
+    m = board(orc(8, 13), rat(8, 14))
+    charge.start(m, "away", ["a00"], land="home")
+    assert charge.active(m), "the fixture must actually start one"
+
+    end_turn(m, forced=True)
+    assert not charge.active(m), "the Charge outlived the turn it was running in"
+    assert not m.charge, "match.charge must be empty, or the board keeps its banner"

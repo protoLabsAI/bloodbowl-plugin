@@ -1357,7 +1357,18 @@ attached, and `bb_game_choose` answers it. Three things worth knowing:
   carries `in_air` for exactly this reason: `in_play` has always meant "on the
   board somewhere", which read as "landed" only because it used to land in the
   same call.
-- **CHARGE! is the odd one out**: its answer only STARTS something. The selected
+- > **⚠️ A CHARGE OUTLIVED ITS OWN TURN AND FROZE THE BOARD.**
+> `charge.should_end` is consulted only inside `act`. A coach that ends its turn
+> mid-Charge — reasonable, and what the turn procedure tells it to do when it is
+> out of useful moves — advanced the clock and left `match.charge` populated
+> forever. Nothing refused, nothing logged.
+>
+> The cost was on the BOARD, not in the bookkeeping: the view shows a bar whenever
+> a Charge is live, so a finished one pinned "Charge! away — 5 of 5 still to
+> activate" above a game that had moved on two turns, and a running match read as
+> frozen to the person watching it. `end_turn` closes an open Charge now.
+
+**CHARGE! is the odd one out**: its answer only STARTS something. The selected
   players then take their free Actions through the ordinary `act` path — "exactly
   as if it was their team's Turn" — with `engine/charge.py` as the fence around
   it: who may act, which of the three one-off Actions are left, and the stop
