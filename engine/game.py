@@ -1279,6 +1279,22 @@ def end_turn(match: Match, forced: bool = False, start_next: bool = True, dice=N
         not_yours = refuse_if_not_yours(match, by)
         if not_yours is not None:
             return not_yours
+
+    # ⚠️ A CHARGE MUST NOT SURVIVE THE TURN IT WAS RUNNING IN.
+    #
+    # `charge.should_end` is only consulted inside `act`, so a coach that ends its
+    # turn mid-Charge — which is a reasonable thing to do, and what the procedure
+    # tells them to do when they are out of useful moves — advanced the clock and
+    # left `match.charge` populated forever. Nothing refused; the Charge simply
+    # never closed.
+    #
+    # The cost was not internal bookkeeping. The board shows a bar whenever a
+    # Charge is live, so a finished one pinned "Charge! away — 5 of 5 still to
+    # activate" above a game that had moved on two turns ago, and the match read as
+    # frozen to the person watching it. Observed exactly that way.
+    if charge.active(match):
+        end_charge(match, "the turn ended", dice or dice_for(match))
+
     for p in match.players:
         if p.down == "stunned" and p.side == match.clock.active:
             match.apply(
