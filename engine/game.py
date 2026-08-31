@@ -1444,6 +1444,29 @@ def routes(match: Match, player_id: str, limit: int = 0) -> dict:
     if scoring:
         out["to_end_zone"] = max(scoring, key=lambda s: s["chance"])
 
+    # HOW FAR DOWNFIELD CAN THIS PLAYER SAFELY GET.
+    #
+    # `to_end_zone` only exists when the End Zone is actually reachable, which for
+    # a carrier fifteen rows out it never is — so a coach asking "can I score?"
+    # gets nothing back and has to pick a square out of a list of two hundred
+    # sorted by safety, which is sorted by exactly the wrong thing for this
+    # question. Then it advances one row a turn and runs out of clock. Observed.
+    #
+    # So: the furthest square toward the line being attacked, at each of two
+    # safety bars — the one you take when protecting a drive, and the one you take
+    # when the clock says you cannot afford to.
+    here = p.y
+    toward = 1 if target_row > here else -1
+    for label, floor in (("safe", 0.94), ("bold", 0.70)):
+        gained = [s for s in squares if s["chance"] >= floor and (s["y"] - here) * toward > 0]
+        if gained:
+            best_row = max(gained, key=lambda s: ((s["y"] - here) * toward, s["chance"]))
+            out.setdefault("downfield", {})[label] = {
+                **best_row,
+                "rows_gained": (best_row["y"] - here) * toward,
+                "min_chance": floor,
+            }
+
     ball = match.ball
     if not ball.carrier and ball.in_play and not ball.in_air:
         onto = next((s for s in squares if s["x"] == ball.x and s["y"] == ball.y), None)

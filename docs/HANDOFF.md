@@ -412,6 +412,22 @@ Two things about it worth keeping:
 The view keeps its own client-side walk (`web/js/game.js:walkPath`) because it has
 to render between steps; the halt conditions are deliberately the same list.
 
+> **⚠️ THE THIRD MATCH FOUND THE STEP THAT WAS MISSING FROM THE LIST.** With the
+> carrier rule and the race fixed, a seat kept its ball carrier upright for two
+> entire turns — and moved it three rows, sideways. It never fell over and it was
+> never going to score either.
+>
+> The procedure had score, protect-the-carrier, blitz, block, cage and screen, and
+> **no step that moved the ball**. Every other step feels more urgent, which is
+> exactly why advancing has to be numbered rather than assumed. It is step 4 now.
+>
+> `routes` gained `downfield` for it: the furthest square toward the line being
+> attacked at each of two safety bars. `to_end_zone` only exists when the End Zone
+> is REACHABLE, so from fifteen rows out a coach asking "can I score?" got nothing
+> back and fell to picking a square out of two hundred sorted by safety — which is
+> sorted by the wrong thing for that question. A drive has about six usable turns
+> and the pitch is 26 rows: one row a turn never scores.
+
 > **⚠️ AND THE SECOND MATCH FOUND A RACE, WHICH THE COACH DIAGNOSED ITSELF.**
 > A tool call loads the match, applies an action and saves it back. A model
 > batches independent tool calls IN PARALLEL — normal, and usually desirable —

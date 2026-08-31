@@ -303,3 +303,50 @@ def _decline_any_pending(tools):
         if not st.get("waiting_on"):
             return
         tools["bb_game_choose"].invoke({"decline": True})
+
+
+def test_routes_says_how_far_downfield_is_safe():
+    """`to_end_zone` only exists when the End Zone is REACHABLE, which from
+    fifteen rows out it never is. A coach asking "can I score?" then gets nothing
+    and has to pick a square out of two hundred sorted by safety — sorted by
+    exactly the wrong thing for this question.
+
+    Observed: a carrier stayed upright for two whole turns and gained three rows,
+    sideways. A drive has about six usable turns and a pitch is 26 rows; one row a
+    turn never scores.
+    """
+    m = board(orc(2, 11))
+    place(m, "h00", 2, 11)
+    d = routes(m, "h00")["downfield"]
+
+    assert d["safe"]["rows_gained"] >= 5, "MA 6 in open field should cover real ground"
+    assert d["safe"]["chance"] >= 0.94
+    # Home attacks row 26, so progress means y increasing.
+    assert d["safe"]["y"] > 11
+    # The bold line risks more for more, and must not be safer than the safe one.
+    assert d["bold"]["rows_gained"] >= d["safe"]["rows_gained"]
+    assert d["bold"]["chance"] <= d["safe"]["chance"]
+
+
+def test_downfield_runs_the_other_way_for_the_other_side():
+    """Away attacks row 1. A progress metric that assumed one direction would send
+    half the players backwards, confidently."""
+    m = board(orc(8, 8), rat(8, 20))
+    place(m, "a00", 8, 20)
+    d = routes(m, "a00")["downfield"]
+    assert d["safe"]["y"] < 20, "away runs at row 1"
+    assert d["safe"]["rows_gained"] > 0
+
+
+def test_the_skill_tells_the_coach_to_advance_the_ball():
+    """The first version of the list had score, protect, blitz, block, cage and
+    screen — and no step that moved the ball. Every other step feels more urgent,
+    which is exactly why it has to be numbered."""
+    from pathlib import Path
+
+    text = " ".join(
+        (Path(__file__).resolve().parent.parent / "skills" / "coaching-a-turn" / "SKILL.md").read_text().split()
+    )
+    assert "MOVE THE BALL DOWNFIELD" in text
+    assert "ends the turn closer to the line than it started" in text
+    assert "never scores" in text, "say what one row a turn costs"

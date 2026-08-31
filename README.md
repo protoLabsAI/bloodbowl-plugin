@@ -234,8 +234,11 @@ Casualty branch asks the same way — two Casualty Rolls, and the Coach picks.
 get to, and what are the odds of arriving on their feet?* It searches every reachable
 square and multiplies the Dodges and Rushes on the way, because a run's risk is the
 product of its steps and three separate 2+ rolls is 58%, not "three safe rolls". It
-names the safest route to the End Zone you are attacking, and to a loose ball with
-the pick-up rolled in.
+names the safest route to the End Zone you are attacking, to a loose ball with the
+pick-up rolled in, and — the one that actually wins drives — **how far downfield you
+can get**, at a safe bar and a bold one. `to_end_zone` only exists when the End Zone
+is reachable; from fifteen rows out the question is not "can I score" but "how much
+ground can I take without falling over".
 
 `bb_game_legal`, `bb_game_routes` and `bb_game_odds` are free and side-effect-free — ask them as
 often as you like. They exist so the coach never has to work out a dodge modifier

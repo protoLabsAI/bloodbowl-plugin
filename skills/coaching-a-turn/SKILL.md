@@ -78,13 +78,34 @@ somebody who is not holding the ball, then move the carrier through the gap you
 just made. A carrier that dodges when it did not have to is the commonest way a
 drive ends.
 
-### 4. Bank the certain actions
+### 4. MOVE THE BALL DOWNFIELD
+
+**Every turn you hold the ball and are not scoring, the carrier ends the turn
+closer to the line than it started.** This is the step that wins games and it is
+the one easiest to leave out, because every other step feels more urgent.
+
+`bb_game_routes` gives `to_end_zone` — the safest route to the row you are
+attacking. Take the furthest square along it that keeps `chance` at **0.94 or
+better**, and walk it in ONE `bb_game_act` with `path=`. Do not shuffle a square
+and reconsider; that is how a drive covers one row a turn and runs out of clock.
+
+Some arithmetic worth carrying: a drive has about six usable turns, and a pitch is
+26 rows. **A carrier that gains one row a turn never scores.** If the safe route
+only gains a square or two, the answer is usually not "advance carefully" — it is
+that the carrier is in the wrong place and needs a screen built first, or the ball
+should go to somebody with room via a hand-off.
+
+*This step was missing from the first version of this list, and it showed: a coach
+followed everything else correctly, kept its carrier upright for two entire turns,
+and moved it three rows sideways.*
+
+### 5. Bank the certain actions
 
 Everything that needs **no roll at all** — unmarked players walking into position,
 standing up out of harm's way, marking an opponent from a free square. These cost
 nothing and can only help. `bb_game_routes` gives `chance: 1.0` for exactly these.
 
-### 5. The one Blitz, spent deliberately
+### 6. The one Blitz, spent deliberately
 
 You get one per team turn, and **it is thrown by somebody who is not holding the
 ball** (see step 2). Use it on the highest-value thing available:
@@ -96,25 +117,25 @@ ball** (see step 2). Use it on the highest-value thing available:
 Check `bb_game_odds` before committing. Blocking someone stronger hands them the
 dice, which turns your Blitz into a way of knocking your own player over.
 
-### 6. Blocks that are near-certain
+### 7. Blocks that are near-certain
 
 Throw a block only when the odds say your player stays upright — **> 0.94** — and
 there is no fumble risk to the ball. A block that feels free and puts your own
 player on the floor is how turns quietly die.
 
-### 7. Cage the carrier
+### 8. Cage the carrier
 
 Four players on the four **diagonal** squares around the carrier. Diagonals, not
 orthogonals: they block the squares an opponent needs to Mark from. Only move
 players into the cage on routes at **> 0.94** — a cage assembled by three dodges
 is not protection, it is three chances to end the turn.
 
-### 8. Screen and mark
+### 9. Screen and mark
 
 Bodies between the ball and the line they are running at. A player standing in the
 right square denies more than a spectacular dodge achieves.
 
-### 9. End it on purpose
+### 10. End it on purpose
 
 `bb_game_end_turn`. Do not drift into the end of a turn having run out of ideas —
 stop when the remaining actions are worse than not taking them. **An unused player
