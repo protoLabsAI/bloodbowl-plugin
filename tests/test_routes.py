@@ -474,3 +474,43 @@ def test_ending_a_turn_ends_a_charge_that_is_still_running():
     end_turn(m, forced=True)
     assert not charge.active(m), "the Charge outlived the turn it was running in"
     assert not m.charge, "match.charge must be empty, or the board keeps its banner"
+
+
+# --- the crash that killed a live turn -------------------------------------
+
+
+def test_walk_takes_the_square_shape_routes_hands_back():
+    """FROM A LIVE MATCH, MID-GAME. `bb_game_routes` reports squares as
+    {"x":…, "y":…, "chance":…} and its suggested paths as [[x, y], …]. A coach
+    copied the first into `path=`, and `walk` did `sq[0]` on a dict.
+
+    KeyError: 0 — which was not a refusal it could read. It crashed the tool, then
+    the tool-error handler, then the whole turn, and the match stopped dead with
+    "unhandled exception" in the server log.
+
+    Both shapes now work, because both are things the engine itself hands out.
+    """
+    from bloodbowl.engine.game import walk
+
+    m = board(orc(8, 8))
+    place(m, "h00", 8, 8)
+
+    as_pairs = walk(m, "h00", [[8, 9], [8, 10]], cmd={"player": "h00"}, dice=None)
+    assert as_pairs.get("steps_taken") == 2, as_pairs
+
+    m2 = board(orc(8, 8))
+    place(m2, "h00", 8, 8)
+    as_dicts = walk(m2, "h00", [{"x": 8, "y": 9}, {"x": 8, "y": 10}], cmd={"player": "h00"}, dice=None)
+    assert as_dicts.get("steps_taken") == 2, as_dicts
+
+
+def test_an_unreadable_path_is_refused_in_words_not_raised():
+    """A plan the engine cannot parse is the same kind of thing as an illegal
+    move, and deserves the same answer. An exception here takes the turn down."""
+    from bloodbowl.engine.game import walk
+
+    m = board(orc(8, 8))
+    for junk in ([{"nope": 1}], ["8,9"], [[8]], [None]):
+        out = walk(m, "h00", junk, cmd={"player": "h00"}, dice=None)
+        assert out["ok"] is False, junk
+        assert "square" in out["error"], out

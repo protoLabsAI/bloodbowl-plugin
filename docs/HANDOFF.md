@@ -442,6 +442,19 @@ Two things about it worth keeping:
   three calls land in the same square having rolled the same dice. A collapsing
   optimisation that quietly changed the game would otherwise look like a feature.
 
+**⚠️ `walk` TAKES THE SHAPE `routes` HANDS BACK, and that is not a nicety.**
+`bb_game_routes` reports squares as `{"x":…, "y":…, "chance":…}` and its own
+suggested paths as `[[x, y], …]` — two shapes, one obvious thing to do with them.
+A coach mid-match copied the first into `path=` and `walk` did `sq[0]` on a dict.
+
+`KeyError: 0`. Not a refusal it could read: it crashed the tool, then the
+tool-error handler, then the whole turn, and the match stopped dead with
+"unhandled exception" in the server log and a board that simply never moved again.
+
+**A plan the engine cannot parse is a REFUSAL, in words.** The engine already
+refuses illegal moves that way; an unreadable path is the same kind of thing. An
+exception on this path takes a turn with it, and the coach has no idea why.
+
 The view keeps its own client-side walk (`web/js/game.js:walkPath`) because it has
 to render between steps; the halt conditions are deliberately the same list.
 
