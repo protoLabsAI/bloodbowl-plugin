@@ -414,6 +414,24 @@ to render between steps; the halt conditions are deliberately the same list.
 
 ### The coaching skill (`skills/coaching-a-turn/`)
 
+> **⚠️ THE FIRST MEASURED MATCH FOUND THE HOLE IN THIS SKILL, ON TURN ONE.** A seat
+> picked the loose ball up (correct), then **declared a Blitz with the same
+> player**, rolled Player Down, and ended its own turn with its first activation.
+>
+> The skill was loaded — `coaching-a-turn`, "Score if you can", "top to bottom"
+> and the thresholds were all in that seat's context — and every other step was
+> followed. It lost the turn because the procedure **never said the carrier does
+> not hit anybody**. That is so basic it did not get written down, which is the
+> whole reason to run the thing rather than reason about it.
+>
+> It is now step 2, phrased as a rule that outranks the rest rather than a
+> threshold to weigh, and `legal_moves` marks every block offered to the ball
+> carrier with `carrying_the_ball` and a warning. **The engine still does not
+> refuse** — hitting while carrying is legal and at the end of a half can be right
+> — it makes the price visible, like `bb_pitch_review` reports instead of vetoing.
+
+
+
 **The plugin shipped 38 tools and no skill.** The engine taught the agent what was
 LEGAL and nothing taught it what was GOOD, and it played accordingly: one recorded
 turn spent 47 tool calls on 7 actions, and a full sixteen-turn AI-vs-AI match

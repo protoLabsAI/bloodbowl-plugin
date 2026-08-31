@@ -1603,6 +1603,26 @@ def legal_moves(match: Match, player_id: str) -> dict:
             }
         )
 
+    # ⚠️ REPORT THAT THE ATTACKER IS HOLDING THE BALL, on every block it is
+    # offered. The engine does not refuse it — hitting somebody while carrying is
+    # legal, and there are end-of-half positions where it is even right — but it
+    # is the cheapest turnover in Blood Bowl, and a list of legal blocks reads as
+    # a list of AVAILABLE ones.
+    #
+    # Observed, on turn one of a real match: a coach picked the ball up, declared
+    # a Blitz with the same player, rolled Player Down and ended its own turn with
+    # its first activation. Every block above was legal. Nothing said what it was
+    # about to risk. `bb_pitch_review` reports rather than vetoes for the same
+    # reason — the engine's job is to make the cost visible, not to make the call.
+    if blocks and match.ball.carrier == player_id:
+        for b in blocks:
+            b["carrying_the_ball"] = True
+            b["warning"] = (
+                "This player is carrying the ball. Half the Block die knocks somebody "
+                "over, and if it is the carrier the ball comes loose and the turn ends. "
+                "Hit with somebody else."
+            )
+
     # Blitz targets, with the distance already walked. A coach eyeballing "I can
     # get there" is how a team's ONE Blitz per turn gets spent on an opponent two
     # squares out of reach — and unlike a bad Block, that one cannot be taken back.

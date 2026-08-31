@@ -50,22 +50,44 @@ If the carrier's `to_end_zone.chance` from `bb_game_routes` is **≥ 0.70**, tak
 Now, before anything else can go wrong. On the last turn of a half, take anything
 better than nothing — there is no next turn to save the player for.
 
-### 2. Free the carrier before you move it
+### 2. THE BALL CARRIER DOES NOT HIT ANYONE
+
+**The player holding the ball never throws a Block, never declares a Blitz, and
+never Fouls.** Not when it looks free, not when the odds are good, not when
+there is nobody else in range.
+
+Every one of those puts your own carrier on a Block die, and half the faces on
+that die knock somebody over. If it is the carrier that falls, the ball comes
+loose in a crowd and the turn ends — a turnover with the ball is the worst
+outcome available on any given turn, and this is the cheapest way to buy one.
+
+This is not a preference and it is not a threshold to weigh. **It is a rule, and
+it outranks everything below it.** If the only Blitz available is the carrier's,
+the answer is that there is no Blitz this turn.
+
+*This is written this firmly because it has already happened.* On turn one of a
+real match, a coach following the rest of this list picked the ball up, declared a
+Blitz with the same player, rolled Player Down, and ended its own turn with its
+first activation. Every other step was followed correctly.
+
+### 3. Free the carrier before you move it
 
 **Never move the ball carrier out of a Tackle Zone if you can avoid it.** If the
-carrier is Marked, spend other players first: blitz or block the Markers away,
-then move the carrier through the gap you just made. A carrier that dodges when it
-did not have to is the commonest way a drive ends.
+carrier is Marked, spend OTHER players first: blitz or block the Markers away with
+somebody who is not holding the ball, then move the carrier through the gap you
+just made. A carrier that dodges when it did not have to is the commonest way a
+drive ends.
 
-### 3. Bank the certain actions
+### 4. Bank the certain actions
 
 Everything that needs **no roll at all** — unmarked players walking into position,
 standing up out of harm's way, marking an opponent from a free square. These cost
 nothing and can only help. `bb_game_routes` gives `chance: 1.0` for exactly these.
 
-### 4. The one Blitz, spent deliberately
+### 5. The one Blitz, spent deliberately
 
-You get one per team turn. Use it on the highest-value thing available:
+You get one per team turn, and **it is thrown by somebody who is not holding the
+ball** (see step 2). Use it on the highest-value thing available:
 
 - Their ball carrier, if you can reach and knock it down.
 - The Marker pinning your own carrier.
@@ -74,25 +96,25 @@ You get one per team turn. Use it on the highest-value thing available:
 Check `bb_game_odds` before committing. Blocking someone stronger hands them the
 dice, which turns your Blitz into a way of knocking your own player over.
 
-### 5. Blocks that are near-certain
+### 6. Blocks that are near-certain
 
 Throw a block only when the odds say your player stays upright — **> 0.94** — and
 there is no fumble risk to the ball. A block that feels free and puts your own
 player on the floor is how turns quietly die.
 
-### 6. Cage the carrier
+### 7. Cage the carrier
 
 Four players on the four **diagonal** squares around the carrier. Diagonals, not
 orthogonals: they block the squares an opponent needs to Mark from. Only move
 players into the cage on routes at **> 0.94** — a cage assembled by three dodges
 is not protection, it is three chances to end the turn.
 
-### 7. Screen and mark
+### 8. Screen and mark
 
 Bodies between the ball and the line they are running at. A player standing in the
 right square denies more than a spectacular dodge achieves.
 
-### 8. End it on purpose
+### 9. End it on purpose
 
 `bb_game_end_turn`. Do not drift into the end of a turn having run out of ideas —
 stop when the remaining actions are worse than not taking them. **An unused player
