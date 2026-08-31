@@ -1112,6 +1112,28 @@ def _tools(cfg: dict):
             return json.dumps(report)
 
     @tool
+    def bb_game_plan() -> str:
+        """START YOUR TURN HERE. Every player who can still act, and the best ground
+        each of them can take — in one call.
+
+        Asking `bb_game_routes` player by player costs eleven calls before you have
+        moved anybody, and a turn has a budget you cannot see. This is the same
+        arithmetic for the whole side at once: the carrier first, then whoever can
+        gain the most ground safely, with `safe` (>=94%) and `bold` (>=70%) and
+        whether anyone can score or reach a loose ball.
+
+        Then use `bb_game_routes` for the ONE player you are about to move, to get
+        the actual squares, and walk them with `bb_game_act(path=...)`.
+        """
+        from .engine.game import team_routes
+        from .store import load_match
+
+        m = load_match()
+        if m is None:
+            return json.dumps({"ok": False, "error": "no match in progress"})
+        return json.dumps(team_routes(m))
+
+    @tool
     def bb_game_routes(player: str, top: int = 12) -> str:
         """Where this player can get to, and the chance of ARRIVING ON THEIR FEET.
 
@@ -1629,6 +1651,7 @@ def _tools(cfg: dict):
         bb_game_new,
         bb_game_legal,
         bb_game_act,
+        bb_game_plan,
         bb_game_routes,
         bb_game_odds,
         bb_game_end_turn,

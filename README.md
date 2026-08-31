@@ -197,7 +197,7 @@ A model can take eight activations in under a second, which is a diff rather tha
 game — the pace is what makes a turn something you can watch happen. Your own
 clicks are never paced.
 
-**Playing** — `bb_game_new` · `bb_game_legal` · `bb_game_routes` · `bb_game_odds` ·
+**Playing** — `bb_game_new` · `bb_game_plan` · `bb_game_legal` · `bb_game_routes` · `bb_game_odds` ·
 `bb_game_act` (`path=[[8,15],[8,16]]` walks a run; `drop_ball=True` for a Fumblerooski) ·
 `bb_game_end_turn` · `bb_game_kickoff` · `bb_game_log` · `bb_game_abandon` (refused while a coach is playing) · `bb_pass_ranges`
 

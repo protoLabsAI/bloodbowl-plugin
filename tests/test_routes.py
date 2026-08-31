@@ -514,3 +514,84 @@ def test_an_unreadable_path_is_refused_in_words_not_raised():
         out = walk(m, "h00", junk, cmd={"player": "h00"}, dice=None)
         assert out["ok"] is False, junk
         assert "square" in out["error"], out
+
+
+def test_one_call_plans_the_whole_team(registry):
+    """A coach asking `routes` per player spends eleven calls before it has moved
+    anybody. Measured on a live seat: 30 route calls and 17 odds calls in a turn
+    that ran out of time and was retried six times.
+
+    Telling it to ask less does not work — asking was the only way it had to find
+    out. So one call covers the side.
+    """
+    import json as j
+
+    import bloodbowl
+
+    bloodbowl.register(registry)
+    tools = {t.name: t for t in registry.tools}
+    assert "bb_game_plan" in tools
+
+    tools["bb_pitch_clear"].invoke({})
+    for pos, x, y in (("Orc Lineman", 5, 10), ("Orc Blitzer", 9, 10), ("Orc Lineman", 7, 12)):
+        tools["bb_pitch_place"].invoke({"side": "home", "team": "Orc", "position": pos, "x": x, "y": y})
+    tools["bb_pitch_place"].invoke({"side": "away", "team": "Skaven", "position": "Skaven Clanrat", "x": 8, "y": 20})
+    tools["bb_game_new"].invoke({"seed": 8, "kicking_to": "home"})
+    _decline_any_pending(tools)
+
+    plan = j.loads(tools["bb_game_plan"].invoke({}))
+    assert plan["ok"], plan
+    assert len(plan["players"]) >= 3, "every player who can still act gets a row"
+    for row in plan["players"]:
+        assert "player" in row and "at" in row
+        # The point of the call: how much ground each can take, without asking again.
+        assert "safe" in row or "to_end_zone" in row or row["down"] != "standing", row
+    # The carrier, if any, leads — the order the procedure works in.
+    assert plan["players"][0]["has_ball"] or not any(r["has_ball"] for r in plan["players"])
+
+
+def test_the_skill_starts_the_turn_with_the_team_plan():
+    from pathlib import Path
+
+    text = " ".join(
+        (Path(__file__).resolve().parent.parent / "skills" / "coaching-a-turn" / "SKILL.md").read_text().split()
+    )
+    assert "ONE `bb_game_plan` at the top of the turn" in text
+    assert "only for the player you are ABOUT TO MOVE" in text
+
+
+def test_the_board_tells_each_seat_which_side_it_is():
+    """ "still seeing them get confused about whose turn it is."
+
+    The board said who was TO ACT and nothing about who was READING it. A seat had
+    to carry its own identity from the nudge message, and across a retry or an
+    interruption it lost it and started arguing with itself. Two agent seats are
+    otherwise identical — `Match.session_ids` is the only thing that tells them
+    apart.
+    """
+    from bloodbowl import middleware
+    from bloodbowl.engine.game import new_match
+    from bloodbowl.pitch import Scenario
+
+    sc = Scenario(name="t", home_team="Orc", away_team="Skaven")
+    sc.players = [orc(8, 12), rat(8, 15)]
+    m = new_match(
+        sc,
+        seed=5,
+        kicking_to="home",
+        controllers={"home": "agent", "away": "agent"},
+        session_ids={"home": "bloodbowl:abc:home", "away": "bloodbowl:abc:away"},
+    )
+
+    # Matched on PREFIX: the nudge keys a session per turn off the per-match seat id.
+    mine = middleware.render(m, "bloodbowl:abc:home:h1t1")
+    assert "YOU ARE PLAYING HOME" in mine
+    assert "IT IS YOUR TURN" in mine
+
+    theirs = middleware.render(m, "bloodbowl:abc:away:h1t1")
+    assert "YOU ARE PLAYING AWAY" in theirs
+    assert "not yours" in theirs, "a seat must know when to stand down"
+
+    # Ordinary chat is not a seat and must not be told it is one.
+    assert "YOU ARE PLAYING" not in middleware.render(m, "")
+    assert middleware.seat_of(m, "some-other-chat") == ""

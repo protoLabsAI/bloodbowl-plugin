@@ -6,7 +6,7 @@ description: >-
   spending eight activations well: what to check, in what order, at what odds,
   and when to stop. Read it before the first activation of a turn, not after a
   turn has gone wrong.
-tools: [bb_game_routes, bb_game_legal, bb_game_odds, bb_game_act, bb_game_end_turn, bb_game_log]
+tools: [bb_game_plan, bb_game_routes, bb_game_legal, bb_game_odds, bb_game_act, bb_game_end_turn, bb_game_log]
 ---
 
 # Coaching a turn
@@ -197,8 +197,11 @@ calls asking questions never gets to eleven activations. A recorded turn once us
   model call. A seat once spent 66 tool calls re-reading a position it was already
   holding, and ran out of budget before it finished the turn. That tool is gone
   now; this is what replaced it.
-- **`bb_game_routes` per player you are seriously considering**, not per square.
-  It replaces walking `bb_game_legal` around the board.
+- **ONE `bb_game_plan` at the top of the turn.** It answers for every player who
+  can still act — the carrier first, then whoever can take the most ground safely.
+  That is the whole survey, in one call, and it is where the turn starts.
+- **`bb_game_routes` only for the player you are ABOUT TO MOVE**, to get the actual
+  squares. Not for the other ten.
 - **Move with `path=`.** `bb_game_act(action="move", player=…, path=[[8,15],[8,16],…])`
   walks a whole run in ONE call, rolling every Dodge and Rush in order. Moving one
   square per call is what kills turns: read `steps_taken` against
