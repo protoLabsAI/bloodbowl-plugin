@@ -1134,7 +1134,7 @@ different clause, so the test would have passed without exercising the guard at 
 
 - **Use `.venv/bin/python`.** The system `python3` is 3.9 and produces ~11 bogus
   failures (`zip() takes no keyword arguments`).
-- **CI** runs lint + tests on the org's Namespace runner, ~20s. Playwright is
+- **CI** runs lint + tests on a GitHub-hosted `ubuntu-latest` runner. Playwright is
   deliberately *not* a dev dependency — the harness is a local tool.
 - **First test run after writing new files takes 20–90s** on macOS (file scanning,
   high system time). Re-runs are ~2s. Batch your writes.
